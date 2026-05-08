@@ -1,0 +1,83 @@
+# Pre-commit configuration for malloc-labs-copy
+# Mirrors the pipeworks org standard (see pipeworks-character-forge).
+#
+# Installation:
+#   1. /srv/work/malloc-labs/venvs/ml-labs-copy/bin/pip install pre-commit
+#   2. /srv/work/malloc-labs/venvs/ml-labs-copy/bin/pre-commit install
+#
+# Manual run: pre-commit run --all-files
+
+repos:
+  # General file formatting and checks - RUN FIRST
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v6.0.0
+  hooks:
+  - id: trailing-whitespace
+    args: [--markdown-linebreak-ext=md]
+  - id: end-of-file-fixer
+  - id: mixed-line-ending
+    args: [--fix=lf]
+  - id: check-yaml
+  - id: check-toml
+  - id: check-json
+  - id: check-added-large-files
+    args: [--maxkb=500]
+  - id: check-case-conflict
+  - id: check-merge-conflict
+  - id: check-symlinks
+  - id: destroyed-symlinks
+
+  # Secret scanning with gitleaks
+- repo: https://github.com/gitleaks/gitleaks
+  rev: v8.24.2
+  hooks:
+  - id: gitleaks
+
+  # Python code formatting with Black (no-op until Python is added)
+- repo: https://github.com/psf/black
+  rev: 26.1.0
+  hooks:
+  - id: black
+    language_version: python3.12
+    args: [--line-length, '100']
+
+  # Python linting with Ruff
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.14.10
+  hooks:
+  - id: ruff
+    args: [--fix, --exit-non-zero-on-fix]
+
+  # Markdown linting
+- repo: https://github.com/igorshubovych/markdownlint-cli
+  rev: v0.43.0
+  hooks:
+  - id: markdownlint
+    args: [--fix]
+
+  # YAML formatting
+- repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
+  rev: v2.14.0
+  hooks:
+  - id: pretty-format-yaml
+    args: [--autofix, --indent, '2']
+
+  # Spell checking
+- repo: https://github.com/codespell-project/codespell
+  rev: v2.3.0
+  hooks:
+  - id: codespell
+    args:
+    - --skip="*.pyc,*.git,*.egg-info,htmlcov,.pytest_cache,__pycache__"
+
+ci:
+  autofix_commit_msg: |
+    [pre-commit.ci] auto fixes from pre-commit hooks
+
+    for more information, see https://pre-commit.ci
+  autofix_prs: true
+  autoupdate_branch: ''
+  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
+  autoupdate_schedule: monthly
+  skip: []
+  submodules: false
