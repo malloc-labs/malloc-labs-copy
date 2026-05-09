@@ -28,6 +28,23 @@ python -m copy_653.audio.demo KMK   # synthesises and plays a sequence
 
 The engine is not yet wired together. Audio synthesis works; session lifecycle, MIDI input, and the UI are still pending.
 
+## Configure
+
+Optional. Without a config file, the audio defaults from the spec apply.
+
+```sh
+mkdir -p ~/.local/share/copy_653
+cat > ~/.local/share/copy_653/config.toml <<'EOF'
+[audio]
+character_speed_wpm = 25
+tone_frequency_hz = 600
+amplitude = 0.3
+output_device = "Mac mini Speakers"   # name substring or device index
+EOF
+```
+
+Any subset of `[audio]` keys is valid; omitted keys take defaults. Unknown keys are silently ignored (forward compatibility). Validation errors surface honestly per spec §1.5.
+
 ## Tests
 
 ```sh
