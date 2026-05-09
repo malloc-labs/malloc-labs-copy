@@ -4,6 +4,8 @@ A CW (morse code) listening environment. Audio-first, deferred verification, str
 
 This is the implementation home for **Copy**, part of [Malloc Labs](https://malloc.org.uk).
 
+> **Hearing safety — read before first play.** Copy synthesises a sustained pure sine tone, which is harsher on the ear than music at the same digital level. The default output amplitude is 0.3 (~-10 dB FS) for this reason. On macOS, per-app routing utilities (SoundSource, BlackHole, etc.) cannot see this audio — sounddevice writes via CoreAudio HAL directly and bypasses the consumer mixing graph those utilities hook. The volume controls that apply: `AudioParameters.amplitude` in your config, your audio interface's hardware level, and (where the device exposes one) the macOS master output. Set hardware levels low before first play, especially with headphones.
+
 ## Design
 
 - [docs/philosophy.md](docs/philosophy.md) — design contracts and methodology

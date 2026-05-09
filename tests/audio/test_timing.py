@@ -43,10 +43,7 @@ def test_farnsworth_total_word_duration_matches_effective_wpm():
     # word equals 60 / effective_wpm seconds.
     params = AudioParameters(character_speed_wpm=20, effective_speed_wpm=10)
     intra_seconds = 31 * timing.dit_seconds(20)
-    space_seconds = (
-        4 * timing.inter_character_seconds(params)
-        + timing.inter_word_seconds(params)
-    )
+    space_seconds = 4 * timing.inter_character_seconds(params) + timing.inter_word_seconds(params)
     total = intra_seconds + space_seconds
     expected = 60.0 / 10
     assert math.isclose(total, expected, rel_tol=1e-9)

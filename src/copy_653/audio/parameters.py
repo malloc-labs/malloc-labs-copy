@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
 # Defaults pulled from docs/specification.md §2.2.
 #
 # 20 WPM character speed sits comfortably above the ~18 WPM "counting
@@ -36,6 +35,16 @@ DEFAULT_SAMPLE_RATE_HZ = 48_000
 # without softening rhythm noticeably. 5 ms is the conventional value
 # used by most modern CW transmitters.
 DEFAULT_ENVELOPE_RAMP_SECONDS = 0.005
+
+# Tone amplitude as a fraction of digital full scale. 0.3 sits around
+# -10 dB FS — quiet enough that a learner running headphones at unity
+# system volume is not exposed to a sudden harmful tone. Synth content
+# is harsher than music at the same level because it is a sustained
+# pure tone with no transient masking. The expectation is that the
+# learner adjusts their hardware volume (interface, headphone amp,
+# system) up to a comfortable listening level rather than relying on
+# Copy to be loud by default. See spec §2.7.
+DEFAULT_AMPLITUDE = 0.3
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +74,20 @@ class AudioParameters:
     envelope_ramp_seconds:
         Duration of the raised-cosine ramp applied to the start and end
         of each tone. Eliminates keyclicks without softening rhythm.
+    amplitude:
+        Peak sine amplitude as a fraction of digital full scale, in the
+        range (0, 1]. Defaulted well below full scale to protect
+        headphone users; the learner is expected to adjust hardware
+        volume to a comfortable level rather than relying on Copy to
+        be loud. See spec §2.7.
+    output_device:
+        Audio output device to play through. ``None`` (the default)
+        means the system default output. An integer is treated as a
+        sounddevice device index; a string is treated as a substring
+        match against device names (e.g. ``"Mac mini Speakers"``).
+        Pass-through to ``sounddevice.play(device=...)``. Validation
+        of the value happens at play time, not at parameter
+        construction (we cannot probe the audio system at import).
     """
 
     character_speed_wpm: int = DEFAULT_CHARACTER_SPEED_WPM
@@ -72,6 +95,8 @@ class AudioParameters:
     tone_frequency_hz: int = DEFAULT_TONE_FREQUENCY_HZ
     sample_rate_hz: int = DEFAULT_SAMPLE_RATE_HZ
     envelope_ramp_seconds: float = DEFAULT_ENVELOPE_RAMP_SECONDS
+    amplitude: float = DEFAULT_AMPLITUDE
+    output_device: int | str | None = None
 
     def __post_init__(self) -> None:
         # Validation lives at the boundary — these are the combinations
@@ -92,15 +117,15 @@ class AudioParameters:
                 f"character={self.character_speed_wpm})"
             )
         if self.tone_frequency_hz <= 0:
-            raise ValueError(
-                f"tone_frequency_hz must be positive, got {self.tone_frequency_hz}"
-            )
+            raise ValueError(f"tone_frequency_hz must be positive, got {self.tone_frequency_hz}")
         if self.sample_rate_hz <= 0:
-            raise ValueError(
-                f"sample_rate_hz must be positive, got {self.sample_rate_hz}"
-            )
+            raise ValueError(f"sample_rate_hz must be positive, got {self.sample_rate_hz}")
         if self.envelope_ramp_seconds < 0:
             raise ValueError(
-                f"envelope_ramp_seconds must be non-negative, "
-                f"got {self.envelope_ramp_seconds}"
+                f"envelope_ramp_seconds must be non-negative, " f"got {self.envelope_ramp_seconds}"
             )
+        if not (0 < self.amplitude <= 1):
+            # Hearing-safety guardrail: silence (0) is not what anyone
+            # asks for, and clipping (>1) would distort. The valid range
+            # is (0, 1] — the default sits well below 1 by design.
+            raise ValueError(f"amplitude must be in (0, 1], got {self.amplitude}")

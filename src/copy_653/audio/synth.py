@@ -27,15 +27,18 @@ def generate_tone(duration_seconds: float, params: AudioParameters) -> np.ndarra
     """Generate a sine-wave tone of the given duration.
 
     Returns a 1-D float32 numpy array, suitable to write directly to a
-    PortAudio stream. The amplitude is bounded to [-1.0, 1.0]; no
-    additional gain is applied here (gain control belongs in the
-    playback layer if wanted).
+    PortAudio stream. The peak amplitude is ``params.amplitude``,
+    defaulted well below digital full scale for hearing safety
+    (see spec §2.7).
     """
     n_samples = int(round(duration_seconds * params.sample_rate_hz))
     # float32 throughout — matches what sounddevice expects by default
     # and halves the memory footprint vs float64.
     t = np.arange(n_samples, dtype=np.float32) / np.float32(params.sample_rate_hz)
-    return np.sin(2 * np.pi * params.tone_frequency_hz * t).astype(np.float32)
+    sine = np.sin(2 * np.pi * params.tone_frequency_hz * t)
+    # Apply amplitude as a final scalar multiply. AudioParameters
+    # validates 0 < amplitude <= 1 so we cannot silently clip here.
+    return (sine * params.amplitude).astype(np.float32)
 
 
 def apply_envelope(samples: np.ndarray, params: AudioParameters) -> np.ndarray:

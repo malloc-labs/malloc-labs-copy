@@ -1,5 +1,7 @@
 """Tests for copy_653.audio.synth."""
 
+import math
+
 import numpy as np
 
 from copy_653.audio import synth, timing
@@ -24,6 +26,24 @@ def test_generate_tone_amplitude_within_unit_range():
     samples = synth.generate_tone(0.05, params)
     assert samples.max() <= 1.0
     assert samples.min() >= -1.0
+
+
+def test_generate_tone_default_amplitude_is_quiet():
+    # Default amplitude is 0.3 (≈ -10 dB FS) for hearing safety.
+    # Peak of the generated sine should sit at that level, not full-scale.
+    params = AudioParameters()
+    samples = synth.generate_tone(0.05, params)
+    assert math.isclose(samples.max(), 0.3, abs_tol=1e-3)
+    assert math.isclose(samples.min(), -0.3, abs_tol=1e-3)
+
+
+def test_generate_tone_respects_configured_amplitude():
+    # A configured amplitude is honoured exactly (within the discretisation
+    # of the sine over the duration's worth of samples).
+    params = AudioParameters(amplitude=0.5)
+    samples = synth.generate_tone(0.05, params)
+    assert math.isclose(samples.max(), 0.5, abs_tol=1e-3)
+    assert math.isclose(samples.min(), -0.5, abs_tol=1e-3)
 
 
 def test_apply_envelope_starts_and_ends_at_zero():

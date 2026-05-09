@@ -24,7 +24,6 @@ from __future__ import annotations
 
 from copy_653.audio.parameters import AudioParameters
 
-
 # A standard PARIS word breaks down as:
 #   - 31 dit-units of "intra-character" time (dits/dahs and inter-element
 #     spaces within characters)

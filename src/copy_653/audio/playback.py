@@ -39,4 +39,14 @@ def play(samples: np.ndarray, params: AudioParameters) -> None:
     # Lazy import — see module docstring for the reason.
     import sounddevice as sd
 
-    sd.play(samples, samplerate=params.sample_rate_hz, blocking=True)
+    # ``device=None`` defers to sounddevice's system-default selection;
+    # an int or string pins to a specific device. See spec §2.7 — on
+    # macOS, sounddevice writes via CoreAudio HAL and bypasses the
+    # consumer mixing graph that per-app routers (SoundSource, etc.)
+    # hook, so the device chosen here is the only routing in play.
+    sd.play(
+        samples,
+        samplerate=params.sample_rate_hz,
+        device=params.output_device,
+        blocking=True,
+    )

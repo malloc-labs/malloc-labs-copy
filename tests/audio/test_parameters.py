@@ -12,6 +12,7 @@ def test_default_construction_uses_spec_defaults():
     assert p.tone_frequency_hz == 600
     assert p.sample_rate_hz == 48_000
     assert p.envelope_ramp_seconds == 0.005
+    assert p.amplitude == 0.3
 
 
 def test_is_frozen():
@@ -44,3 +45,45 @@ def test_negative_envelope_ramp_rejected():
 def test_zero_envelope_ramp_allowed():
     # Zero ramp is valid (synth will skip the envelope work entirely).
     AudioParameters(envelope_ramp_seconds=0.0)
+
+
+def test_zero_amplitude_rejected():
+    # Silence-by-default is not what anyone asks for; reject explicitly
+    # so the failure is immediate and obvious.
+    with pytest.raises(ValueError):
+        AudioParameters(amplitude=0.0)
+
+
+def test_negative_amplitude_rejected():
+    with pytest.raises(ValueError):
+        AudioParameters(amplitude=-0.1)
+
+
+def test_amplitude_above_one_rejected():
+    # Above 1 would clip in the float32 buffer.
+    with pytest.raises(ValueError):
+        AudioParameters(amplitude=1.5)
+
+
+def test_amplitude_at_one_allowed():
+    # The boundary is closed at 1.0 — full-scale is permitted, just
+    # not the default.
+    AudioParameters(amplitude=1.0)
+
+
+def test_default_output_device_is_none():
+    # None means "use sounddevice's system default output".
+    p = AudioParameters()
+    assert p.output_device is None
+
+
+def test_output_device_accepts_int_index():
+    p = AudioParameters(output_device=3)
+    assert p.output_device == 3
+
+
+def test_output_device_accepts_string_name():
+    # Passed through to sounddevice as a substring match against
+    # device names; not validated at construction time.
+    p = AudioParameters(output_device="Mac mini Speakers")
+    assert p.output_device == "Mac mini Speakers"
