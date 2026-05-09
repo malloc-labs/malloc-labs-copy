@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**Copy** (`copy_653`) — a CW (morse code) listening environment. Pre-alpha. Audio synthesis and the engine ↔ UI seam (HTTP + WebSocket on localhost) are wired; session lifecycle, sequence generation, MIDI input, and the listening/review UI are still pending.
+**Copy** (`copy_653`) — a CW (morse code) listening environment. Pre-alpha. Audio synthesis, the engine ↔ UI seam (HTTP + WebSocket on localhost), per-session symbol stream generation, and the claim/start dev-shell loop are wired. Session lifecycle (mode dispatch, JSON record writing, wall-clock timestamps), MIDI input, and the listening/review UI proper are still pending.
 
 The package is `copy_653`; the distribution is `copy-653`. The `_653` suffix is intentional and avoids shadowing stdlib `copy`. When the developer obtains a UK amateur radio licence the package is renamed to `copy_{callsign}`, which is a semver MAJOR boundary (see `docs/specification.md` §10.1).
 
@@ -34,9 +34,10 @@ Two-process design (spec §1): a headless Python **engine** that owns audio out,
 
 `src/copy_653/` is laid out by responsibility:
 
-- `audio/` — pure synthesis (`synth.py`, `timing.py`, `patterns.py`, `parameters.py`) separated from side-effecting `playback.py`. `demo.py` is the CLI verification path. `synth.compute_timeline` produces the per-symbol `(symbol, t_on, t_off)` schedule the server emits.
-- `server/` — `app.py` runs one asyncio loop, one TCP port, with `websockets` multiplexing static-HTTP and WS upgrades. `find_available_port` probes upward from `--port` (default 8653) and fails loudly if exhausted (spec §1.5). The WS wire protocol is pinned in the `server/app.py` docstring; the `play` action is a dev placeholder until `session/` lands.
-- `midi/`, `sequence/`, `session/` — empty stubs awaiting implementation.
+- `audio/` — pure synthesis (`synth.py`, `timing.py`, `patterns.py`, `parameters.py`) separated from side-effecting `playback.py`. `demo.py` is the CLI verification path. `synth.compute_timeline` produces the per-symbol `(symbol, t_on, t_off)` schedule the server emits. `patterns.KOCH_ORDER` carries the Koch curriculum (letters + digits subset of PATTERNS) and `next_koch_after()` is the suggestion engine — *suggestion*, not gate (philosophy §3.7).
+- `sequence/` — `generator.py` produces a `GeneratedSequence(symbols, seed, claimed_set)` from a claimed set + duration + audio params. Owns its `random.Random()` instance; module-level random is never touched (spec §2.8). The seed is always concrete on output so session records can replay.
+- `server/` — `app.py` runs one asyncio loop, one TCP port, with `websockets` multiplexing static-HTTP and WS upgrades. WS wire protocol is pinned in the `server/app.py` docstring. Two client→server actions: `start` (no args; reads claimed/duration/audio fresh from config and calls `sequence.generate`) and `claim-symbol`. Server pushes `claimed-symbols` on connect and after every claim. `find_available_port` probes upward from `--port` (default 8653) and fails loudly if exhausted (spec §1.5).
+- `midi/`, `session/` — empty stubs awaiting implementation. `session/` will own lifecycle, mode dispatch (Introduction / Detection / Full Copy), and JSON record writing per spec §5.1.
 
 Important architectural points in the audio module:
 
@@ -74,7 +75,15 @@ System dependency for playback: PortAudio (`libportaudio2` on Debian/Ubuntu). Sy
 
 ## Config
 
-Audio parameters load from `~/.local/share/copy_653/config.toml` (XDG-style on both Linux and macOS for consistency — see spec §6.3). The file is optional; missing means defaults. Unknown keys in `[audio]` and unknown top-level tables are silently ignored for forward compatibility, but invalid values raise from `AudioParameters.__post_init__`.
+Single TOML file at `~/.local/share/copy_653/config.toml` (XDG-style on both Linux and macOS — see spec §6.3). Optional; missing means defaults across the board. Three tables today:
+
+- `[audio]` — hand-authored. WPM, tone, amplitude, etc. Loaded by `load_audio_parameters`.
+- `[symbols]` — partly machine-managed. `claimed = ["K", "M", ...]`. The engine writes this when the learner claims a symbol via the WS action; reads on every `start`. Atomic write via `tomli-w` (comments are NOT preserved across writes — documented).
+- `[session]` — hand-authored. `duration_seconds` is the dev default (30s); per-mode keys arrive with `session/`.
+
+Unknown keys in known tables and unknown top-level tables are silently ignored for forward compatibility. Invalid *values* raise per spec §1.5 — at load time, not later.
+
+Config is read fresh from disk on every WS action (no caching). A learner who hand-edits `config.toml` mid-session sees their change on the next `start`.
 
 ## Style
 

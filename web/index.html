@@ -14,11 +14,24 @@
             <p class="status" data-status="connecting">connecting…</p>
         </header>
 
+        <section class="claim" aria-label="Claimed symbols">
+            <p class="claim-line">
+                <span class="claim-label">Claimed</span>
+                <span class="claim-symbols" id="claimed-symbols">—</span>
+                <span class="claim-suggested" id="claim-suggested" hidden>
+                    <span class="claim-label">suggested next</span>
+                    <span id="suggested-next">—</span>
+                </span>
+            </p>
+            <button type="button" id="claim-button" hidden>Claim</button>
+        </section>
+
         <section class="controls" aria-label="Listening controls">
-            <!-- Dev-only: replaced when sequence/ + session/ land -->
-            <button type="button" id="play-kmk">Play KMK</button>
+            <button type="button" id="start" disabled>Start</button>
             <button type="button" id="stop" disabled>Stop</button>
         </section>
+
+        <p class="primed" id="primed">Primed: —</p>
 
         <section class="timeline" aria-live="polite" aria-label="Truth">
             <ol id="events"></ol>

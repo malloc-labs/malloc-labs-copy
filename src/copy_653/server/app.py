@@ -25,14 +25,19 @@ Wire protocol (v0)
 
 Client → server, JSON over WS::
 
-    {"action": "play", "symbols": "KMK"}
+    {"action": "start"}
+    {"action": "claim-symbol", "symbol": "U"}
 
-Server → client, JSON over WS, one frame per event::
+Server → client, JSON over WS, one frame per event. Pushed
+unsolicited on connect, and after every change::
 
-    {"type": "session-start", "symbols": "KMK"}
-    {"type": "symbol", "symbol": "K", "t_on": 0.0,    "t_off": 0.18}
-    {"type": "symbol", "symbol": "M", "t_on": 0.42,   "t_off": 0.6}
-    {"type": "symbol", "symbol": "K", "t_on": 0.84,   "t_off": 1.02}
+    {"type": "claimed-symbols", "symbols": ["K", "M"], "suggested_next": "U"}
+
+During a session::
+
+    {"type": "session-start", "symbols": ["K","M","K"], "duration_seconds": 30, "seed": 12345}
+    {"type": "symbol", "symbol": "K", "t_on": 0.0,  "t_off": 0.18}
+    {"type": "symbol", "symbol": "M", "t_on": 0.42, "t_off": 0.6}
     {"type": "session-end"}
 
 The ``t_on`` / ``t_off`` values are the engine's intended schedule (see
@@ -41,10 +46,19 @@ re-measured against the audio device's actual output. This is
 deliberate: the truth recorded in a session is what was sent, not what
 a wall clock observed.
 
-This is a development-grade pipe. ``play`` is a placeholder action
-that exists so the engine ↔ UI seam can be exercised end-to-end before
-:mod:`copy_653.session` lands and replaces the hard-coded symbol list
-with a generated stream.
+The ``seed`` carried on ``session-start`` is the value
+:mod:`copy_653.sequence.generator` used to draw this stream — recorded
+so the same stream can be replayed later (spec §2.8).
+
+The configuration (claimed symbols, session duration) is read from
+disk per request rather than cached at server boot. A learner who
+hand-edits ``config.toml`` mid-session sees their change on the next
+``start``. This costs one TOML parse per action and keeps the engine
+honest about what is actually configured.
+
+This is a development-grade pipe. ``start`` carries no mode dispatch
+yet; that arrives with :mod:`copy_653.session`. The wire protocol
+above is the seam ``session`` will widen — same shape, more fields.
 """
 
 from __future__ import annotations
@@ -62,9 +76,15 @@ from websockets.datastructures import Headers
 from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol, serve
 
-from copy_653.audio import playback, synth
-from copy_653.audio.parameters import AudioParameters
-from copy_653.config import load_audio_parameters
+from copy_653 import sequence
+from copy_653.audio import patterns, playback, synth
+from copy_653.config import (
+    DEFAULT_CONFIG_PATH,
+    load_audio_parameters,
+    load_claimed_symbols,
+    load_session_duration,
+    save_claimed_symbols,
+)
 
 DEFAULT_PORT = 8653
 DEFAULT_PORT_SEARCH_SPAN = 20
@@ -197,22 +217,65 @@ async def _send_event(ws: WebSocketServerProtocol, event: dict[str, Any]) -> Non
         pass
 
 
-async def _play_action(ws: WebSocketServerProtocol, symbols: str, params: AudioParameters) -> None:
-    """Synthesise ``symbols``, play in a worker thread, push timeline events.
+def _claimed_symbols_event(claimed: tuple[str, ...]) -> dict[str, Any]:
+    """Build the ``claimed-symbols`` event payload from a claimed list."""
+    return {
+        "type": "claimed-symbols",
+        "symbols": list(claimed),
+        "suggested_next": patterns.next_koch_after(claimed),
+    }
 
-    The audio plays on a worker thread (sounddevice is blocking by
-    contract, see :mod:`copy_653.audio.playback`), while the asyncio
-    loop sleeps between symbol boundaries to push live events. The two
-    schedules drift independently; the events are display-grade, the
-    audio is the truth.
+
+async def _start_action(
+    ws: WebSocketServerProtocol,
+    config_path: Path,
+) -> None:
+    """Generate a stream from the claimed set, play it, push timeline events.
+
+    Reads the claimed symbol set, audio parameters, and session
+    duration fresh from the config file — a learner who edited
+    ``config.toml`` between actions sees the new values immediately.
     """
-    symbol_list = list(symbols)
-    timeline = synth.compute_timeline(symbol_list, params)
+    audio_params = load_audio_parameters(config_path)
+    claimed = load_claimed_symbols(config_path)
+    duration = load_session_duration(config_path)
 
-    await _send_event(ws, {"type": "session-start", "symbols": symbols})
+    if not claimed:
+        # The default is KOCH_FIRST_PAIR; an empty claimed set means
+        # the learner has actively cleared their config. Honest refusal
+        # rather than synthesising silence (spec §1.5).
+        await _send_event(ws, {"type": "error", "reason": "no-claimed-symbols"})
+        return
 
-    samples = synth.synthesize_sequence(symbol_list, params)
-    audio_task = asyncio.create_task(asyncio.to_thread(playback.play, samples, params))
+    generated = sequence.generate(
+        claimed_set=claimed,
+        duration_seconds=duration,
+        params=audio_params,
+    )
+
+    if not generated.symbols:
+        # Duration too short for any single claimed symbol.
+        await _send_event(
+            ws,
+            {"type": "error", "reason": "duration-too-short", "duration_seconds": duration},
+        )
+        return
+
+    symbols_list = list(generated.symbols)
+    timeline = synth.compute_timeline(symbols_list, audio_params)
+
+    await _send_event(
+        ws,
+        {
+            "type": "session-start",
+            "symbols": symbols_list,
+            "duration_seconds": duration,
+            "seed": generated.seed,
+        },
+    )
+
+    samples = synth.synthesize_sequence(symbols_list, audio_params)
+    audio_task = asyncio.create_task(asyncio.to_thread(playback.play, samples, audio_params))
 
     cursor = 0.0
     for symbol, t_on, t_off in timeline:
@@ -232,9 +295,48 @@ async def _play_action(ws: WebSocketServerProtocol, symbols: str, params: AudioP
     await _send_event(ws, {"type": "session-end"})
 
 
-async def handler(ws: WebSocketServerProtocol, params: AudioParameters | None = None) -> None:
+async def _claim_symbol_action(
+    ws: WebSocketServerProtocol,
+    symbol: str,
+    config_path: Path,
+) -> None:
+    """Append ``symbol`` to the claimed set and broadcast the new state.
+
+    Idempotent: claiming a symbol already in the set is a no-op (still
+    rebroadcasts, so a UI out of sync converges).
+
+    Validation per spec §1.5: an unknown symbol surfaces as an
+    ``error`` event without mutating the config.
+    """
+    if not isinstance(symbol, str) or len(symbol) != 1:
+        await _send_event(ws, {"type": "error", "reason": "symbol-must-be-single-character"})
+        return
+
+    upper = symbol.upper()
+    try:
+        patterns.pattern_for(upper)
+    except KeyError:
+        await _send_event(ws, {"type": "error", "reason": "unknown-symbol", "symbol": upper})
+        return
+
+    claimed = load_claimed_symbols(config_path)
+    if upper not in claimed:
+        new_claimed = (*claimed, upper)
+        save_claimed_symbols(new_claimed, config_path)
+        claimed = new_claimed
+
+    await _send_event(ws, _claimed_symbols_event(claimed))
+
+
+async def handler(
+    ws: WebSocketServerProtocol,
+    config_path: Path = DEFAULT_CONFIG_PATH,
+) -> None:
     """Top-level WS connection handler. Dispatches incoming JSON commands."""
-    audio_params = params if params is not None else load_audio_parameters()
+    # Push current state on connect so the UI does not need to ask.
+    claimed = load_claimed_symbols(config_path)
+    await _send_event(ws, _claimed_symbols_event(claimed))
+
     try:
         async for raw in ws:
             try:
@@ -244,20 +346,15 @@ async def handler(ws: WebSocketServerProtocol, params: AudioParameters | None = 
                 continue
 
             action = message.get("action")
-            if action == "play":
-                symbols = message.get("symbols", "")
-                if not isinstance(symbols, str):
-                    await _send_event(ws, {"type": "error", "reason": "symbols-must-be-string"})
-                    continue
+            if action == "start":
                 try:
-                    await _play_action(ws, symbols, audio_params)
-                except KeyError as exc:
-                    # patterns.pattern_for raises KeyError for unknown
-                    # symbols — surface plainly rather than silently
-                    # skipping (spec §1.5).
+                    await _start_action(ws, config_path)
+                except ValueError as exc:
                     await _send_event(
-                        ws, {"type": "error", "reason": "unknown-symbol", "symbol": str(exc)}
+                        ws, {"type": "error", "reason": "invalid-config", "detail": str(exc)}
                     )
+            elif action == "claim-symbol":
+                await _claim_symbol_action(ws, message.get("symbol", ""), config_path)
             else:
                 await _send_event(ws, {"type": "error", "reason": "unknown-action"})
     except ConnectionClosed:
@@ -268,22 +365,24 @@ async def serve_app(
     port: int = DEFAULT_PORT,
     port_search_span: int = DEFAULT_PORT_SEARCH_SPAN,
     web_root: Path | None = None,
-    params: AudioParameters | None = None,
+    config_path: Path = DEFAULT_CONFIG_PATH,
 ) -> tuple[Any, int]:
     """Start the server and return ``(server, bound_port)``.
 
     The caller is responsible for keeping the event loop alive (e.g.
     ``await server.wait_closed()``). Useful for tests that want to
     drive the server programmatically.
+
+    ``config_path`` is plumbed through so tests can point the server
+    at a tmp_path config without touching the real one.
     """
     chosen_port = find_available_port(port, port_search_span)
     resolved_web_root = web_root if web_root is not None else find_web_root()
-    audio_params = params if params is not None else load_audio_parameters()
 
     process_request = _build_static_handler(resolved_web_root)
 
     async def _connection(ws: WebSocketServerProtocol) -> None:
-        await handler(ws, params=audio_params)
+        await handler(ws, config_path=config_path)
 
     server = await serve(
         _connection,
