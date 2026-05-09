@@ -346,7 +346,7 @@ The not-list is part of the specification, not commentary. A pull request that a
 
 The repository follows a standard Python `src/` layout with separated UI and asset trees:
 
-```
+```text
 malloc-labs-copy/
 ├── LICENSE
 ├── README.md
@@ -406,7 +406,7 @@ These are deployment conventions inherited from the malloc-rubicon host structur
 
 v0 distributes by clone-and-deploy using standard pip:
 
-```
+```sh
 git clone <repo>
 cd malloc-labs-copy
 python -m venv .venv
