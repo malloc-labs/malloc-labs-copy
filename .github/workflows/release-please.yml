@@ -1,0 +1,23 @@
+name: release-please
+
+# Watches the Conventional Commits landing on main (spec §11.3) and
+# maintains a single rolling release PR. Merging that PR creates the
+# git tag and the GitHub release. No PyPI publish in v0 — spec §11.1
+# defers that until a second person installs Copy.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: .release-please-config.json
+          manifest-file: .release-please-manifest.json
