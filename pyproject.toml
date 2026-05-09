@@ -23,6 +23,15 @@ classifiers = [
     "Topic :: Communications :: Ham Radio",
     "Topic :: Education",
 ]
+dependencies = [
+    "numpy>=2.0",
+    "sounddevice>=0.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
 
 [project.urls]
 Repository = "https://github.com/malloc-labs/malloc-labs-copy"
@@ -41,3 +50,6 @@ target-version = ["py311"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
