@@ -21,12 +21,26 @@ cd malloc-labs-copy
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .
-python -m copy_653                  # prints version banner
-python -m copy_653.audio.demo K     # synthesises and plays "K"
-python -m copy_653.audio.demo KMK   # synthesises and plays a sequence
+
+python -m copy_653                  # start the engine on http://127.0.0.1:8653
+python -m copy_653 --port 9000      # bind a different port
+python -m copy_653.audio.demo K     # CLI: synthesise and play "K" (no server)
+python -m copy_653.audio.demo KMK   # CLI: synthesise and play a sequence
 ```
 
-The engine is not yet wired together. Audio synthesis works; session lifecycle, MIDI input, and the UI are still pending.
+The engine starts an HTTP + WebSocket server on `127.0.0.1:8653`. If that port is in use, the engine probes upward by up to 20 ports and prints the bound URL on stdout (per spec §1.5 — fail loudly, never silently). Press `Ctrl-C` to stop.
+
+Status: audio synthesis and the engine ↔ UI seam are wired. Session lifecycle, sequence generation, MIDI input, and the listening/review UI are still pending.
+
+## Browser test
+
+After `python -m copy_653`, open the URL it prints (default `http://127.0.0.1:8653`) in any modern browser. The dev shell shows:
+
+- A connection status line (`connected` once the WebSocket is up).
+- A **Play KMK** button — sends `{"action":"play","symbols":"KMK"}` over the WebSocket. The engine synthesises the audio, plays it via PortAudio, and pushes per-symbol `{symbol, t_on, t_off}` events back. The page renders them as a mono timeline.
+- A **Stop** button — present per the listening-screen affordance budget (spec §8.3); wired to no-op until session cancellation lands.
+
+The wire protocol is documented at the top of [`src/copy_653/server/app.py`](src/copy_653/server/app.py). The `play` action is a development placeholder and is replaced when `sequence/` and `session/` arrive.
 
 ## Configure
 
