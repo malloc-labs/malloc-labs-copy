@@ -1,3 +1,84 @@
 /* copy-653.css — Copy-specific outliers.
  * See docs/specification.md §12.2.
+ *
+ * v0 dev-shell styles. Truth display is mono (§12.2); the page is
+ * intentionally plain — Crisis Room doctrine (§12.3): the interface
+ * must not compete with the listen.
  */
+
+:root {
+    color-scheme: dark light;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    line-height: 1.5;
+}
+
+body {
+    margin: 0;
+    background: #111;
+    color: #eee;
+}
+
+main {
+    max-width: 60ch;
+    margin: 4rem auto;
+    padding: 0 1.5rem;
+}
+
+header {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+h1 {
+    margin: 0;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+}
+
+.status {
+    margin: 0;
+    font-size: 0.875rem;
+    opacity: 0.7;
+}
+
+.status[data-status="connected"] { opacity: 1; }
+.status[data-status="disconnected"] { opacity: 0.6; }
+.status[data-status="error"] { opacity: 0.9; }
+
+.controls {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+}
+
+button {
+    font: inherit;
+    padding: 0.5rem 1rem;
+    background: transparent;
+    border: 1px solid currentColor;
+    color: inherit;
+    cursor: pointer;
+}
+
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+
+.timeline ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-family: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, monospace;
+    font-size: 0.875rem;
+}
+
+.timeline li {
+    padding: 0.125rem 0;
+}
+
+.timeline li[data-kind="error"] {
+    opacity: 0.9;
+}

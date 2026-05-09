@@ -19,16 +19,12 @@ def test_returns_defaults_when_file_missing(tmp_path: Path):
 
 def test_reads_audio_table_overrides(tmp_path: Path):
     config_file = tmp_path / "config.toml"
-    config_file.write_text(
-        textwrap.dedent(
-            """
+    config_file.write_text(textwrap.dedent("""
             [audio]
             character_speed_wpm = 25
             tone_frequency_hz = 700
             amplitude = 0.5
-            """
-        )
-    )
+            """))
     params = load_audio_parameters(config_file)
     assert params.character_speed_wpm == 25
     assert params.tone_frequency_hz == 700
@@ -82,15 +78,11 @@ def test_unknown_audio_keys_are_silently_ignored(tmp_path: Path):
     # Forward compatibility: a config written for a newer Copy with
     # extra keys should not break older installs.
     config_file = tmp_path / "config.toml"
-    config_file.write_text(
-        textwrap.dedent(
-            """
+    config_file.write_text(textwrap.dedent("""
             [audio]
             character_speed_wpm = 22
             mystery_field = "from a future copy_653"
-            """
-        )
-    )
+            """))
     params = load_audio_parameters(config_file)
     assert params.character_speed_wpm == 22
 
@@ -99,17 +91,13 @@ def test_unknown_top_level_tables_are_silently_ignored(tmp_path: Path):
     # [midi] and friends are not yet implemented; their presence in
     # the config must not break audio loading.
     config_file = tmp_path / "config.toml"
-    config_file.write_text(
-        textwrap.dedent(
-            """
+    config_file.write_text(textwrap.dedent("""
             [audio]
             character_speed_wpm = 22
 
             [midi]
             device = "Trinkey"
-            """
-        )
-    )
+            """))
     params = load_audio_parameters(config_file)
     assert params.character_speed_wpm == 22
 

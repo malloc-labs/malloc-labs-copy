@@ -118,3 +118,38 @@ def test_synthesize_sequence_empty_returns_empty_buffer():
     result = synth.synthesize_sequence([], params)
     assert len(result) == 0
     assert result.dtype == np.float32
+
+
+def test_symbol_duration_matches_synthesised_length():
+    params = AudioParameters(character_speed_wpm=20, effective_speed_wpm=20)
+    samples = synth.synthesize_symbol("K", params)
+    duration = synth.symbol_duration_seconds("K", params)
+    expected_samples = int(round(duration * params.sample_rate_hz))
+    assert abs(len(samples) - expected_samples) <= 2
+
+
+def test_compute_timeline_empty():
+    assert synth.compute_timeline([], AudioParameters()) == []
+
+
+def test_compute_timeline_single_symbol_starts_at_zero():
+    params = AudioParameters(character_speed_wpm=20, effective_speed_wpm=20)
+    timeline = synth.compute_timeline(["K"], params)
+    assert len(timeline) == 1
+    symbol, t_on, t_off = timeline[0]
+    assert symbol == "K"
+    assert t_on == 0.0
+    assert t_off == synth.symbol_duration_seconds("K", params)
+
+
+def test_compute_timeline_inter_character_gap_with_farnsworth():
+    # Farnsworth: characters render at 25 WPM, but spacing widens to
+    # hit a 10 WPM effective rate. The gap between symbols 0 and 1
+    # should match inter_character_seconds (which honours Farnsworth).
+    params = AudioParameters(character_speed_wpm=25, effective_speed_wpm=10)
+    timeline = synth.compute_timeline(["K", "M"], params)
+    assert len(timeline) == 2
+    _, _, t_off_first = timeline[0]
+    _, t_on_second, _ = timeline[1]
+    gap = t_on_second - t_off_first
+    assert math.isclose(gap, timing.inter_character_seconds(params), abs_tol=1e-9)

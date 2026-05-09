@@ -9,8 +9,22 @@
 </head>
 <body>
     <main>
-        <h1>Copy</h1>
-        <p>The engine is not yet implemented.</p>
+        <header>
+            <h1>Copy</h1>
+            <p class="status" data-status="connecting">connecting…</p>
+        </header>
+
+        <section class="controls" aria-label="Listening controls">
+            <!-- Dev-only: replaced when sequence/ + session/ land -->
+            <button type="button" id="play-kmk">Play KMK</button>
+            <button type="button" id="stop" disabled>Stop</button>
+        </section>
+
+        <section class="timeline" aria-live="polite" aria-label="Truth">
+            <ol id="events"></ol>
+        </section>
     </main>
+
+    <script type="module" src="js/main.js"></script>
 </body>
 </html>
