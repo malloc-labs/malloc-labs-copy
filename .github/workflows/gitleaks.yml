@@ -1,0 +1,37 @@
+name: gitleaks
+
+# Belt to the pre-commit hook's braces — catches anything that bypassed
+# the local hook (e.g. someone with hooks disabled, or a tag push).
+# Uses the gitleaks binary directly rather than gitleaks-action so we
+# do not need the GITLEAKS_LICENSE secret that orgs require for the
+# action.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so a PR scan covers every commit on the
+          # branch, not just the merge base.
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        # Pinned to the same version as .pre-commit-config.yaml.
+        run: |
+          set -eu
+          version="8.24.2"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" \
+            | tar -xz -C /tmp gitleaks
+          sudo install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Scan
+        run: gitleaks detect --source . --verbose --redact --no-banner
