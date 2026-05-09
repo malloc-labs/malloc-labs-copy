@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**Copy** (`copy_653`) — a CW (morse code) listening environment. Pre-alpha; the audio synthesis pipeline works but session lifecycle, MIDI input, server, and UI are unimplemented stubs.
+**Copy** (`copy_653`) — a CW (morse code) listening environment. Pre-alpha. Audio synthesis and the engine ↔ UI seam (HTTP + WebSocket on localhost) are wired; session lifecycle, sequence generation, MIDI input, and the listening/review UI are still pending.
 
 The package is `copy_653`; the distribution is `copy-653`. The `_653` suffix is intentional and avoids shadowing stdlib `copy`. When the developer obtains a UK amateur radio licence the package is renamed to `copy_{callsign}`, which is a semver MAJOR boundary (see `docs/specification.md` §10.1).
 
@@ -32,10 +32,11 @@ Other contract surfaces worth knowing inline:
 
 Two-process design (spec §1): a headless Python **engine** that owns audio out, MIDI in, sequence generation, timing, and truth recording; and a **UI** that is static HTML/CSS/vanilla JS served by the engine on localhost. The engine never imports the UI; the UI never reaches into engine internals. They communicate via HTTP/WebSocket. This separation is what permits a future Pi-class deployment without architectural change.
 
-`src/copy_653/` is laid out by responsibility — each subpackage has a stub `__init__.py` until built out:
+`src/copy_653/` is laid out by responsibility:
 
-- `audio/` — **the only implemented subsystem.** Pure synthesis (`synth.py`, `timing.py`, `patterns.py`, `parameters.py`) is separated from side-effecting playback (`playback.py`). `demo.py` is the CLI verification path.
-- `midi/`, `sequence/`, `server/`, `session/` — empty stubs awaiting implementation.
+- `audio/` — pure synthesis (`synth.py`, `timing.py`, `patterns.py`, `parameters.py`) separated from side-effecting `playback.py`. `demo.py` is the CLI verification path. `synth.compute_timeline` produces the per-symbol `(symbol, t_on, t_off)` schedule the server emits.
+- `server/` — `app.py` runs one asyncio loop, one TCP port, with `websockets` multiplexing static-HTTP and WS upgrades. `find_available_port` probes upward from `--port` (default 8653) and fails loudly if exhausted (spec §1.5). The WS wire protocol is pinned in the `server/app.py` docstring; the `play` action is a dev placeholder until `session/` lands.
+- `midi/`, `sequence/`, `session/` — empty stubs awaiting implementation.
 
 Important architectural points in the audio module:
 
@@ -52,10 +53,12 @@ The conventional venv lives at `/srv/work/malloc-labs/venvs/ml-copy-653/` (host-
 # Setup
 pip install -e ".[dev]"
 
-# Run (currently just prints the version banner)
+# Run the engine (HTTP + WS on http://127.0.0.1:8653 by default)
 python -m copy_653
+python -m copy_653 --port 9000               # bind a different port
+python -m copy_653 --port-search-span 50     # widen the bump-up window
 
-# Hear synthesised CW (the actual verification path right now)
+# Audio-only verification (no server, no UI)
 python -m copy_653.audio.demo K
 python -m copy_653.audio.demo KMK
 python -m copy_653.audio.demo K --config /tmp/test_config.toml
