@@ -129,3 +129,45 @@ def synthesize_sequence(symbols: list[str], params: AudioParameters) -> np.ndarr
             parts.append(inter_char)
         parts.append(synthesize_symbol(symbol, params))
     return np.concatenate(parts)
+
+
+def symbol_duration_seconds(symbol: str, params: AudioParameters) -> float:
+    """Duration of a single symbol's audio (elements + intra-character gaps).
+
+    Excludes any inter-character spacing — that is the responsibility of
+    whatever assembles the sequence.
+    """
+    pattern = patterns.pattern_for(symbol)
+    dit = timing.dit_seconds(params.character_speed_wpm)
+    dah = timing.dah_seconds(params.character_speed_wpm)
+    inter_element = timing.inter_element_seconds(params.character_speed_wpm)
+    elements = sum(dah if mark == "-" else dit for mark in pattern)
+    spaces = (len(pattern) - 1) * inter_element
+    return elements + spaces
+
+
+def compute_timeline(symbols: list[str], params: AudioParameters) -> list[tuple[str, float, float]]:
+    """For each symbol in the sequence: ``(symbol, t_on, t_off)`` in seconds.
+
+    ``t_on`` and ``t_off`` are relative to the start of the sequence
+    (zero at the first symbol's leading edge). The values match the
+    schedule produced by :func:`synthesize_sequence`, so a UI consuming
+    these timestamps can align display with what is being heard.
+
+    The honesty contract (spec §1.5, §5.3) extends here: these are the
+    intended boundaries, derived from the same timing math the synth
+    uses, not separately measured.
+    """
+    if not symbols:
+        return []
+
+    inter_char = timing.inter_character_seconds(params)
+    out: list[tuple[str, float, float]] = []
+    cursor = 0.0
+    for i, symbol in enumerate(symbols):
+        if i > 0:
+            cursor += inter_char
+        duration = symbol_duration_seconds(symbol, params)
+        out.append((symbol, cursor, cursor + duration))
+        cursor += duration
+    return out
