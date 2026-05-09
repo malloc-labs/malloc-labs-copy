@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "copy-653"
+version = "0.1.0"
+description = "Copy — a CW listening environment with deferred verification and a structurally absent mentor."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "GPL-3.0-or-later" }
+authors = [
+    { name = "AA Parky", email = "aa.parky@gmail.com" },
+]
+keywords = ["cw", "morse", "listening", "training", "amateur-radio"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications :: Ham Radio",
+    "Topic :: Education",
+]
+
+[project.urls]
+Repository = "https://github.com/malloc-labs/malloc-labs-copy"
+Documentation = "https://github.com/malloc-labs/malloc-labs-copy/tree/main/docs"
+
+[project.scripts]
+copy-653 = "copy_653.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

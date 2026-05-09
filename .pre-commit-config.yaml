@@ -2,8 +2,8 @@
 # Mirrors the pipeworks org standard (see pipeworks-character-forge).
 #
 # Installation:
-#   1. /srv/work/malloc-labs/venvs/ml-labs-copy/bin/pip install pre-commit
-#   2. /srv/work/malloc-labs/venvs/ml-labs-copy/bin/pre-commit install
+#   1. /srv/work/malloc-labs/venvs/ml-copy-653/bin/pip install pre-commit
+#   2. /srv/work/malloc-labs/venvs/ml-copy-653/bin/pre-commit install
 #
 # Manual run: pre-commit run --all-files
 
