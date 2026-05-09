@@ -5,27 +5,25 @@ from __future__ import annotations
 import asyncio
 import json
 import socket
+import textwrap
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 import pytest
 from websockets.client import connect as ws_connect
 
-from copy_653.audio.parameters import AudioParameters
 from copy_653.server import app
 
 # ---------- find_available_port -----------------------------------------
 
 
 def test_find_available_port_returns_starting_port_when_free():
-    # Pick a port high enough to be unlikely to collide with anything.
     free_port = _grab_free_port()
     assert app.find_available_port(free_port, span=1) == free_port
 
 
 def test_find_available_port_skips_busy_port():
-    # Bind one socket so the first candidate is taken; the helper
-    # should walk to the next.
     busy_port = _grab_free_port()
     blocker = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     blocker.bind(("127.0.0.1", busy_port))
@@ -39,7 +37,6 @@ def test_find_available_port_skips_busy_port():
 
 
 def test_find_available_port_raises_when_all_taken():
-    # Bind every port in a 2-port window to force exhaustion.
     base = _grab_free_port()
     blockers = []
     try:
@@ -61,8 +58,6 @@ def test_find_available_port_rejects_non_positive_span():
 
 
 def _grab_free_port() -> int:
-    # Ask the OS for an ephemeral port, then immediately release it.
-    # Acceptable TOCTOU for tests.
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
@@ -74,10 +69,9 @@ def _grab_free_port() -> int:
 @pytest.fixture
 def patched_playback(monkeypatch):
     """Replace ``playback.play`` with a fast no-op so tests do not need
-    PortAudio and do not actually emit sound.
-
-    The asyncio.to_thread wrapper around ``playback.play`` is preserved
-    — the test still exercises the threading dance.
+    PortAudio and do not actually emit sound. The asyncio.to_thread
+    wrapper around it is preserved — the test still exercises the
+    threading dance.
     """
     calls: list[Any] = []
 
@@ -88,33 +82,63 @@ def patched_playback(monkeypatch):
     return calls
 
 
-@pytest.mark.asyncio
-async def test_serves_index_and_runs_play_session(tmp_path, patched_playback):
-    # Build a minimal web root so the test does not depend on the
-    # repo's actual web/ contents.
+def _write_test_config(tmp_path: Path, claimed: list[str], duration: float = 5.0) -> Path:
+    """Write a minimal config that gives us fast WPM and a short session."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(textwrap.dedent(f"""
+            [audio]
+            character_speed_wpm = 25
+            effective_speed_wpm = 25
+
+            [symbols]
+            claimed = {claimed!r}
+
+            [session]
+            duration_seconds = {duration}
+            """))
+    return config_path
+
+
+def _make_web_root(tmp_path: Path) -> Path:
     web_root = tmp_path / "web"
     (web_root / "css").mkdir(parents=True)
     (web_root / "js").mkdir()
     (web_root / "index.html").write_text("<!doctype html><title>t</title>")
     (web_root / "css" / "core.css").write_text("/* test */")
     (web_root / "js" / "main.js").write_text("// test")
+    return web_root
 
-    # Use a fast WPM so the simulated session completes quickly.
-    fast_params = AudioParameters(character_speed_wpm=25, effective_speed_wpm=25)
+
+async def _drain_until(ws, predicate, timeout=5.0):
+    """Collect events until ``predicate(event)`` returns True. Returns
+    the full list of events received (including the matching one).
+    """
+    received: list[dict] = []
+    while True:
+        raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
+        event = json.loads(raw)
+        received.append(event)
+        if predicate(event):
+            return received
+
+
+async def test_serves_index_and_pushes_initial_claimed_state(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    web_root = _make_web_root(tmp_path)
 
     server, port = await app.serve_app(
         port=_grab_free_port(),
         port_search_span=5,
         web_root=web_root,
-        params=fast_params,
+        config_path=config_path,
     )
     try:
-        # HTTP: GET / returns index.html.
+        # HTTP works.
         index = await asyncio.to_thread(urllib.request.urlopen, f"http://127.0.0.1:{port}/")
         assert index.status == 200
         assert b"<title>t</title>" in index.read()
 
-        # HTTP: traversal attempts 404 rather than escape the web root.
+        # Path traversal is blocked.
         try:
             await asyncio.to_thread(
                 urllib.request.urlopen, f"http://127.0.0.1:{port}/../etc/passwd"
@@ -124,27 +148,51 @@ async def test_serves_index_and_runs_play_session(tmp_path, patched_playback):
             traversal_status = exc.code
         assert traversal_status == 404
 
-        # WS: send play, collect events until session-end.
+        # WS push: claimed-symbols on connect.
         async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
-            await ws.send(json.dumps({"action": "play", "symbols": "K"}))
-            received: list[dict] = []
-            while True:
-                raw = await asyncio.wait_for(ws.recv(), timeout=5.0)
-                event = json.loads(raw)
-                received.append(event)
-                if event["type"] == "session-end":
-                    break
+            raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            event = json.loads(raw)
+            assert event["type"] == "claimed-symbols"
+            assert event["symbols"] == ["K", "M"]
+            assert event["suggested_next"] == "U"
+    finally:
+        server.close()
+        await server.wait_closed()
 
-        kinds = [e["type"] for e in received]
+
+async def test_start_action_runs_a_session(tmp_path, patched_playback):
+    # 1.5s gives roughly two K/M symbols at 25 WPM.
+    config_path = _write_test_config(tmp_path, ["K", "M"], duration=1.5)
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            # Skip the initial claimed-symbols push.
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+
+            await ws.send(json.dumps({"action": "start"}))
+            events = await _drain_until(ws, lambda e: e["type"] == "session-end", timeout=10.0)
+
+        kinds = [e["type"] for e in events]
         assert kinds[0] == "session-start"
         assert kinds[-1] == "session-end"
-        symbols = [e for e in received if e["type"] == "symbol"]
-        assert len(symbols) == 1
-        assert symbols[0]["symbol"] == "K"
-        assert symbols[0]["t_on"] == pytest.approx(0.0, abs=1e-6)
-        assert symbols[0]["t_off"] > 0
 
-        # The patched playback was invoked once with the expected params.
+        start_event = events[0]
+        assert isinstance(start_event["seed"], int)
+        assert start_event["duration_seconds"] == 1.5
+        assert all(s in ("K", "M") for s in start_event["symbols"])
+        assert len(start_event["symbols"]) > 0
+
+        symbol_events = [e for e in events if e["type"] == "symbol"]
+        assert len(symbol_events) == len(start_event["symbols"])
+
+        # Audio thread was driven once, with the configured WPM.
         assert len(patched_playback) == 1
         _, params_used = patched_playback[0]
         assert params_used.character_speed_wpm == 25
@@ -153,49 +201,162 @@ async def test_serves_index_and_runs_play_session(tmp_path, patched_playback):
         await server.wait_closed()
 
 
-@pytest.mark.asyncio
-async def test_unknown_symbol_emits_error(tmp_path, patched_playback):
-    web_root = tmp_path / "web"
-    web_root.mkdir()
-    (web_root / "index.html").write_text("ok")
+async def test_start_with_same_seed_replays_via_config_round_trip(tmp_path, patched_playback):
+    """Two consecutive starts with different seeds ⇒ different streams.
+    A session record can capture the seed; replaying is a session/
+    concern, but the seed exposed here is the one that would be used.
+    """
+    config_path = _write_test_config(tmp_path, ["K", "M"], duration=1.5)
+    web_root = _make_web_root(tmp_path)
 
     server, port = await app.serve_app(
         port=_grab_free_port(),
         port_search_span=5,
         web_root=web_root,
-        params=AudioParameters(character_speed_wpm=25, effective_speed_wpm=25),
+        config_path=config_path,
     )
     try:
         async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
-            # '!' is not in the patterns table.
-            await ws.send(json.dumps({"action": "play", "symbols": "!"}))
-            error = None
-            for _ in range(5):
-                raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
-                event = json.loads(raw)
-                if event["type"] == "error":
-                    error = event
-                    break
-            assert error is not None
-            assert error["reason"] == "unknown-symbol"
+            await asyncio.wait_for(ws.recv(), timeout=2.0)  # claimed push
+
+            await ws.send(json.dumps({"action": "start"}))
+            first = await _drain_until(ws, lambda e: e["type"] == "session-end")
+            await ws.send(json.dumps({"action": "start"}))
+            second = await _drain_until(ws, lambda e: e["type"] == "session-end")
+
+        seed_a = first[0]["seed"]
+        seed_b = second[0]["seed"]
+        # Two consecutive sessions draw fresh seeds — overwhelmingly
+        # likely to differ.
+        assert seed_a != seed_b
     finally:
         server.close()
         await server.wait_closed()
 
 
-@pytest.mark.asyncio
-async def test_invalid_json_returns_error(tmp_path):
-    web_root = tmp_path / "web"
-    web_root.mkdir()
-    (web_root / "index.html").write_text("ok")
+async def test_claim_symbol_persists_and_broadcasts(tmp_path, patched_playback):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    web_root = _make_web_root(tmp_path)
 
     server, port = await app.serve_app(
         port=_grab_free_port(),
         port_search_span=5,
         web_root=web_root,
+        config_path=config_path,
     )
     try:
         async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)  # initial state
+
+            await ws.send(json.dumps({"action": "claim-symbol", "symbol": "U"}))
+            raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            event = json.loads(raw)
+
+            assert event["type"] == "claimed-symbols"
+            assert event["symbols"] == ["K", "M", "U"]
+            assert event["suggested_next"] == "R"
+
+        # Persistence: a fresh load sees the claim.
+        from copy_653.config import load_claimed_symbols
+
+        assert load_claimed_symbols(config_path) == ("K", "M", "U")
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_claim_symbol_already_claimed_is_idempotent(tmp_path, patched_playback):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+
+            await ws.send(json.dumps({"action": "claim-symbol", "symbol": "K"}))
+            raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            event = json.loads(raw)
+            # Claimed list is unchanged but the event still fires so a
+            # client out of sync converges.
+            assert event["type"] == "claimed-symbols"
+            assert event["symbols"] == ["K", "M"]
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_claim_unknown_symbol_emits_error_and_does_not_persist(tmp_path, patched_playback):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+
+            await ws.send(json.dumps({"action": "claim-symbol", "symbol": "!"}))
+            raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            event = json.loads(raw)
+            assert event["type"] == "error"
+            assert event["reason"] == "unknown-symbol"
+
+        # Config not mutated.
+        from copy_653.config import load_claimed_symbols
+
+        assert load_claimed_symbols(config_path) == ("K", "M")
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_unknown_action_emits_error(tmp_path, patched_playback):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+
+            await ws.send(json.dumps({"action": "fly"}))
+            raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            event = json.loads(raw)
+            assert event == {"type": "error", "reason": "unknown-action"}
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_invalid_json_returns_error(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+
             await ws.send("not json at all")
             raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
             event = json.loads(raw)
