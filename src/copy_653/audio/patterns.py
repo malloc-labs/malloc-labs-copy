@@ -64,8 +64,8 @@ PATTERNS: dict[str, str] = {
     ".": ".-.-.-",  # Full stop
     ",": "--..--",  # Comma
     "?": "..--..",  # Question mark
-    "/": "-..-.",   # Fraction bar / DN
-    "=": "-...-",   # Double dash / BT prosign
+    "/": "-..-.",  # Fraction bar / DN
+    "=": "-...-",  # Double dash / BT prosign
 }
 
 
