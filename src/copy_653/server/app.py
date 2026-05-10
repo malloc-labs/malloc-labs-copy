@@ -28,6 +28,7 @@ Client → server, JSON over WS::
     {"action": "start"}
     {"action": "stop"}
     {"action": "claim-symbol", "symbol": "U"}
+    {"action": "unclaim-symbol", "symbol": "U"}
     {"action": "play-letter", "symbol": "K"}
 
 Server → client, JSON over WS, one frame per event. Pushed
@@ -366,6 +367,40 @@ async def _claim_symbol_action(
     await _send_event(ws, _claimed_symbols_event(claimed))
 
 
+async def _unclaim_symbol_action(
+    ws: WebSocketServerProtocol,
+    symbol: str,
+    config_path: Path,
+) -> None:
+    """Remove ``symbol`` from the claimed set and broadcast the new state.
+
+    Idempotent: unclaiming a symbol not in the set is a no-op (still
+    rebroadcasts, so a UI out of sync converges).
+
+    The first two symbols in KOCH_ORDER (K, M) are the permanent starting
+    pair and cannot be unclaimed — the engine requires at least two symbols
+    to generate a session. Attempting to unclaim them surfaces an error.
+    """
+    if not isinstance(symbol, str) or len(symbol) != 1:
+        await _send_event(ws, {"type": "error", "reason": "symbol-must-be-single-character"})
+        return
+
+    upper = symbol.upper()
+    if upper in (patterns.KOCH_ORDER[0], patterns.KOCH_ORDER[1]):
+        await _send_event(
+            ws, {"type": "error", "reason": "cannot-unclaim-starting-pair", "symbol": upper}
+        )
+        return
+
+    claimed = load_claimed_symbols(config_path)
+    if upper in claimed:
+        new_claimed = tuple(s for s in claimed if s != upper)
+        save_claimed_symbols(new_claimed, config_path)
+        claimed = new_claimed
+
+    await _send_event(ws, _claimed_symbols_event(claimed))
+
+
 async def _run_letter_sequence(
     ws: WebSocketServerProtocol,
     symbol: str,
@@ -465,6 +500,8 @@ async def handler(
                     current_session_task.cancel()
             elif action == "claim-symbol":
                 await _claim_symbol_action(ws, message.get("symbol", ""), config_path)
+            elif action == "unclaim-symbol":
+                await _unclaim_symbol_action(ws, message.get("symbol", ""), config_path)
             elif action == "play-letter":
                 symbol = message.get("symbol", "")
                 if not isinstance(symbol, str) or len(symbol) != 1:

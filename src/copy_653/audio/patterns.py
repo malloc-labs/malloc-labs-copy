@@ -60,24 +60,27 @@ PATTERNS: dict[str, str] = {
     "7": "--...",
     "8": "---..",
     "9": "----.",
+    # Punctuation and prosigns (ITU-R M.1677-1)
+    ".": ".-.-.-",  # Full stop
+    ",": "--..--",  # Comma
+    "?": "..--..",  # Question mark
+    "/": "-..-.",   # Fraction bar / DN
+    "=": "-...-",   # Double dash / BT prosign
 }
 
 
-# Koch's canonical learning order (Ludwig Koch, 1935). Each pair
+# Koch's canonical learning order (Ludwig Koch, 1935). Each symbol
 # maximises shape contrast against everything claimed so far — K and
 # M open the field with dah-dit-dah vs all-dahs; U is third because
 # its leading dits force the ear to notice that streams can *open*
-# without a dah.
-#
-# The original Koch sequence interleaves punctuation and prosigns
-# (e.g. '.', '/', '?', '='). v0 omits those because PATTERNS does
-# not yet include them; when patterns expands, this list expands in
-# tandem. A test asserts every element of KOCH_ORDER is in PATTERNS.
+# without a dah. Punctuation and prosigns are interleaved at their
+# canonical positions per the original Koch curriculum.
+# A test asserts every element of KOCH_ORDER is in PATTERNS.
 KOCH_ORDER: tuple[str, ...] = (
     "K", "M", "U", "R", "E", "S", "N", "A", "P", "T",
-    "L", "W", "I", "J", "Z", "F", "O", "Y", "V", "G",
-    "5", "Q", "9", "2", "H", "3", "8", "B", "4", "7",
-    "C", "1", "D", "6", "0", "X",
+    "L", "W", "I", ".", "J", "Z", "=", "F", "O", "Y",
+    ",", "V", "G", "5", "/", "Q", "9", "2", "H", "3",
+    "8", "B", "?", "4", "7", "C", "1", "D", "6", "0", "X",
 )  # fmt: skip
 
 

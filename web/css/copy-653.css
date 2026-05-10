@@ -347,7 +347,90 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   8. Timeline disclosure toggle
+   8. Koch sequence token row
+   ─────────────────────────────────────────────────────────────────────────────
+ * Full 41-symbol sequence displayed as a wrapping row of clickable tokens.
+ * Three data-state values drive the visual:
+ *   claimed   — in the learner's active set (full brightness, bolder)
+ *   next      — first unclaimed symbol, gentle nudge (quiet border accent)
+ *   available — not yet reached (muted)
+ * K and M are the permanent starting pair; their buttons are non-interactive
+ * (disabled) and always rendered as claimed.
+ */
+.koch-sequence {
+    margin-bottom: var(--mr-space-5);
+}
+
+.sequence-label {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--mr-muted);
+    margin-bottom: var(--mr-space-3);
+    max-width: none;
+}
+
+.sequence-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--mr-space-2);
+}
+
+.seq-token {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    font-weight: 400;
+    min-width: 2rem;
+    padding: var(--mr-space-1) var(--mr-space-2);
+    border: 1px solid transparent;
+    background: none;
+    color: var(--mr-muted);
+    opacity: 0.35;
+    cursor: pointer;
+    text-align: center;
+    transition: color 0.1s ease, opacity 0.1s ease, border-color 0.1s ease;
+}
+
+/* Claimed — full brightness, slightly bolder */
+.seq-token[data-state="claimed"] {
+    color: var(--mr-text);
+    opacity: 1;
+    font-weight: 500;
+    border-color: transparent;
+    cursor: pointer;
+}
+
+/* Permanent pair (K, M) — claimed but non-interactive */
+.seq-token[data-state="claimed"]:disabled {
+    cursor: default;
+    opacity: 0.85;
+}
+
+/* Next — first unclaimed, quiet nudge via border accent */
+.seq-token[data-state="next"] {
+    color: var(--mr-anchor);
+    opacity: 1;
+    border-color: var(--mr-anchor);
+}
+
+.seq-token[data-state="next"]:hover {
+    color: var(--mr-text);
+    border-color: var(--mr-text);
+}
+
+/* Available — not yet reached, muted but interactive */
+.seq-token[data-state="available"] {
+    opacity: 0.35;
+}
+
+.seq-token[data-state="available"]:hover {
+    color: var(--mr-text);
+    opacity: 0.75;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   9. Timeline disclosure toggle
    ─────────────────────────────────────────────────────────────────────────────
  * .timeline-toggle is a full-width button that acts as the session header row.
  * It shows the ▶/▼ arrow and the seed/count/duration metadata.

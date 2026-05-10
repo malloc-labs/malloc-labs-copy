@@ -17,17 +17,20 @@
             <h1 class="landing-title">Exercises <span class="status" data-status="connecting">connecting…</span></h1>
         </header>
         <hr class="landing-rule">
-        <section class="claim" aria-label="Claimed symbols">
-            <p class="claim-line">
-                <span class="claim-label">Claimed</span>
-                <span class="claim-symbols" id="claimed-symbols">—</span>
-                <span class="claim-suggested" id="claim-suggested" hidden>
-                    <span class="claim-label">suggested next</span>
-                    <span id="suggested-next">—</span>
-                </span>
-            </p>
-            <button type="button" id="claim-button" hidden>Claim</button>
+
+        <!--
+            Koch sequence row — full 41-symbol sequence rendered by JS.
+            Each token is a <button> with data-symbol and data-state:
+              claimed   — in the learner's active set
+              next      — first unclaimed symbol (gentle nudge)
+              available — not yet claimed
+            K and M are the permanent starting pair; they cannot be unclaimed.
+        -->
+        <section class="koch-sequence" aria-label="Koch symbol sequence">
+            <p class="sequence-label">Sequence</p>
+            <div class="sequence-row" id="sequence-row" role="list"></div>
         </section>
+
         <section class="controls" aria-label="Listening controls">
             <button type="button" id="start" disabled>Start</button>
             <button type="button" id="stop" disabled>Stop</button>
