@@ -12,9 +12,11 @@ from copy_653.config import (
     DEFAULT_SESSION_DURATION_SECONDS,
     load_audio_parameters,
     load_claimed_symbols,
+    load_letters_config,
     load_session_duration,
     save_claimed_symbols,
 )
+from copy_653.letters.sequence import LettersConfig
 
 
 def test_returns_defaults_when_file_missing(tmp_path: Path):
@@ -253,3 +255,49 @@ def test_load_session_duration_rejects_non_number(tmp_path: Path):
     config_file.write_text('[session]\nduration_seconds = "thirty"\n')
     with pytest.raises(ValueError, match="must be a number"):
         load_session_duration(config_file)
+
+
+# ---------- letters ----------------------------------------------------
+
+
+def test_load_letters_config_returns_defaults_when_file_missing(tmp_path: Path):
+    assert load_letters_config(tmp_path / "no_config.toml") == LettersConfig()
+
+
+def test_load_letters_config_reads_table_overrides(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(textwrap.dedent("""
+            [letters]
+            phonetic_pairs = 2
+            bare_repeats = 1
+            gap_within_pair_seconds = 0.4
+            gap_between_pairs_seconds = 0.7
+            gap_between_bare_seconds = 0.5
+            """))
+    cfg = load_letters_config(config_file)
+    assert cfg.phonetic_pairs == 2
+    assert cfg.bare_repeats == 1
+    assert cfg.gap_within_pair_seconds == 0.4
+    assert cfg.gap_between_pairs_seconds == 0.7
+    assert cfg.gap_between_bare_seconds == 0.5
+
+
+def test_load_letters_config_ignores_unknown_keys(tmp_path: Path):
+    """Forward-compat: unknown keys do not error, just get dropped."""
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(textwrap.dedent("""
+            [letters]
+            phonetic_pairs = 1
+            future_knob = "ignored"
+            """))
+    cfg = load_letters_config(config_file)
+    assert cfg.phonetic_pairs == 1
+    assert cfg.bare_repeats == LettersConfig().bare_repeats
+
+
+def test_load_letters_config_propagates_validation_errors(tmp_path: Path):
+    """A negative gap raises through __post_init__ (spec §1.5)."""
+    config_file = tmp_path / "config.toml"
+    config_file.write_text("[letters]\ngap_within_pair_seconds = -1.0\n")
+    with pytest.raises(ValueError, match="gap_within_pair_seconds"):
+        load_letters_config(config_file)
