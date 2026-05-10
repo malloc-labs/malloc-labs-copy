@@ -7,8 +7,9 @@
  * Sections:
  *   1. Landing page — full-viewport centred shell
  *   2. Landing navigation — nav-item rows
- *   3. Koch page — status badge, claim, controls, primed, timeline
+ *   3. Koch exercises page — status badge, claim, controls, primed, timeline
  *   4. Back-link
+ *   5. Letters page — 26-cell picker grid
  */
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -105,7 +106,7 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   3. Koch page — status, claim, controls, primed, timeline
+   3. Koch exercises page — status, claim, controls, primed, timeline
    ───────────────────────────────────────────────────────────────────────────── */
 
 /* Connection status badge — inline with the h1 in the masthead */
@@ -242,4 +243,36 @@
 .back-link:hover {
     color: var(--mr-text);
     text-decoration: none;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   5. Letters page — 26-cell picker grid
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/*
+ * Calm grid of every letter the learner can listen to. Pick one, listen,
+ * the application gets out of the way. The active state marks the letter
+ * currently playing; nothing else changes on the screen.
+ */
+.letters-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+    gap: var(--mr-space-2);
+    margin-top: var(--mr-space-5);
+    max-width: 600px;
+}
+
+.letter-cell {
+    font-family: var(--mr-font-mono);
+    font-size: 1.5rem;
+    font-weight: 500;
+    padding: var(--mr-space-4) 0;
+    line-height: 1;
+    text-align: center;
+}
+
+.letter-cell[data-active="true"] {
+    background: var(--mr-anchor);
+    color: var(--mr-bg);
+    border-color: var(--mr-anchor);
 }

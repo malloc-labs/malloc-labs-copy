@@ -3,51 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Copy — Koch Method</title>
+    <title>Copy — Koch</title>
     <link rel="stylesheet" href="css/core.css">
     <link rel="stylesheet" href="css/copy-653.css">
     <!-- Runs blocking before CSS paint to prevent theme flash -->
     <script src="js/theme.js"></script>
 </head>
-<body>
+<body class="landing-body">
 
     <button class="theme-btn" id="theme-toggle" aria-label="Switch theme">light</button>
 
-    <div class="page">
+    <main class="landing-shell">
 
-        <header class="masthead">
+        <header class="landing-header">
             <p class="eyebrow"><a href="index.html" class="back-link">Copy</a></p>
-            <h1>Koch Method <span class="status" data-status="connecting">connecting…</span></h1>
+            <h1 class="landing-title">Koch Method</h1>
         </header>
 
-        <main>
+        <hr class="landing-rule">
 
-        <section class="claim" aria-label="Claimed symbols">
-            <p class="claim-line">
-                <span class="claim-label">Claimed</span>
-                <span class="claim-symbols" id="claimed-symbols">—</span>
-                <span class="claim-suggested" id="claim-suggested" hidden>
-                    <span class="claim-label">suggested next</span>
-                    <span id="suggested-next">—</span>
-                </span>
-            </p>
-            <button type="button" id="claim-button" hidden>Claim</button>
-        </section>
+        <nav class="landing-nav" aria-label="Koch sections">
+            <a href="koch/letters.html" class="nav-item">
+                <span class="nav-item__label">Letters</span>
+                <span class="nav-item__desc">Phonetic and morse for any letter</span>
+            </a>
+            <a href="koch/exercises.html" class="nav-item">
+                <span class="nav-item__label">Exercises</span>
+                <span class="nav-item__desc">Symbol introduction and detection practice</span>
+            </a>
+        </nav>
 
-        <section class="controls" aria-label="Listening controls">
-            <button type="button" id="start" disabled>Start</button>
-            <button type="button" id="stop" disabled>Stop</button>
-        </section>
+    </main>
 
-        <p class="primed" id="primed">Primed: —</p>
-
-        <section class="timeline" aria-live="polite" aria-label="Truth">
-            <ol id="events"></ol>
-        </section>
-        </main>
-
-    </div>
-
-    <script type="module" src="js/main.js"></script>
 </body>
 </html>
