@@ -27,6 +27,7 @@ Client → server, JSON over WS::
 
     {"action": "start"}
     {"action": "claim-symbol", "symbol": "U"}
+    {"action": "play-letter", "symbol": "K"}
 
 Server → client, JSON over WS, one frame per event. Pushed
 unsolicited on connect, and after every change::
@@ -39,6 +40,17 @@ During a session::
     {"type": "symbol", "symbol": "K", "t_on": 0.0,  "t_off": 0.18}
     {"type": "symbol", "symbol": "M", "t_on": 0.42, "t_off": 0.6}
     {"type": "session-end"}
+
+During a Letters playback (Koch hub → Letters page)::
+
+    {"type": "letter-start", "symbol": "K"}
+    {"type": "letter-end",   "symbol": "K"}
+
+A second ``play-letter`` while a sequence is playing supersedes the
+first: the in-flight task is cancelled and the new one starts.
+``letter-end`` is only sent on natural completion; a superseded run
+emits no terminal event because the next ``letter-start`` is the
+authoritative new state.
 
 The ``t_on`` / ``t_off`` values are the engine's intended schedule (see
 :func:`copy_653.audio.synth.compute_timeline`). They are not
@@ -82,8 +94,14 @@ from copy_653.config import (
     DEFAULT_CONFIG_PATH,
     load_audio_parameters,
     load_claimed_symbols,
+    load_letters_config,
     load_session_duration,
     save_claimed_symbols,
+)
+from copy_653.letters import (
+    NATO_PHONETIC_NAMES,
+    find_anchors_dir,
+    play_letter_sequence,
 )
 
 DEFAULT_PORT = 8653
@@ -328,11 +346,60 @@ async def _claim_symbol_action(
     await _send_event(ws, _claimed_symbols_event(claimed))
 
 
+async def _run_letter_sequence(
+    ws: WebSocketServerProtocol,
+    symbol: str,
+    config_path: Path,
+    anchors_dir: Path,
+) -> None:
+    """Send ``letter-start``, play the sequence, send ``letter-end``.
+
+    Reads audio and letters config fresh per call (per the project's
+    no-caching contract — the learner's hand-edited config takes
+    effect immediately). Any exception during playback surfaces as an
+    ``error`` event then re-raises so the caller's task records it.
+
+    On :class:`asyncio.CancelledError` (a new ``play-letter`` arrived),
+    no terminal event is sent — the new sequence's ``letter-start`` is
+    the authoritative new state.
+    """
+    audio_params = load_audio_parameters(config_path)
+    letters_config = load_letters_config(config_path)
+
+    await _send_event(ws, {"type": "letter-start", "symbol": symbol})
+    try:
+        await play_letter_sequence(symbol, audio_params, letters_config, anchors_dir)
+    except asyncio.CancelledError:
+        # Superseded by another play-letter; the new task already sent
+        # its own letter-start.
+        raise
+    except Exception as exc:
+        await _send_event(
+            ws,
+            {
+                "type": "error",
+                "reason": "letter-playback-failed",
+                "symbol": symbol,
+                "detail": str(exc),
+            },
+        )
+        raise
+    await _send_event(ws, {"type": "letter-end", "symbol": symbol})
+
+
 async def handler(
     ws: WebSocketServerProtocol,
     config_path: Path = DEFAULT_CONFIG_PATH,
+    anchors_dir: Path | None = None,
 ) -> None:
     """Top-level WS connection handler. Dispatches incoming JSON commands."""
+    if anchors_dir is None:
+        anchors_dir = find_anchors_dir()
+
+    # Per-connection state: the in-flight Letters task, if any. A new
+    # play-letter cancels and replaces it.
+    current_letter_task: asyncio.Task[None] | None = None
+
     # Push current state on connect so the UI does not need to ask.
     claimed = load_claimed_symbols(config_path)
     await _send_event(ws, _claimed_symbols_event(claimed))
@@ -355,10 +422,42 @@ async def handler(
                     )
             elif action == "claim-symbol":
                 await _claim_symbol_action(ws, message.get("symbol", ""), config_path)
+            elif action == "play-letter":
+                symbol = message.get("symbol", "")
+                if not isinstance(symbol, str) or len(symbol) != 1:
+                    await _send_event(
+                        ws, {"type": "error", "reason": "symbol-must-be-single-character"}
+                    )
+                    continue
+                upper = symbol.upper()
+                if upper not in NATO_PHONETIC_NAMES:
+                    await _send_event(
+                        ws, {"type": "error", "reason": "unknown-letter", "symbol": upper}
+                    )
+                    continue
+
+                # Cancel any in-flight letter sequence. Awaiting the
+                # cancelled task before starting the new one preserves
+                # event ordering: no overlapping letter-start frames.
+                if current_letter_task is not None and not current_letter_task.done():
+                    current_letter_task.cancel()
+                    try:
+                        await current_letter_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+
+                current_letter_task = asyncio.create_task(
+                    _run_letter_sequence(ws, upper, config_path, anchors_dir)
+                )
             else:
                 await _send_event(ws, {"type": "error", "reason": "unknown-action"})
     except ConnectionClosed:
         pass
+    finally:
+        # Connection closing — make sure no orphan playback continues
+        # after the learner closed the tab.
+        if current_letter_task is not None and not current_letter_task.done():
+            current_letter_task.cancel()
 
 
 async def serve_app(
@@ -366,6 +465,7 @@ async def serve_app(
     port_search_span: int = DEFAULT_PORT_SEARCH_SPAN,
     web_root: Path | None = None,
     config_path: Path = DEFAULT_CONFIG_PATH,
+    anchors_dir: Path | None = None,
 ) -> tuple[Any, int]:
     """Start the server and return ``(server, bound_port)``.
 
@@ -375,14 +475,17 @@ async def serve_app(
 
     ``config_path`` is plumbed through so tests can point the server
     at a tmp_path config without touching the real one.
+    ``anchors_dir`` is similarly plumbed so tests can use a fixture
+    directory without depending on the committed NATO recordings.
     """
     chosen_port = find_available_port(port, port_search_span)
     resolved_web_root = web_root if web_root is not None else find_web_root()
+    resolved_anchors_dir = anchors_dir if anchors_dir is not None else find_anchors_dir()
 
     process_request = _build_static_handler(resolved_web_root)
 
     async def _connection(ws: WebSocketServerProtocol) -> None:
-        await handler(ws, config_path=config_path)
+        await handler(ws, config_path=config_path, anchors_dir=resolved_anchors_dir)
 
     server = await serve(
         _connection,

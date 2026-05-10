@@ -17,6 +17,7 @@ path (spec §1.4).
 from copy_653.letters.sequence import (
     LettersConfig,
     NATO_PHONETIC_NAMES,
+    find_anchors_dir,
     play_letter_sequence,
 )
 from copy_653.letters.wav import load_wav
@@ -24,6 +25,7 @@ from copy_653.letters.wav import load_wav
 __all__ = [
     "LettersConfig",
     "NATO_PHONETIC_NAMES",
-    "play_letter_sequence",
+    "find_anchors_dir",
     "load_wav",
+    "play_letter_sequence",
 ]
