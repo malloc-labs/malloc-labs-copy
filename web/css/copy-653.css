@@ -334,6 +334,18 @@
     font-size: clamp(1.5rem, 3.5vw, 2rem);
 }
 
+/* The exercises page has a collapsible timeline that grows the content
+ * height after the initial render. place-items:center on the parent grid
+ * re-centres on every height change, causing the content to jump upward
+ * when the disclosure opens. Override to top-align with generous top
+ * padding so it still feels centred on first load, but stays stable.
+ */
+.landing-body:has(.exercises-shell) {
+    align-items: start;
+    padding-top: clamp(3rem, 10vh, 6rem);
+    padding-bottom: clamp(3rem, 10vh, 6rem);
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
    8. Timeline disclosure toggle
    ─────────────────────────────────────────────────────────────────────────────
