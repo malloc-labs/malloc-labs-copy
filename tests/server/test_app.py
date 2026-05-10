@@ -483,11 +483,11 @@ async def test_play_letter_unknown_letter_emits_error(tmp_path, patched_letter_p
         async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
             await asyncio.wait_for(ws.recv(), timeout=2.0)
 
-            # Digits have no NATO anchor in v0 (letters only).
-            await ws.send(json.dumps({"action": "play-letter", "symbol": "5"}))
+            # Symbols outside A-Z and 0-9 have no anchor.
+            await ws.send(json.dumps({"action": "play-letter", "symbol": "@"}))
             raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
             event = json.loads(raw)
-            assert event == {"type": "error", "reason": "unknown-letter", "symbol": "5"}
+            assert event == {"type": "error", "reason": "unknown-letter", "symbol": "@"}
 
         # No playback occurred.
         assert patched_letter_playback == []
