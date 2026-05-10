@@ -276,6 +276,12 @@
     border-color: var(--mr-anchor);
 }
 
+/* Numeral row — 10 cells, narrower column count than the 26-letter grid */
+.letters-grid--numerals {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+    margin-top: var(--mr-space-4);
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
    6. Section landing pages — description paragraph and footer
    ─────────────────────────────────────────────────────────────────────────────
