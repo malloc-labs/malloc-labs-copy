@@ -14,6 +14,7 @@ const statusEl         = document.querySelector(".status");
 const eventsEl         = document.getElementById("events");
 const startBtn         = document.getElementById("start");
 const stopBtn          = document.getElementById("stop");
+const clearBtn         = document.getElementById("clear");
 const claimedEl        = document.getElementById("claimed-symbols");
 const claimSuggestedEl = document.getElementById("claim-suggested");
 const suggestedNextEl  = document.getElementById("suggested-next");
@@ -147,6 +148,7 @@ function appendEvent(event) {
         li.dataset.kind   = "end";
         startBtn.disabled = false;
         stopBtn.disabled  = true;
+        clearBtn.disabled = false;
 
         // Unlock the toggle — learner can now review if they choose
         setTimelineLocked(false);
@@ -159,6 +161,7 @@ function appendEvent(event) {
         li.dataset.kind   = "error";
         startBtn.disabled = false;
         stopBtn.disabled  = true;
+        clearBtn.disabled = false;
         sessionActive     = false;
         setTimelineLocked(false);
 
@@ -194,6 +197,7 @@ function connect() {
         startBtn.disabled = true;
         stopBtn.disabled  = true;
         claimBtn.disabled = true;
+        clearBtn.disabled = true;
         sessionActive     = false;
         setTimelineLocked(false);
     });
@@ -224,6 +228,17 @@ claimBtn.addEventListener("click", () => {
     socket.send(
         JSON.stringify({ action: "claim-symbol", symbol: claimedState.suggested_next }),
     );
+});
+
+clearBtn.addEventListener("click", () => {
+    // Reset the timeline display and toggle back to initial state.
+    // Does not affect the engine or claimed symbols.
+    eventsEl.replaceChildren();
+    const meta = toggleBtn.querySelector(".timeline-meta");
+    meta.textContent = "—";
+    setTimelineOpen(false);
+    setTimelineLocked(true);
+    clearBtn.disabled = true;
 });
 
 connect();

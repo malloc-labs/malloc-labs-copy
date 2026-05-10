@@ -300,22 +300,36 @@ async def _start_action(
     samples = synth.synthesize_sequence(symbols_list, audio_params)
     audio_task = asyncio.create_task(asyncio.to_thread(playback.play, samples, audio_params))
 
-    cursor = 0.0
-    for symbol, t_on, t_off in timeline:
-        wait = t_on - cursor
-        if wait > 0:
-            await asyncio.sleep(wait)
-        cursor = t_on
-        await _send_event(
-            ws,
-            {"type": "symbol", "symbol": symbol, "t_on": t_on, "t_off": t_off},
-        )
+    try:
+        cursor = 0.0
+        for symbol, t_on, t_off in timeline:
+            wait = t_on - cursor
+            if wait > 0:
+                await asyncio.sleep(wait)
+            cursor = t_on
+            await _send_event(
+                ws,
+                {"type": "symbol", "symbol": symbol, "t_on": t_on, "t_off": t_off},
+            )
 
-    # Wait for the audio thread to actually finish before declaring the
-    # session ended — premature end-of-session would lie about what the
-    # learner is hearing (§1.5).
-    await audio_task
-    await _send_event(ws, {"type": "session-end"})
+        # Wait for the audio thread to actually finish before declaring the
+        # session ended — premature end-of-session would lie about what the
+        # learner is hearing (§1.5).
+        await audio_task
+        await _send_event(ws, {"type": "session-end"})
+
+    except asyncio.CancelledError:
+        # Stop was requested. Signal PortAudio to abort the current stream
+        # immediately — sd.stop() is the only way to interrupt a blocking
+        # sd.play() running in a thread (asyncio task cancellation alone
+        # does not reach into the thread).
+        try:
+            import sounddevice as sd
+            sd.stop()
+        except Exception:
+            pass  # No audio device or sounddevice not installed — ignore
+        audio_task.cancel()
+        raise  # Re-raise so _run_session's handler sends session-end
 
 
 async def _claim_symbol_action(

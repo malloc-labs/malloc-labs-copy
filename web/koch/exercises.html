@@ -6,8 +6,7 @@
     <title>Copy 653 — Koch Method — Exercises</title>
     <link rel="stylesheet" href="../css/core.css">
     <link rel="stylesheet" href="../css/copy-653.css">
-    <!-- Runs blocking before CSS paint to prevent theme flash -->
-    <script src="../js/theme.js"></script>
+    <script src="../js/theme.js"><\/script>
 </head>
 <body class="landing-body">
     <button class="theme-btn" id="theme-toggle" aria-label="Switch theme">light</button>
@@ -31,10 +30,10 @@
         <section class="controls" aria-label="Listening controls">
             <button type="button" id="start" disabled>Start</button>
             <button type="button" id="stop" disabled>Stop</button>
+            <button type="button" id="clear" disabled>Clear</button>
         </section>
         <p class="primed" id="primed">Primed: —</p>
         <section class="timeline" aria-label="Truth">
-            <!-- Toggle header — locked during session, clickable after session-end -->
             <button type="button"
                     class="timeline-toggle"
                     aria-expanded="false"
@@ -43,12 +42,11 @@
                 <span class="timeline-arrow">▶</span>
                 <span class="timeline-meta">—</span>
             </button>
-            <!-- Collapsible body — hidden until learner opens it -->
             <div class="timeline-body" id="timeline-body" aria-live="polite">
                 <ol id="events"></ol>
             </div>
         </section>
     </main>
-    <script type="module" src="../js/main.js"></script>
+    <script type="module" src="../js/main.js"><\/script>
 </body>
 </html>
