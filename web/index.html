@@ -1,43 +1,43 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Copy</title>
     <link rel="stylesheet" href="css/core.css">
     <link rel="stylesheet" href="css/copy-653.css">
+    <!-- Runs blocking before CSS paint to prevent theme flash -->
+    <script src="js/theme.js"></script>
 </head>
-<body>
-    <main>
-        <header>
-            <h1>Copy</h1>
-            <p class="status" data-status="connecting">connecting…</p>
+<body class="landing-body">
+
+    <button class="theme-btn" id="theme-toggle" aria-label="Switch theme">light</button>
+
+    <main class="landing-shell">
+
+        <header class="landing-header">
+            <p class="landing-kicker">CW listening environment</p>
+            <h1 class="landing-title">Copy</h1>
         </header>
 
-        <section class="claim" aria-label="Claimed symbols">
-            <p class="claim-line">
-                <span class="claim-label">Claimed</span>
-                <span class="claim-symbols" id="claimed-symbols">—</span>
-                <span class="claim-suggested" id="claim-suggested" hidden>
-                    <span class="claim-label">suggested next</span>
-                    <span id="suggested-next">—</span>
-                </span>
-            </p>
-            <button type="button" id="claim-button" hidden>Claim</button>
-        </section>
+        <hr class="landing-rule">
 
-        <section class="controls" aria-label="Listening controls">
-            <button type="button" id="start" disabled>Start</button>
-            <button type="button" id="stop" disabled>Stop</button>
-        </section>
+        <nav class="landing-nav" aria-label="Primary navigation">
+            <a href="koch.html" class="nav-item">
+                <span class="nav-item__label">Koch Method</span>
+                <span class="nav-item__desc">Symbol introduction and detection practice</span>
+            </a>
+            <a href="speed.html" class="nav-item">
+                <span class="nav-item__label">Speed Practice</span>
+                <span class="nav-item__desc">Full copy at working speed</span>
+            </a>
+            <a href="settings.html" class="nav-item">
+                <span class="nav-item__label">Settings</span>
+                <span class="nav-item__desc">Audio, MIDI, and symbol set</span>
+            </a>
+        </nav>
 
-        <p class="primed" id="primed">Primed: —</p>
-
-        <section class="timeline" aria-live="polite" aria-label="Truth">
-            <ol id="events"></ol>
-        </section>
     </main>
 
-    <script type="module" src="js/main.js"></script>
 </body>
 </html>

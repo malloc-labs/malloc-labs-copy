@@ -1,127 +1,245 @@
-/* copy-653.css — Copy-specific outliers.
- * See docs/specification.md §12.2.
+/*
+ * copy-653.css — Copy-specific outliers
  *
- * v0 dev-shell styles. Truth display is mono (§12.2); the page is
- * intentionally plain — Crisis Room doctrine (§12.3): the interface
- * must not compete with the listen.
+ * Components and tokens that do not exist in the Malloc Rubicon system.
+ * Anything that proves generally useful graduates to core.css.
+ *
+ * Sections:
+ *   1. Landing page — full-viewport centred shell
+ *   2. Landing navigation — nav-item rows
+ *   3. Koch page — status badge, claim, controls, primed, timeline
+ *   4. Back-link
  */
 
-:root {
-    color-scheme: dark light;
-    font-family: ui-sans-serif, system-ui, sans-serif;
-    line-height: 1.5;
+/* ─────────────────────────────────────────────────────────────────────────────
+   1. Landing page
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/*
+ * Full-viewport centred grid. The landing surface is intentionally minimal —
+ * the app title, a single rule, and three navigation rows. Nothing else.
+ * Crisis Room doctrine: the interface must not compete with the event.
+ */
+.landing-body {
+    display: grid;
+    place-items: center;
+    min-height: 100dvh;
 }
 
-body {
-    margin: 0;
-    background: #111;
-    color: #eee;
+.landing-shell {
+    width: min(100% - 3rem, 560px);
 }
 
-main {
-    max-width: 60ch;
-    margin: 4rem auto;
-    padding: 0 1.5rem;
+.landing-header {
+    margin-bottom: var(--mr-space-5);
 }
 
-header {
-    display: flex;
-    align-items: baseline;
-    gap: 1rem;
-    margin-bottom: 2rem;
+.landing-kicker {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    letter-spacing: 0.12em;
+    color: var(--mr-anchor);
+    text-transform: uppercase;
+    margin-bottom: var(--mr-space-3);
+    max-width: none;
 }
 
-h1 {
-    margin: 0;
+.landing-title {
+    font-size: clamp(2.2rem, 5vw, 3rem);
     font-weight: 500;
-    letter-spacing: 0.02em;
+    color: var(--mr-anchor);
+    line-height: var(--mr-line-tight);
 }
 
-.status {
-    margin: 0;
-    font-size: 0.875rem;
-    opacity: 0.7;
+.landing-rule {
+    margin: var(--mr-space-5) 0;
+    border: none;
+    border-top: var(--mr-border-rule);
 }
 
-.status[data-status="connected"] { opacity: 1; }
-.status[data-status="disconnected"] { opacity: 0.6; }
-.status[data-status="error"] { opacity: 0.9; }
+/* ─────────────────────────────────────────────────────────────────────────────
+   2. Landing navigation
+   ───────────────────────────────────────────────────────────────────────────── */
 
-.claim {
+/*
+ * Three plain full-width link rows. The entire row is the tap/click target.
+ * No icons, no arrows, no hover backgrounds — the label carries the destination;
+ * the description is quiet context only.
+ */
+.landing-nav {
     display: flex;
-    align-items: baseline;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-    font-size: 0.9rem;
+    flex-direction: column;
+}
+
+.nav-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--mr-space-1);
+    padding: var(--mr-space-4) 0;
+    border-bottom: var(--mr-border-rule);
+    text-decoration: none;
+    color: var(--mr-text);
+    transition: color 0.1s ease;
+}
+
+.landing-nav .nav-item:first-child {
+    border-top: var(--mr-border-rule);
+}
+
+.nav-item:hover {
+    color: var(--mr-anchor);
+    text-decoration: none;
+}
+
+.nav-item__label {
+    font-size: var(--mr-size-body);
+    font-weight: 500;
+    color: inherit;
+    line-height: var(--mr-line-tight);
+}
+
+.nav-item__desc {
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    line-height: var(--mr-line-body);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   3. Koch page — status, claim, controls, primed, timeline
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Connection status badge — inline with the h1 in the masthead */
+.status {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    margin-left: var(--mr-space-3);
+    vertical-align: middle;
+}
+
+.status[data-status="connected"]    { color: var(--mr-anchor); }
+.status[data-status="connecting"]   { color: var(--mr-muted); }
+.status[data-status="disconnected"] { color: var(--mr-muted); opacity: 0.6; }
+.status[data-status="error"]        { color: var(--mr-warning); }
+
+/* Claim section */
+.claim {
+    margin-bottom: var(--mr-space-5);
 }
 
 .claim-line {
-    margin: 0;
-    flex: 1;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    color: var(--mr-muted);
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--mr-space-3);
+    max-width: none;
+    margin-bottom: var(--mr-space-3);
 }
 
 .claim-label {
-    opacity: 0.6;
-    margin-right: 0.4em;
+    font-size: var(--mr-size-small);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--mr-muted);
 }
 
 .claim-symbols {
-    font-family: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, monospace;
+    font-weight: 500;
+    color: var(--mr-text);
     letter-spacing: 0.1em;
 }
 
 .claim-suggested {
-    margin-left: 1.5rem;
-    opacity: 0.8;
-}
-
-.claim-suggested .claim-label {
-    margin-right: 0.4em;
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--mr-space-2);
 }
 
 #suggested-next {
-    font-family: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, monospace;
+    font-weight: 500;
+    color: var(--mr-info);
 }
 
+/* Controls */
 .controls {
     display: flex;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
+    gap: var(--mr-space-3);
+    margin-bottom: var(--mr-space-4);
 }
 
+/* Primed line */
 .primed {
-    margin: 0 0 2rem;
-    font-size: 0.875rem;
-    opacity: 0.7;
-    font-family: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, monospace;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    margin-bottom: var(--mr-space-6);
+    max-width: none;
 }
 
-button {
-    font: inherit;
-    padding: 0.5rem 1rem;
-    background: transparent;
-    border: 1px solid currentColor;
-    color: inherit;
-    cursor: pointer;
-}
-
-button:disabled {
-    cursor: not-allowed;
-    opacity: 0.4;
+/* Timeline — truth display. Mono for evidence (spec §12.2). */
+.timeline {
+    margin-top: var(--mr-space-5);
 }
 
 .timeline ol {
     list-style: none;
-    margin: 0;
     padding: 0;
-    font-family: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, monospace;
-    font-size: 0.875rem;
+    margin: 0;
 }
 
 .timeline li {
-    padding: 0.125rem 0;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    color: var(--mr-text);
+    padding: var(--mr-space-1) 0;
+    line-height: var(--mr-line-tight);
+}
+
+.timeline li[data-kind="start"] {
+    color: var(--mr-anchor);
+    padding-top: var(--mr-space-3);
+    padding-bottom: var(--mr-space-2);
+    border-bottom: var(--mr-border-rule);
+    margin-bottom: var(--mr-space-1);
+}
+
+.timeline li[data-kind="end"] {
+    color: var(--mr-muted);
+    padding-top: var(--mr-space-2);
+    border-top: var(--mr-border-rule);
+    margin-top: var(--mr-space-1);
+}
+
+.timeline li[data-kind="symbol"] {
+    color: var(--mr-text);
 }
 
 .timeline li[data-kind="error"] {
-    opacity: 0.9;
+    color: var(--mr-warning);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   4. Back-link
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/*
+ * Used in the masthead eyebrow to navigate back to the landing page.
+ * Inherits the eyebrow's uppercase/small treatment.
+ */
+.back-link {
+    color: var(--mr-anchor);
+    text-decoration: none;
+    font-size: inherit;
+    font-weight: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+}
+
+.back-link:hover {
+    color: var(--mr-text);
+    text-decoration: none;
 }

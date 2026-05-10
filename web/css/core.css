@@ -1,3 +1,481 @@
-/* core.css — Malloc Rubicon --mr-* token baseline.
- * See docs/specification.md §12.2.
+/*
+ * core.css — Malloc Rubicon --mr-* token baseline for Copy
+ *
+ * Implements the full Malloc Rubicon design system as documented in
+ * malloc_rubicon_design.md. Copy-specific outliers live in copy-653.css.
+ *
+ * Load order: core.css → copy-653.css
+ *
+ * Sections:
+ *   1. Font faces (self-hosted woff2)
+ *   2. Shared tokens (layout-independent)
+ *   3. Dark theme tokens (default)
+ *   4. Light theme tokens
+ *   5. HTML base reset
+ *   6. Typography
+ *   7. Layout — page container, masthead, meta-grid
+ *   8. Components — state indicators, tables, evidence blocks,
+ *                   notes/callouts, buttons, utility classes
+ *   9. Theme toggle button
  */
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   1. Font faces (self-hosted woff2)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+@font-face {
+    font-family: "Inter";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("../../assets/fonts/Inter-Variable.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: "Inter";
+    font-style: italic;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("../../assets/fonts/Inter-Variable-Italic.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: "JetBrains Mono";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("../../assets/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: "JetBrains Mono";
+    font-style: italic;
+    font-weight: 400;
+    font-display: swap;
+    src: url("../../assets/fonts/JetBrainsMono-Italic.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: "JetBrains Mono";
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url("../../assets/fonts/JetBrainsMono-Medium.woff2") format("woff2");
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   2. Shared tokens (layout-independent, defined on :root)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+    /* Typography */
+    --mr-font-sans: "Inter", "Helvetica Neue", Arial, sans-serif;
+    --mr-font-mono: "JetBrains Mono", "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+
+    /* Type sizes */
+    --mr-size-h1:    2rem;
+    --mr-size-h2:    1.375rem;
+    --mr-size-body:  1rem;
+    --mr-size-small: 0.875rem;
+    --mr-size-mono:  0.92rem;
+
+    /* Line heights */
+    --mr-line-body:  1.55;
+    --mr-line-tight: 1.25;
+
+    /* Spacing scale */
+    --mr-space-1: 0.25rem;
+    --mr-space-2: 0.5rem;
+    --mr-space-3: 0.75rem;
+    --mr-space-4: 1rem;
+    --mr-space-5: 1.5rem;
+    --mr-space-6: 2rem;
+    --mr-space-7: 3rem;
+
+    /* Layout */
+    --mr-page-width: 980px;
+    --mr-border-rule: 1px solid var(--mr-border);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   3. Dark theme tokens (default)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root,
+:root[data-theme="dark"] {
+    --mr-bg:            #171A18;
+    --mr-text:          #E6E7E2;
+    --mr-anchor:        #B8C6BC;
+    --mr-border:        #343A36;
+    --mr-info:          #8EA6B0;
+    --mr-warning:       #C39A5A;
+    --mr-mono-bg:       #222724;
+    --mr-invert:        #F4F4F1;
+    --mr-soft-surface:  #1D211F;
+    --mr-terminal-text: #171A18;
+    --mr-muted:         #A4AAA5;
+    --mr-swatch-invert: #0F1211;
+
+    color-scheme: dark;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   4. Light theme tokens
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root[data-theme="light"] {
+    --mr-bg:            #F4F4F1;
+    --mr-text:          #2A2A2A;
+    --mr-anchor:        #2F3A34;
+    --mr-border:        #D8D8D2;
+    --mr-info:          #4A5C63;
+    --mr-warning:       #B67A2A;
+    --mr-mono-bg:       #ECEDE8;
+    --mr-invert:        #1F2421;
+    --mr-soft-surface:  #F7F7F4;
+    --mr-terminal-text: #F4F4F1;
+    --mr-muted:         #5A5A56;
+    --mr-swatch-invert: #1F2421;
+
+    color-scheme: light;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   5. HTML base reset
+   ───────────────────────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+body {
+    background-color: var(--mr-bg);
+    color: var(--mr-text);
+    font-family: var(--mr-font-sans);
+    font-size: var(--mr-size-body);
+    font-weight: 400;
+    line-height: var(--mr-line-body);
+    min-height: 100dvh;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   6. Typography
+   ───────────────────────────────────────────────────────────────────────────── */
+
+h1, h2, h3 {
+    color: var(--mr-anchor);
+    font-family: var(--mr-font-sans);
+    font-weight: 500;
+    line-height: var(--mr-line-tight);
+}
+
+h1 { font-size: var(--mr-size-h1); }
+h2 { font-size: var(--mr-size-h2); }
+h3 { font-size: 1.1rem; }
+
+p {
+    max-width: 72ch;
+    line-height: var(--mr-line-body);
+}
+
+p.lead {
+    font-size: 1.05rem;
+    max-width: 68ch;
+}
+
+strong {
+    font-weight: 600;
+}
+
+em {
+    font-style: italic;
+}
+
+a {
+    color: var(--mr-info);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+}
+
+a:hover {
+    color: var(--mr-anchor);
+}
+
+code,
+.inline-code {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    background: var(--mr-mono-bg);
+    padding: 0.1em 0.35em;
+    border-radius: 2px;
+}
+
+pre {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    background: var(--mr-mono-bg);
+    border: var(--mr-border-rule);
+    padding: var(--mr-space-4) var(--mr-space-5);
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.6;
+    /* Never stylise quoted traffic. Preserve timestamps. */
+}
+
+pre code {
+    background: none;
+    padding: 0;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   7. Layout
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* 7.1 Page container */
+.page {
+    width: min(100% - 3rem, var(--mr-page-width));
+    margin: 0 auto;
+    padding: var(--mr-space-7) 0;
+}
+
+/* 7.2 Masthead */
+.masthead {
+    border-bottom: var(--mr-border-rule);
+    margin-bottom: var(--mr-space-6);
+    padding-bottom: var(--mr-space-5);
+}
+
+.masthead h1 {
+    margin-bottom: var(--mr-space-2);
+}
+
+.eyebrow {
+    font-size: var(--mr-size-small);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--mr-anchor);
+    margin-bottom: var(--mr-space-2);
+}
+
+/* 7.3 Meta grid */
+.meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: var(--mr-space-4);
+    margin-bottom: var(--mr-space-6);
+}
+
+.meta-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--mr-space-1);
+}
+
+.meta-label {
+    font-size: var(--mr-size-small);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--mr-muted);
+}
+
+.meta-value {
+    font-size: var(--mr-size-body);
+    color: var(--mr-text);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   8. Components
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* 8.1 State indicators */
+.state {
+    display: inline-block;
+    font-size: var(--mr-size-small);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    padding: 0.15em 0.55em;
+    border: 1px solid currentColor;
+    line-height: 1.4;
+}
+
+.state--declared { color: var(--mr-anchor); }
+.state--info     { color: var(--mr-info); }
+.state--warning  { color: var(--mr-warning); }
+.state--observed { color: var(--mr-text); }
+
+/* 8.2 Tables */
+.table-wrap {
+    overflow-x: auto;
+    margin-bottom: var(--mr-space-5);
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--mr-size-body);
+}
+
+thead tr {
+    border-bottom: var(--mr-border-rule);
+}
+
+th {
+    font-family: var(--mr-font-sans);
+    font-weight: 500;
+    color: var(--mr-anchor);
+    text-align: left;
+    padding: var(--mr-space-2) var(--mr-space-3);
+    white-space: nowrap;
+}
+
+td {
+    padding: var(--mr-space-2) var(--mr-space-3);
+    border-bottom: var(--mr-border-rule);
+    vertical-align: top;
+    color: var(--mr-text);
+}
+
+tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.cell-mono    { font-family: var(--mr-font-mono); font-size: var(--mr-size-mono); white-space: nowrap; }
+.cell-warning { color: var(--mr-warning); font-weight: 500; }
+.cell-muted   { color: var(--mr-muted); }
+.cell-emphasis { background: var(--mr-mono-bg); }
+
+/* 8.3 Notes and callouts */
+.note {
+    border-top: 2px solid var(--mr-info);
+    padding: var(--mr-space-3) 0 var(--mr-space-3) var(--mr-space-4);
+    max-width: 72ch;
+    margin-bottom: var(--mr-space-5);
+}
+
+.note--warning {
+    border-top-color: var(--mr-warning);
+}
+
+.note__label {
+    display: block;
+    font-size: var(--mr-size-small);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--mr-info);
+    margin-bottom: var(--mr-space-2);
+}
+
+.note--warning .note__label {
+    color: var(--mr-warning);
+}
+
+.note p {
+    color: var(--mr-text);
+    margin: 0;
+}
+
+/* 8.4 Buttons */
+button,
+.btn {
+    font-family: var(--mr-font-sans);
+    font-size: var(--mr-size-body);
+    font-weight: 400;
+    color: var(--mr-text);
+    background: transparent;
+    border: var(--mr-border-rule);
+    padding: var(--mr-space-2) var(--mr-space-4);
+    cursor: pointer;
+    line-height: var(--mr-line-tight);
+    transition: color 0.1s ease, border-color 0.1s ease, background 0.1s ease;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+button:hover:not(:disabled),
+.btn:hover:not(:disabled) {
+    color: var(--mr-anchor);
+    border-color: var(--mr-anchor);
+}
+
+button:disabled,
+.btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.btn--primary {
+    color: var(--mr-bg);
+    background: var(--mr-anchor);
+    border-color: var(--mr-anchor);
+    font-weight: 500;
+}
+
+.btn--primary:hover:not(:disabled) {
+    background: var(--mr-text);
+    border-color: var(--mr-text);
+    color: var(--mr-bg);
+}
+
+/* 8.5 Horizontal rule */
+.rule,
+hr {
+    width: 100%;
+    border: none;
+    border-top: var(--mr-border-rule);
+    margin: var(--mr-space-6) 0;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   8.6 Utility classes
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.small  { font-size: var(--mr-size-small); }
+.quiet  { color: var(--mr-muted); }
+.mono   { font-family: var(--mr-font-mono); font-size: var(--mr-size-mono); }
+.lead   { font-size: 1.05rem; max-width: 68ch; line-height: var(--mr-line-body); }
+.muted  { color: var(--mr-muted); }
+.nowrap { white-space: nowrap; }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   9. Theme toggle
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/*
+ * Shows the opposite theme label (the action, not the current state).
+ * Fixed top-right; mono font, muted colour per design system.
+ */
+.theme-btn {
+    position: fixed;
+    top: var(--mr-space-4);
+    right: var(--mr-space-5);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    background: transparent;
+    border: none;
+    padding: var(--mr-space-1) var(--mr-space-2);
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    z-index: 100;
+    transition: color 0.1s ease;
+}
+
+.theme-btn:hover {
+    color: var(--mr-anchor);
+    border: none;
+}
