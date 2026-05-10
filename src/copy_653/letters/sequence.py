@@ -48,6 +48,15 @@ NATO_PHONETIC_NAMES: dict[str, str] = {
     "Y": "yankee", "Z": "zulu",
 }  # fmt: skip
 
+# Spoken numeral names. Files live in assets/audio/numerals_spoken/
+# as {digit}.wav (e.g. 0.wav, 1.wav ... 9.wav).
+NUMERAL_NAMES: dict[str, str] = {
+    "0": "0", "1": "1", "2": "2", "3": "3", "4": "4",
+    "5": "5", "6": "6", "7": "7", "8": "8", "9": "9",
+}  # fmt: skip
+
+DIGITS: frozenset[str] = frozenset(NUMERAL_NAMES)
+
 
 @dataclass(frozen=True, slots=True)
 class LettersConfig:
@@ -124,16 +133,40 @@ def find_anchors_dir() -> Path:
     )
 
 
-def wav_path_for(symbol: str, anchors_dir: Path) -> Path:
-    """Resolve the wav file for ``symbol`` under ``anchors_dir``.
+def find_numerals_dir() -> Path:
+    """Locate ``assets/audio/numerals_spoken`` by walking up from this file."""
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        candidate = parent / "assets" / "audio" / "numerals_spoken"
+        if candidate.is_dir():
+            return candidate
+    raise RuntimeError(
+        f"Could not locate assets/audio/numerals_spoken relative to {here}. "
+        "v0 expects an editable install layout (spec §11.1)."
+    )
 
-    Raises :class:`KeyError` if the symbol has no NATO phonetic name
-    defined (e.g. digits — v0 anchors are letters only).
+
+def wav_path_for(
+    symbol: str,
+    anchors_dir: Path,
+    numerals_dir: Path | None = None,
+) -> Path:
+    """Resolve the wav file for ``symbol``.
+
+    Letters are resolved under ``anchors_dir`` (nato_phonetic/).
+    Digits are resolved under ``numerals_dir`` (numerals_spoken/);
+    if ``numerals_dir`` is not supplied, :func:`find_numerals_dir`
+    is called automatically.
+
+    Raises :class:`KeyError` if the symbol has no anchor defined.
     """
     upper = symbol.upper()
-    if upper not in NATO_PHONETIC_NAMES:
-        raise KeyError(upper)
-    return anchors_dir / f"{NATO_PHONETIC_NAMES[upper]}.wav"
+    if upper in NATO_PHONETIC_NAMES:
+        return anchors_dir / f"{NATO_PHONETIC_NAMES[upper]}.wav"
+    if upper in DIGITS:
+        ndir = numerals_dir if numerals_dir is not None else find_numerals_dir()
+        return ndir / f"{upper}.wav"
+    raise KeyError(upper)
 
 
 async def play_letter_sequence(

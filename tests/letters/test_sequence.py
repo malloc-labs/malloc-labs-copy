@@ -164,11 +164,11 @@ def test_wav_played_at_native_rate_morse_at_synth_rate():
 
 
 def test_unknown_symbol_raises_keyerror():
-    """Digits (or anything outside A-Z) have no NATO phonetic name in v0."""
+    """Symbols with no anchor (e.g. punctuation) raise KeyError."""
     with pytest.raises(KeyError):
         asyncio.run(
             play_letter_sequence(
-                "5",
+                "@",
                 audio_params=AudioParameters(),
                 letters_config=LettersConfig(),
                 anchors_dir=ANCHORS_DIR,
@@ -178,10 +178,19 @@ def test_unknown_symbol_raises_keyerror():
         )
 
 
+NUMERALS_DIR = REPO_ROOT / "assets" / "audio" / "numerals_spoken"
+
+
 def test_wav_path_resolves_to_lowercase_anchor_filename():
     """K → kilo.wav under the anchors dir."""
     assert wav_path_for("K", ANCHORS_DIR) == ANCHORS_DIR / "kilo.wav"
     assert wav_path_for("z", ANCHORS_DIR) == ANCHORS_DIR / "zulu.wav"
+
+
+def test_wav_path_resolves_digit_to_numerals_dir():
+    """Digits resolve to numerals_spoken/{digit}.wav."""
+    assert wav_path_for("5", ANCHORS_DIR, NUMERALS_DIR) == NUMERALS_DIR / "5.wav"
+    assert wav_path_for("0", ANCHORS_DIR, NUMERALS_DIR) == NUMERALS_DIR / "0.wav"
 
 
 def test_letters_config_rejects_negative_pairs():
