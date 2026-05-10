@@ -325,6 +325,7 @@ async def _start_action(
         # does not reach into the thread).
         try:
             import sounddevice as sd
+
             sd.stop()
         except Exception:
             pass  # No audio device or sounddevice not installed — ignore
