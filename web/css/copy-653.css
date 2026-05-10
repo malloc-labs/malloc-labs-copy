@@ -315,3 +315,21 @@
     opacity: 1;
     text-decoration: none;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   7. Exercises page — shell width override
+   ─────────────────────────────────────────────────────────────────────────────
+ * The exercises page uses the landing-shell centred composition but needs
+ * a wider column than the 560px landing default — the timeline and claim
+ * line benefit from more horizontal room. 680px keeps it centred and
+ * contained without feeling like a full-width document page.
+ */
+.exercises-shell {
+    width: min(100% - 3rem, 680px);
+}
+
+/* Override landing-title size for the exercises h1 — the status badge
+ * sits inline and the clamp at 3rem can crowd it on smaller viewports. */
+.exercises-shell .landing-title {
+    font-size: clamp(1.5rem, 3.5vw, 2rem);
+}

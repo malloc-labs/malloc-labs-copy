@@ -9,19 +9,14 @@
     <!-- Runs blocking before CSS paint to prevent theme flash -->
     <script src="../js/theme.js"></script>
 </head>
-<body>
-
+<body class="landing-body">
     <button class="theme-btn" id="theme-toggle" aria-label="Switch theme">light</button>
-
-    <div class="page">
-
-        <header class="masthead">
+    <main class="landing-shell exercises-shell">
+        <header class="landing-header">
             <p class="eyebrow"><a href="index.html" class="back-link">Koch Method</a></p>
-            <h1>Exercises <span class="status" data-status="connecting">connecting…</span></h1>
+            <h1 class="landing-title">Exercises <span class="status" data-status="connecting">connecting…</span></h1>
         </header>
-
-        <main>
-
+        <hr class="landing-rule">
         <section class="claim" aria-label="Claimed symbols">
             <p class="claim-line">
                 <span class="claim-label">Claimed</span>
@@ -33,21 +28,15 @@
             </p>
             <button type="button" id="claim-button" hidden>Claim</button>
         </section>
-
         <section class="controls" aria-label="Listening controls">
             <button type="button" id="start" disabled>Start</button>
             <button type="button" id="stop" disabled>Stop</button>
         </section>
-
         <p class="primed" id="primed">Primed: —</p>
-
         <section class="timeline" aria-live="polite" aria-label="Truth">
             <ol id="events"></ol>
         </section>
-        </main>
-
-    </div>
-
+    </main>
     <script type="module" src="../js/main.js"></script>
 </body>
 </html>
