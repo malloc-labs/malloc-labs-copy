@@ -364,3 +364,161 @@ async def test_invalid_json_returns_error(tmp_path):
     finally:
         server.close()
         await server.wait_closed()
+
+
+# ---------- play-letter -------------------------------------------------
+
+
+@pytest.fixture
+def patched_letter_playback(monkeypatch):
+    """Replace ``_play_samples`` in the letters module so tests do not
+    need PortAudio. The async-thread wrapper around it is preserved.
+    """
+    calls: list[Any] = []
+
+    def _fake_play(samples, sample_rate_hz, output_device):
+        calls.append((samples.size, sample_rate_hz))
+
+    monkeypatch.setattr("copy_653.letters.sequence._play_samples", _fake_play)
+    return calls
+
+
+def _write_test_letters_config(tmp_path: Path, claimed: list[str]) -> Path:
+    """Tiny config that runs the Letters sequence quickly (no gaps,
+    minimum repeats). The audio table is set so claim/start tests
+    sharing this fixture also stay quick."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(textwrap.dedent(f"""
+            [audio]
+            character_speed_wpm = 25
+            effective_speed_wpm = 25
+
+            [symbols]
+            claimed = {claimed!r}
+
+            [session]
+            duration_seconds = 1.0
+
+            [letters]
+            phonetic_pairs = 1
+            bare_repeats = 1
+            gap_within_pair_seconds = 0.0
+            gap_between_pairs_seconds = 0.0
+            gap_between_bare_seconds = 0.0
+            """))
+    return config_path
+
+
+def _make_anchors_dir(tmp_path: Path) -> Path:
+    """Build a test anchors dir with a single kilo.wav fixture."""
+    import struct
+    import wave
+
+    anchors_dir = tmp_path / "anchors"
+    anchors_dir.mkdir()
+    wav_path = anchors_dir / "kilo.wav"
+    with wave.open(str(wav_path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(48_000)
+        # 200 samples of zeros — enough to exercise the loader without
+        # making the test wait on a real recording.
+        w.writeframes(b"".join(struct.pack("<h", 0) for _ in range(200)))
+    return anchors_dir
+
+
+async def test_play_letter_runs_full_sequence(tmp_path, patched_letter_playback):
+    config_path = _write_test_letters_config(tmp_path, ["K", "M"])
+    web_root = _make_web_root(tmp_path)
+    anchors_dir = _make_anchors_dir(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+        anchors_dir=anchors_dir,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)  # claimed-symbols push
+
+            await ws.send(json.dumps({"action": "play-letter", "symbol": "K"}))
+            events = await _drain_until(ws, lambda e: e["type"] == "letter-end", timeout=5.0)
+
+        kinds = [e["type"] for e in events]
+        assert kinds[0] == "letter-start"
+        assert events[0]["symbol"] == "K"
+        assert kinds[-1] == "letter-end"
+        assert events[-1]["symbol"] == "K"
+
+        # Three playbacks: phonetic_pairs=1 → wav+morse, bare_repeats=1
+        # → one more morse. The wav is the 200-sample fixture; the
+        # morse buffers are synthesised at the configured WPM.
+        assert len(patched_letter_playback) == 3
+        wav_size, wav_rate = patched_letter_playback[0]
+        morse_size, morse_rate = patched_letter_playback[1]
+        assert wav_size == 200
+        assert wav_rate == 48_000
+        assert morse_size > 0
+        assert patched_letter_playback[2][0] == morse_size
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_play_letter_unknown_letter_emits_error(tmp_path, patched_letter_playback):
+    config_path = _write_test_letters_config(tmp_path, ["K", "M"])
+    web_root = _make_web_root(tmp_path)
+    anchors_dir = _make_anchors_dir(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+        anchors_dir=anchors_dir,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+
+            # Digits have no NATO anchor in v0 (letters only).
+            await ws.send(json.dumps({"action": "play-letter", "symbol": "5"}))
+            raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            event = json.loads(raw)
+            assert event == {"type": "error", "reason": "unknown-letter", "symbol": "5"}
+
+        # No playback occurred.
+        assert patched_letter_playback == []
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_play_letter_rejects_invalid_symbol(tmp_path, patched_letter_playback):
+    config_path = _write_test_letters_config(tmp_path, ["K", "M"])
+    web_root = _make_web_root(tmp_path)
+    anchors_dir = _make_anchors_dir(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+        anchors_dir=anchors_dir,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+
+            # Empty string is not a single character.
+            await ws.send(json.dumps({"action": "play-letter", "symbol": ""}))
+            raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            event = json.loads(raw)
+            assert event == {"type": "error", "reason": "symbol-must-be-single-character"}
+
+        assert patched_letter_playback == []
+    finally:
+        server.close()
+        await server.wait_closed()

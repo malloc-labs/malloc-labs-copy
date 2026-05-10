@@ -106,6 +106,24 @@ class LettersConfig:
                 raise ValueError(f"{name} must be non-negative, got {value}")
 
 
+def find_anchors_dir() -> Path:
+    """Locate ``assets/audio/nato_phonetic`` by walking up from this file.
+
+    Mirrors :func:`copy_653.server.app.find_web_root` — works for the
+    editable install layout that v0 uses (spec §11.1). A future
+    packaged install would need ``importlib.resources``; not v0.
+    """
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        candidate = parent / "assets" / "audio" / "nato_phonetic"
+        if candidate.is_dir():
+            return candidate
+    raise RuntimeError(
+        f"Could not locate assets/audio/nato_phonetic relative to {here}. "
+        "v0 expects an editable install layout (spec §11.1)."
+    )
+
+
 def wav_path_for(symbol: str, anchors_dir: Path) -> Path:
     """Resolve the wav file for ``symbol`` under ``anchors_dir``.
 
