@@ -109,6 +109,7 @@ from copy_653.letters import (
     find_anchors_dir,
     play_letter_sequence,
 )
+from copy_653.letters.sequence import DIGITS
 
 DEFAULT_PORT = 8653
 DEFAULT_PORT_SEARCH_SPAN = 20
@@ -510,7 +511,7 @@ async def handler(
                     )
                     continue
                 upper = symbol.upper()
-                if upper not in NATO_PHONETIC_NAMES:
+                if upper not in NATO_PHONETIC_NAMES and upper not in DIGITS:
                     await _send_event(
                         ws, {"type": "error", "reason": "unknown-letter", "symbol": upper}
                     )
