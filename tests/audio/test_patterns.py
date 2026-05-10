@@ -22,8 +22,10 @@ def test_pattern_lookup_is_case_insensitive():
 
 
 def test_unknown_symbol_raises_keyerror():
+    # Use a symbol that will never be in PATTERNS.
+    # '?' was previously used here but is now a valid Koch pattern.
     with pytest.raises(KeyError):
-        patterns.pattern_for("?")
+        patterns.pattern_for("@")
 
 
 def test_all_letters_have_patterns():
