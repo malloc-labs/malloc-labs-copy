@@ -53,6 +53,7 @@ import tomli_w
 
 from copy_653.audio import patterns
 from copy_653.audio.parameters import AudioParameters
+from copy_653.letters.sequence import LettersConfig
 
 # XDG-style default. Used on both Linux and macOS for consistency
 # (rather than ~/Library/Application Support on macOS) — see spec §6.3.
@@ -220,6 +221,35 @@ def load_session_duration(path: Path | None = None) -> float:
     if value <= 0:
         raise ValueError(f"[session].duration_seconds must be positive, got {value}")
     return value
+
+
+# ---------- letters ----------------------------------------------------
+
+
+def load_letters_config(path: Path | None = None) -> LettersConfig:
+    """Load the letter listening sequence pacing knobs.
+
+    Reads the ``[letters]`` table from the config TOML. If the file
+    or table is missing, returns :class:`LettersConfig` with all
+    defaults — first-run users get a sensible sequence without
+    touching configuration.
+
+    Validation runs in :class:`LettersConfig.__post_init__` and any
+    ``ValueError`` it raises propagates unchanged (spec §1.5).
+
+    Unknown keys in the ``[letters]`` table are silently ignored
+    (forward compatibility).
+    """
+    data = _read_toml(path)
+    if data is None:
+        return LettersConfig()
+
+    letters_table: dict[str, Any] = data.get("letters", {})
+
+    known_keys = set(LettersConfig.__dataclass_fields__.keys())
+    filtered = {k: v for k, v in letters_table.items() if k in known_keys}
+
+    return LettersConfig(**filtered)
 
 
 # ---------- internal ---------------------------------------------------
