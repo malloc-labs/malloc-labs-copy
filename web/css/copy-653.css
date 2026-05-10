@@ -256,17 +256,16 @@
  */
 .letters-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: var(--mr-space-2);
     margin-top: var(--mr-space-5);
-    max-width: 600px;
 }
 
 .letter-cell {
     font-family: var(--mr-font-mono);
-    font-size: 1.5rem;
+    font-size: 1rem;
     font-weight: 500;
-    padding: var(--mr-space-4) 0;
+    padding: var(--mr-space-2) 0;
     line-height: 1;
     text-align: center;
 }
