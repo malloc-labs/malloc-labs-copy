@@ -275,3 +275,43 @@
     color: var(--mr-bg);
     border-color: var(--mr-anchor);
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   6. Section landing pages — description paragraph and footer
+   ─────────────────────────────────────────────────────────────────────────────
+ * .landing-desc sits between the rule and the nav on section landing pages.
+ * It is body-weight prose, max 60ch to keep lines readable at centre.
+ * .landing-footer holds demoted links (Settings) below the nav.
+ * .footer-link is quiet — muted colour, small size — not a nav item.
+ */
+.landing-desc {
+    font-size: var(--mr-size-body);
+    color: var(--mr-muted);
+    line-height: var(--mr-line-body);
+    max-width: 60ch;
+    margin: 0 auto var(--mr-space-5) auto;
+    text-align: left;
+}
+
+.landing-footer {
+    margin-top: var(--mr-space-6);
+    padding-top: var(--mr-space-4);
+    border-top: var(--mr-border-rule);
+    text-align: center;
+}
+
+.footer-link {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    text-decoration: none;
+    letter-spacing: 0.04em;
+    opacity: 0.7;
+    transition: opacity 0.1s ease, color 0.1s ease;
+}
+
+.footer-link:hover {
+    color: var(--mr-text);
+    opacity: 1;
+    text-decoration: none;
+}
