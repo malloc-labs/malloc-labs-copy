@@ -383,7 +383,19 @@
     /* inherits mono from parent */
 }
 
-/* The collapsible body — hidden/shown via the `hidden` attribute in JS */
+/* The collapsible body — hidden/shown via the `hidden` attribute in JS.
+ * Fixed height + overflow-y scroll keeps the page layout completely stable
+ * when the disclosure is opened — no reflow, no jump. Height is chosen to
+ * show ~10 symbol rows comfortably; the learner scrolls within the box.
+ */
 .timeline-body {
     margin-top: var(--mr-space-2);
+    height: 18rem;
+    overflow-y: auto;
+    /* Subtle inset border so the scroll region reads as contained */
+    border: var(--mr-border-rule);
+    padding: var(--mr-space-3);
+    /* Thin scrollbar on supporting browsers */
+    scrollbar-width: thin;
+    scrollbar-color: var(--mr-muted) transparent;
 }
