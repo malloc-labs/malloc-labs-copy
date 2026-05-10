@@ -26,6 +26,7 @@ Wire protocol (v0)
 Client → server, JSON over WS::
 
     {"action": "start"}
+    {"action": "stop"}
     {"action": "claim-symbol", "symbol": "U"}
     {"action": "play-letter", "symbol": "K"}
 
@@ -45,6 +46,10 @@ During a Letters playback (Koch hub → Letters page)::
 
     {"type": "letter-start", "symbol": "K"}
     {"type": "letter-end",   "symbol": "K"}
+
+``stop`` cancels an in-flight session. The engine cancels the audio
+task and sends ``session-end`` before closing the session. If no
+session is in flight, ``stop`` is a no-op.
 
 A second ``play-letter`` while a sequence is playing supersedes the
 first: the in-flight task is cancelled and the new one starts.
@@ -396,8 +401,10 @@ async def handler(
     if anchors_dir is None:
         anchors_dir = find_anchors_dir()
 
-    # Per-connection state: the in-flight Letters task, if any. A new
-    # play-letter cancels and replaces it.
+    # Per-connection state: in-flight session task and letter task.
+    # A stop action cancels the session task; a new play-letter cancels
+    # and replaces the letter task.
+    current_session_task: asyncio.Task[None] | None = None
     current_letter_task: asyncio.Task[None] | None = None
 
     # Push current state on connect so the UI does not need to ask.
@@ -414,12 +421,33 @@ async def handler(
 
             action = message.get("action")
             if action == "start":
-                try:
-                    await _start_action(ws, config_path)
-                except ValueError as exc:
-                    await _send_event(
-                        ws, {"type": "error", "reason": "invalid-config", "detail": str(exc)}
-                    )
+                # Cancel any in-flight session before starting a new one.
+                if current_session_task is not None and not current_session_task.done():
+                    current_session_task.cancel()
+                    try:
+                        await current_session_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+
+                async def _run_session() -> None:
+                    try:
+                        await _start_action(ws, config_path)
+                    except ValueError as exc:
+                        await _send_event(
+                            ws,
+                            {"type": "error", "reason": "invalid-config", "detail": str(exc)},
+                        )
+                    except asyncio.CancelledError:
+                        # Stop was requested — send session-end so the UI
+                        # knows the session is over (spec §1.5).
+                        await _send_event(ws, {"type": "session-end"})
+
+                current_session_task = asyncio.create_task(_run_session())
+            elif action == "stop":
+                # Cancel the in-flight session if one is running.
+                # session-end is sent by _run_session's CancelledError handler.
+                if current_session_task is not None and not current_session_task.done():
+                    current_session_task.cancel()
             elif action == "claim-symbol":
                 await _claim_symbol_action(ws, message.get("symbol", ""), config_path)
             elif action == "play-letter":
@@ -454,8 +482,10 @@ async def handler(
     except ConnectionClosed:
         pass
     finally:
-        # Connection closing — make sure no orphan playback continues
-        # after the learner closed the tab.
+        # Connection closing — cancel any orphan tasks so playback stops
+        # when the learner closes the tab.
+        if current_session_task is not None and not current_session_task.done():
+            current_session_task.cancel()
         if current_letter_task is not None and not current_letter_task.done():
             current_letter_task.cancel()
 

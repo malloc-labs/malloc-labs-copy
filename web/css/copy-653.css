@@ -333,3 +333,57 @@
 .exercises-shell .landing-title {
     font-size: clamp(1.5rem, 3.5vw, 2rem);
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   8. Timeline disclosure toggle
+   ─────────────────────────────────────────────────────────────────────────────
+ * .timeline-toggle is a full-width button that acts as the session header row.
+ * It shows the ▶/▼ arrow and the seed/count/duration metadata.
+ * While a session is running it carries aria-disabled="true" and the
+ * --locked modifier class, which mutes it visually and blocks interaction.
+ * After session-end it becomes interactive; clicking expands/collapses
+ * .timeline-body.
+ */
+.timeline-toggle {
+    display: flex;
+    align-items: baseline;
+    gap: var(--mr-space-3);
+    width: 100%;
+    padding: var(--mr-space-3) 0;
+    border: none;
+    border-top: var(--mr-border-rule);
+    border-bottom: var(--mr-border-rule);
+    background: none;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    color: var(--mr-anchor);
+    cursor: pointer;
+    text-align: left;
+    transition: color 0.1s ease, opacity 0.1s ease;
+}
+
+.timeline-toggle:hover:not([aria-disabled="true"]) {
+    color: var(--mr-text);
+}
+
+/* Locked state — session in flight, not yet interactive */
+.timeline-toggle--locked,
+.timeline-toggle[aria-disabled="true"] {
+    color: var(--mr-muted);
+    opacity: 0.55;
+    cursor: default;
+}
+
+.timeline-arrow {
+    flex-shrink: 0;
+    font-size: var(--mr-size-small);
+}
+
+.timeline-meta {
+    /* inherits mono from parent */
+}
+
+/* The collapsible body — hidden/shown via the `hidden` attribute in JS */
+.timeline-body {
+    margin-top: var(--mr-space-2);
+}
