@@ -62,7 +62,7 @@ const PATTERNS = {
 };
 
 function spokenPattern(pattern) {
-    return [...pattern].map((mark) => (mark === "-" ? "dah" : "dit")).join(" ");
+    return [...pattern].map((mark) => (mark === "-" ? "Dah" : "dit")).join(" ");
 }
 
 function setActiveCell(letter) {
