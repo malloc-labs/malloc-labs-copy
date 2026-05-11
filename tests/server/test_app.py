@@ -467,6 +467,33 @@ async def test_play_letter_runs_full_sequence(tmp_path, patched_letter_playback)
         await server.wait_closed()
 
 
+async def test_play_letter_accepts_punctuation(tmp_path, patched_letter_playback):
+    config_path = _write_test_letters_config(tmp_path, ["K", "M"])
+    web_root = _make_web_root(tmp_path)
+    anchors_dir = _make_anchors_dir(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+        anchors_dir=anchors_dir,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)  # claimed-symbols push
+
+            await ws.send(json.dumps({"action": "play-letter", "symbol": "?"}))
+            events = await _drain_until(ws, lambda e: e["type"] == "letter-end", timeout=5.0)
+
+        assert events[0] == {"type": "letter-start", "symbol": "?"}
+        assert events[-1] == {"type": "letter-end", "symbol": "?"}
+        assert len(patched_letter_playback) == 3
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
 async def test_play_letter_unknown_letter_emits_error(tmp_path, patched_letter_playback):
     config_path = _write_test_letters_config(tmp_path, ["K", "M"])
     web_root = _make_web_root(tmp_path)
@@ -483,7 +510,7 @@ async def test_play_letter_unknown_letter_emits_error(tmp_path, patched_letter_p
         async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
             await asyncio.wait_for(ws.recv(), timeout=2.0)
 
-            # Symbols outside A-Z and 0-9 have no anchor.
+            # Symbols outside A-Z, 0-9, and supported punctuation have no anchor.
             await ws.send(json.dumps({"action": "play-letter", "symbol": "@"}))
             raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
             event = json.loads(raw)

@@ -164,7 +164,7 @@ def test_wav_played_at_native_rate_morse_at_synth_rate():
 
 
 def test_unknown_symbol_raises_keyerror():
-    """Symbols with no anchor (e.g. punctuation) raise KeyError."""
+    """Symbols with no anchor raise KeyError."""
     with pytest.raises(KeyError):
         asyncio.run(
             play_letter_sequence(
@@ -179,6 +179,7 @@ def test_unknown_symbol_raises_keyerror():
 
 
 NUMERALS_DIR = REPO_ROOT / "assets" / "audio" / "numerals_spoken"
+PUNCTUATION_DIR = REPO_ROOT / "assets" / "audio" / "punctuation"
 
 
 def test_wav_path_resolves_to_lowercase_anchor_filename():
@@ -191,6 +192,22 @@ def test_wav_path_resolves_digit_to_numerals_dir():
     """Digits resolve to numerals_spoken/{digit}.wav."""
     assert wav_path_for("5", ANCHORS_DIR, NUMERALS_DIR) == NUMERALS_DIR / "5.wav"
     assert wav_path_for("0", ANCHORS_DIR, NUMERALS_DIR) == NUMERALS_DIR / "0.wav"
+
+
+def test_wav_path_resolves_punctuation_to_punctuation_dir():
+    """Punctuation resolves to punctuation/{name}.wav."""
+    assert (
+        wav_path_for(".", ANCHORS_DIR, NUMERALS_DIR, PUNCTUATION_DIR)
+        == PUNCTUATION_DIR / "full-stop.wav"
+    )
+    assert (
+        wav_path_for("?", ANCHORS_DIR, NUMERALS_DIR, PUNCTUATION_DIR)
+        == PUNCTUATION_DIR / "question-mark.wav"
+    )
+    assert (
+        wav_path_for("=", ANCHORS_DIR, NUMERALS_DIR, PUNCTUATION_DIR)
+        == PUNCTUATION_DIR / "equalls.wav"
+    )
 
 
 def test_letters_config_rejects_negative_pairs():

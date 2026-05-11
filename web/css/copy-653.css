@@ -282,6 +282,12 @@
     margin-top: var(--mr-space-4);
 }
 
+/* Punctuation row — symbols with spoken punctuation anchors. */
+.letters-grid--punctuation {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    margin-top: var(--mr-space-4);
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
    6. Section landing pages — description paragraph and footer
    ─────────────────────────────────────────────────────────────────────────────
