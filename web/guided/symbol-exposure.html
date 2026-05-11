@@ -57,6 +57,19 @@
             <button type="button" class="letter-cell" data-letter="8">8</button>
             <button type="button" class="letter-cell" data-letter="9">9</button>
         </section>
+        <section class="timeline symbol-truth" aria-label="Symbol truth">
+            <button type="button"
+                    class="timeline-toggle"
+                    aria-expanded="false"
+                    aria-disabled="true"
+                    aria-controls="symbol-truth-body">
+                <span class="timeline-arrow">▶</span>
+                <span class="timeline-meta">—</span>
+            </button>
+            <div class="timeline-body symbol-truth-body" id="symbol-truth-body" aria-live="polite">
+                <ol id="symbol-truth-events"></ol>
+            </div>
+        </section>
     </main>
     <script type="module" src="../js/letters.js"></script>
 </body>

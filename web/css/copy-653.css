@@ -500,3 +500,9 @@
     scrollbar-width: thin;
     scrollbar-color: var(--mr-muted) transparent;
 }
+
+.symbol-truth-body {
+    height: auto;
+    min-height: 0;
+    overflow-y: visible;
+}
