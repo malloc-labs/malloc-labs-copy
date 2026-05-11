@@ -153,3 +153,34 @@ def test_compute_timeline_inter_character_gap_with_farnsworth():
     _, t_on_second, _ = timeline[1]
     gap = t_on_second - t_off_first
     assert math.isclose(gap, timing.inter_character_seconds(params), abs_tol=1e-9)
+
+
+def test_synthesize_words_separates_words_with_inter_word_silence():
+    params = AudioParameters(character_speed_wpm=20, effective_speed_wpm=20)
+    word_audio = synth.synthesize_words(["km", "u"], params)
+    expected_seconds = (
+        synth.symbol_duration_seconds("K", params)
+        + timing.inter_character_seconds(params)
+        + synth.symbol_duration_seconds("M", params)
+        + timing.inter_word_seconds(params)
+        + synth.symbol_duration_seconds("U", params)
+    )
+    expected_samples = int(round(expected_seconds * params.sample_rate_hz))
+    assert abs(len(word_audio) - expected_samples) <= 4
+
+
+def test_compute_word_timeline_records_word_index_and_gap():
+    params = AudioParameters(character_speed_wpm=20, effective_speed_wpm=20)
+    timeline = synth.compute_word_timeline(["km", "u"], params)
+
+    assert timeline[0][0] == "K"
+    assert timeline[0][3:] == (1, "km")
+    assert timeline[1][0] == "M"
+    assert timeline[1][3:] == (1, "km")
+    assert timeline[2][0] == "U"
+    assert timeline[2][3:] == (2, "u")
+
+    gap_inside_word = timeline[1][1] - timeline[0][2]
+    gap_between_words = timeline[2][1] - timeline[1][2]
+    assert math.isclose(gap_inside_word, timing.inter_character_seconds(params), abs_tol=1e-9)
+    assert math.isclose(gap_between_words, timing.inter_word_seconds(params), abs_tol=1e-9)

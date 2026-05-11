@@ -114,9 +114,9 @@ def synthesize_symbol(symbol: str, params: AudioParameters) -> np.ndarray:
 def synthesize_sequence(symbols: list[str], params: AudioParameters) -> np.ndarray:
     """Render a sequence of symbols with inter-character spacing.
 
-    ``symbols`` is a list of single-character strings. v0 does not
-    handle word boundaries (no space-separated input); a future
-    revision will accept ' ' to mean inter-word spacing.
+    ``symbols`` is a list of single-character strings. Word boundaries are
+    intentionally handled by :func:`synthesize_words` so the legacy flat-symbol
+    Koch stream keeps its original spacing contract.
     """
     if not symbols:
         return np.zeros(0, dtype=np.float32)
@@ -129,6 +129,26 @@ def synthesize_sequence(symbols: list[str], params: AudioParameters) -> np.ndarr
             parts.append(inter_char)
         parts.append(synthesize_symbol(symbol, params))
     return np.concatenate(parts)
+
+
+def synthesize_words(words: list[str], params: AudioParameters) -> np.ndarray:
+    """Render words with inter-character spacing inside words and word gaps between words."""
+
+    if not words:
+        return np.zeros(0, dtype=np.float32)
+
+    inter_char = synthesize_silence(timing.inter_character_seconds(params), params)
+    inter_word = synthesize_silence(timing.inter_word_seconds(params), params)
+
+    parts: list[np.ndarray] = []
+    for word_index, word in enumerate(words):
+        if word_index > 0:
+            parts.append(inter_word)
+        for symbol_index, symbol in enumerate(word.upper()):
+            if symbol_index > 0:
+                parts.append(inter_char)
+            parts.append(synthesize_symbol(symbol, params))
+    return np.concatenate(parts) if parts else np.zeros(0, dtype=np.float32)
 
 
 def symbol_duration_seconds(symbol: str, params: AudioParameters) -> float:
@@ -170,4 +190,27 @@ def compute_timeline(symbols: list[str], params: AudioParameters) -> list[tuple[
         duration = symbol_duration_seconds(symbol, params)
         out.append((symbol, cursor, cursor + duration))
         cursor += duration
+    return out
+
+
+def compute_word_timeline(words: list[str], params: AudioParameters) -> list[tuple[str, float, float, int, str]]:
+    """Return ``(symbol, t_on, t_off, word_index, word)`` rows for word streams."""
+
+    if not words:
+        return []
+
+    inter_char = timing.inter_character_seconds(params)
+    inter_word = timing.inter_word_seconds(params)
+    out: list[tuple[str, float, float, int, str]] = []
+    cursor = 0.0
+    for word_index, word in enumerate(words, start=1):
+        if word_index > 1:
+            cursor += inter_word
+        normalized_word = word.lower()
+        for symbol_index, symbol in enumerate(word.upper()):
+            if symbol_index > 0:
+                cursor += inter_char
+            duration = symbol_duration_seconds(symbol, params)
+            out.append((symbol, cursor, cursor + duration, word_index, normalized_word))
+            cursor += duration
     return out

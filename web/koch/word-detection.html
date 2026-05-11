@@ -11,13 +11,40 @@
 </head>
 <body class="landing-body">
     <button class="theme-btn" id="theme-toggle" aria-label="Switch theme">light</button>
-    <main class="landing-shell">
+    <main class="landing-shell exercises-shell">
         <header class="landing-header">
             <p class="eyebrow"><a href="index.html" class="back-link">Koch Method</a></p>
-            <h1 class="landing-title">Word Detection</h1>
+            <h1 class="landing-title">Word Detection <span class="status" data-status="connecting">connecting…</span></h1>
         </header>
         <hr class="landing-rule">
         <p class="landing-desc">Known symbols within short English words.</p>
+
+        <section class="koch-sequence" aria-label="Focus symbols">
+            <p class="sequence-label">Listening for</p>
+            <div class="sequence-row" id="focus-row" role="list"></div>
+        </section>
+
+        <section class="controls" aria-label="Listening controls">
+            <button type="button" id="start" disabled>Start</button>
+            <button type="button" id="stop" disabled>Stop</button>
+            <button type="button" id="clear" disabled>Clear</button>
+        </section>
+        <p class="primed" id="primed">Primed: —</p>
+
+        <section class="timeline" aria-label="Truth">
+            <button type="button"
+                    class="timeline-toggle"
+                    aria-expanded="false"
+                    aria-disabled="true"
+                    aria-controls="timeline-body">
+                <span class="timeline-arrow">▶</span>
+                <span class="timeline-meta">—</span>
+            </button>
+            <div class="timeline-body" id="timeline-body" aria-live="polite">
+                <ol id="events"></ol>
+            </div>
+        </section>
     </main>
+    <script type="module" src="../js/word-detection.js"></script>
 </body>
 </html>

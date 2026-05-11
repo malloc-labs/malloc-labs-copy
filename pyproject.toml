@@ -46,6 +46,9 @@ copy-653 = "copy_653.__main__:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+copy_653 = ["assets/lexicon/*.json"]
+
 [tool.black]
 line-length = 100
 target-version = ["py311"]
