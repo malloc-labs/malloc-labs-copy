@@ -15,6 +15,7 @@ path (spec §1.4).
 """
 
 from copy_653.letters.sequence import (
+    ANCHORED_SYMBOLS,
     LettersConfig,
     NATO_PHONETIC_NAMES,
     find_anchors_dir,
@@ -23,6 +24,7 @@ from copy_653.letters.sequence import (
 from copy_653.letters.wav import load_wav
 
 __all__ = [
+    "ANCHORED_SYMBOLS",
     "LettersConfig",
     "NATO_PHONETIC_NAMES",
     "find_anchors_dir",

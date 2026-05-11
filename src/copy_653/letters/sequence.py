@@ -55,7 +55,18 @@ NUMERAL_NAMES: dict[str, str] = {
     "5": "5", "6": "6", "7": "7", "8": "8", "9": "9",
 }  # fmt: skip
 
+# Spoken punctuation names. Files live in assets/audio/punctuation/.
+PUNCTUATION_NAMES: dict[str, str] = {
+    ".": "full-stop",
+    ",": "comma",
+    "?": "question-mark",
+    "/": "slash",
+    "=": "equalls",
+}
+
 DIGITS: frozenset[str] = frozenset(NUMERAL_NAMES)
+PUNCTUATION: frozenset[str] = frozenset(PUNCTUATION_NAMES)
+ANCHORED_SYMBOLS: frozenset[str] = frozenset(NATO_PHONETIC_NAMES) | DIGITS | PUNCTUATION
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,16 +157,33 @@ def find_numerals_dir() -> Path:
     )
 
 
+def find_punctuation_dir() -> Path:
+    """Locate ``assets/audio/punctuation`` by walking up from this file."""
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        candidate = parent / "assets" / "audio" / "punctuation"
+        if candidate.is_dir():
+            return candidate
+    raise RuntimeError(
+        f"Could not locate assets/audio/punctuation relative to {here}. "
+        "v0 expects an editable install layout (spec §11.1)."
+    )
+
+
 def wav_path_for(
     symbol: str,
     anchors_dir: Path,
     numerals_dir: Path | None = None,
+    punctuation_dir: Path | None = None,
 ) -> Path:
     """Resolve the wav file for ``symbol``.
 
     Letters are resolved under ``anchors_dir`` (nato_phonetic/).
     Digits are resolved under ``numerals_dir`` (numerals_spoken/);
     if ``numerals_dir`` is not supplied, :func:`find_numerals_dir`
+    is called automatically.
+    Punctuation resolves under ``punctuation_dir`` (punctuation/);
+    if ``punctuation_dir`` is not supplied, :func:`find_punctuation_dir`
     is called automatically.
 
     Raises :class:`KeyError` if the symbol has no anchor defined.
@@ -166,6 +194,9 @@ def wav_path_for(
     if upper in DIGITS:
         ndir = numerals_dir if numerals_dir is not None else find_numerals_dir()
         return ndir / f"{upper}.wav"
+    if upper in PUNCTUATION:
+        pdir = punctuation_dir if punctuation_dir is not None else find_punctuation_dir()
+        return pdir / f"{PUNCTUATION_NAMES[upper]}.wav"
     raise KeyError(upper)
 
 
