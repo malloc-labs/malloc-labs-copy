@@ -103,6 +103,37 @@ def load_audio_parameters(path: Path | None = None) -> AudioParameters:
     return AudioParameters(**filtered)
 
 
+def save_audio_timing(
+    *,
+    character_speed_wpm: int,
+    effective_speed_wpm: int,
+    path: Path | None = None,
+) -> AudioParameters:
+    """Persist the learner-facing Koch/Farnsworth timing settings.
+
+    ``character_speed_wpm`` is the Koch character speed: how fast the
+    dits and dahs themselves are rendered. ``effective_speed_wpm`` is
+    the Farnsworth speed: the overall pace after spacing is widened.
+
+    The rest of ``[audio]`` is preserved, so output routing, tone, and
+    amplitude settings survive a Settings-page timing change.
+    """
+    config_path = path if path is not None else DEFAULT_CONFIG_PATH
+    data = _read_toml(config_path) or {}
+    audio_table = data.setdefault("audio", {})
+
+    known_keys = set(AudioParameters.__dataclass_fields__.keys())
+    filtered = {k: v for k, v in audio_table.items() if k in known_keys}
+    filtered["character_speed_wpm"] = character_speed_wpm
+    filtered["effective_speed_wpm"] = effective_speed_wpm
+    params = AudioParameters(**filtered)
+
+    audio_table["character_speed_wpm"] = params.character_speed_wpm
+    audio_table["effective_speed_wpm"] = params.effective_speed_wpm
+    _write_toml_atomic(data, config_path)
+    return params
+
+
 # ---------- claimed symbols --------------------------------------------
 
 
@@ -176,22 +207,7 @@ def save_claimed_symbols(symbols: Iterable[str], path: Path | None = None) -> No
     data = _read_toml(config_path) or {}
     data.setdefault("symbols", {})["claimed"] = upper
 
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    serialised = tomli_w.dumps(data).encode("utf-8")
-
-    # Write to a temp file in the same directory, then atomic rename.
-    # Same-directory placement guarantees the rename does not cross a
-    # filesystem boundary (which would silently fall back to copy-then-
-    # delete and lose the atomicity).
-    fd, tmp_path = tempfile.mkstemp(prefix=".config-", suffix=".toml", dir=config_path.parent)
-    try:
-        with os.fdopen(fd, "wb") as f:
-            f.write(serialised)
-        os.replace(tmp_path, config_path)
-    except Exception:
-        # Cleanup on failure; the caller sees the original exception.
-        Path(tmp_path).unlink(missing_ok=True)
-        raise
+    _write_toml_atomic(data, config_path)
 
 
 # ---------- session ----------------------------------------------------
@@ -265,3 +281,20 @@ def _read_toml(path: Path | None) -> dict[str, Any] | None:
         return None
     with config_path.open("rb") as f:
         return tomllib.load(f)
+
+
+def _write_toml_atomic(data: dict[str, Any], config_path: Path) -> None:
+    """Write TOML to ``config_path`` through a same-directory temp file."""
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    serialised = tomli_w.dumps(data).encode("utf-8")
+
+    # Same-directory placement guarantees os.replace remains atomic
+    # rather than crossing filesystems and degrading to copy/delete.
+    fd, tmp_path = tempfile.mkstemp(prefix=".config-", suffix=".toml", dir=config_path.parent)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(serialised)
+        os.replace(tmp_path, config_path)
+    except Exception:
+        Path(tmp_path).unlink(missing_ok=True)
+        raise

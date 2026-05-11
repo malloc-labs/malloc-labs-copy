@@ -30,6 +30,8 @@ Client → server, JSON over WS::
     {"action": "claim-symbol", "symbol": "U"}
     {"action": "unclaim-symbol", "symbol": "U"}
     {"action": "play-letter", "symbol": "K"}
+    {"action": "get-audio-settings"}
+    {"action": "set-audio-settings", "koch_wpm": 20, "farnsworth_wpm": 10}
 
 Server → client, JSON over WS, one frame per event. Pushed
 unsolicited on connect, and after every change::
@@ -96,12 +98,14 @@ from websockets.server import WebSocketServerProtocol, serve
 
 from copy_653 import sequence
 from copy_653.audio import patterns, playback, synth
+from copy_653.audio.parameters import AudioParameters
 from copy_653.config import (
     DEFAULT_CONFIG_PATH,
     load_audio_parameters,
     load_claimed_symbols,
     load_letters_config,
     load_session_duration,
+    save_audio_timing,
     save_claimed_symbols,
 )
 from copy_653.letters import (
@@ -247,6 +251,16 @@ def _claimed_symbols_event(claimed: tuple[str, ...]) -> dict[str, Any]:
         "type": "claimed-symbols",
         "symbols": list(claimed),
         "suggested_next": patterns.next_koch_after(claimed),
+    }
+
+
+def _audio_settings_event_from_params(params: AudioParameters) -> dict[str, Any]:
+    """Build the learner-facing audio timing event payload."""
+    return {
+        "type": "audio-settings",
+        "koch_wpm": params.character_speed_wpm,
+        "farnsworth_wpm": params.effective_speed_wpm,
+        "farnsworth_enabled": params.effective_speed_wpm < params.character_speed_wpm,
     }
 
 
@@ -401,6 +415,49 @@ async def _unclaim_symbol_action(
     await _send_event(ws, _claimed_symbols_event(claimed))
 
 
+async def _get_audio_settings_action(
+    ws: WebSocketServerProtocol,
+    config_path: Path,
+) -> None:
+    params = load_audio_parameters(config_path)
+    await _send_event(ws, _audio_settings_event_from_params(params))
+
+
+async def _set_audio_settings_action(
+    ws: WebSocketServerProtocol,
+    message: dict[str, Any],
+    config_path: Path,
+) -> None:
+    try:
+        koch_wpm = _strict_positive_int(message.get("koch_wpm"), "koch_wpm")
+        farnsworth_wpm = _strict_positive_int(message.get("farnsworth_wpm"), "farnsworth_wpm")
+        params = save_audio_timing(
+            character_speed_wpm=koch_wpm,
+            effective_speed_wpm=farnsworth_wpm,
+            path=config_path,
+        )
+    except ValueError as exc:
+        await _send_event(
+            ws,
+            {
+                "type": "error",
+                "reason": "invalid-audio-settings",
+                "detail": str(exc),
+            },
+        )
+        return
+
+    await _send_event(ws, _audio_settings_event_from_params(params))
+
+
+def _strict_positive_int(value: Any, field: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{field} must be a positive integer")
+    if value <= 0:
+        raise ValueError(f"{field} must be a positive integer")
+    return value
+
+
 async def _run_letter_sequence(
     ws: WebSocketServerProtocol,
     symbol: str,
@@ -502,6 +559,10 @@ async def handler(
                 await _claim_symbol_action(ws, message.get("symbol", ""), config_path)
             elif action == "unclaim-symbol":
                 await _unclaim_symbol_action(ws, message.get("symbol", ""), config_path)
+            elif action == "get-audio-settings":
+                await _get_audio_settings_action(ws, config_path)
+            elif action == "set-audio-settings":
+                await _set_audio_settings_action(ws, message, config_path)
             elif action == "play-letter":
                 symbol = message.get("symbol", "")
                 if not isinstance(symbol, str) or len(symbol) != 1:

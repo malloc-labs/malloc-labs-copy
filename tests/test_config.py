@@ -14,6 +14,7 @@ from copy_653.config import (
     load_claimed_symbols,
     load_letters_config,
     load_session_duration,
+    save_audio_timing,
     save_claimed_symbols,
 )
 from copy_653.letters.sequence import LettersConfig
@@ -117,6 +118,69 @@ def test_returns_defaults_when_audio_table_missing(tmp_path: Path):
     config_file.write_text('[paths]\nsessions = "~/sessions"\n')
     params = load_audio_parameters(config_file)
     assert params == AudioParameters()
+
+
+def test_save_audio_timing_writes_new_file(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    params = save_audio_timing(character_speed_wpm=22, effective_speed_wpm=12, path=config_file)
+
+    assert params.character_speed_wpm == 22
+    assert params.effective_speed_wpm == 12
+    loaded = load_audio_parameters(config_file)
+    assert loaded.character_speed_wpm == 22
+    assert loaded.effective_speed_wpm == 12
+
+
+def test_save_audio_timing_preserves_other_audio_and_tables(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(textwrap.dedent("""
+        [audio]
+        character_speed_wpm = 20
+        effective_speed_wpm = 10
+        tone_frequency_hz = 700
+        amplitude = 0.4
+        output_device = "Mac mini Speakers"
+
+        [symbols]
+        claimed = ["K", "M"]
+        """))
+
+    save_audio_timing(character_speed_wpm=25, effective_speed_wpm=15, path=config_file)
+
+    loaded = load_audio_parameters(config_file)
+    assert loaded.character_speed_wpm == 25
+    assert loaded.effective_speed_wpm == 15
+    assert loaded.tone_frequency_hz == 700
+    assert loaded.amplitude == 0.4
+    assert loaded.output_device == "Mac mini Speakers"
+    assert load_claimed_symbols(config_file) == ("K", "M")
+
+
+def test_save_audio_timing_can_replace_invalid_existing_timing(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(textwrap.dedent("""
+        [audio]
+        character_speed_wpm = 10
+        effective_speed_wpm = 20
+        tone_frequency_hz = 700
+        """))
+
+    save_audio_timing(character_speed_wpm=20, effective_speed_wpm=10, path=config_file)
+
+    loaded = load_audio_parameters(config_file)
+    assert loaded.character_speed_wpm == 20
+    assert loaded.effective_speed_wpm == 10
+    assert loaded.tone_frequency_hz == 700
+
+
+def test_save_audio_timing_rejects_farnsworth_faster_than_koch(tmp_path: Path):
+    with pytest.raises(ValueError, match="cannot exceed"):
+        save_audio_timing(character_speed_wpm=10, effective_speed_wpm=20, path=tmp_path / "c.toml")
+
+
+def test_save_audio_timing_rejects_non_positive_wpm(tmp_path: Path):
+    with pytest.raises(ValueError, match="positive"):
+        save_audio_timing(character_speed_wpm=0, effective_speed_wpm=10, path=tmp_path / "c.toml")
 
 
 # ---------- claimed symbols --------------------------------------------
