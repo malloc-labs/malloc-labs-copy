@@ -362,8 +362,8 @@ async def test_get_audio_settings_returns_configured_timing(tmp_path, patched_pl
             event = json.loads(raw)
             assert event == {
                 "type": "audio-settings",
-                "koch_wpm": 25,
-                "farnsworth_wpm": 25,
+                "character_wpm": 25,
+                "effective_wpm": 25,
                 "farnsworth_enabled": False,
             }
     finally:
@@ -389,8 +389,8 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
                 json.dumps(
                     {
                         "action": "set-audio-settings",
-                        "koch_wpm": 20,
-                        "farnsworth_wpm": 10,
+                        "character_wpm": 20,
+                        "effective_wpm": 10,
                     }
                 )
             )
@@ -398,8 +398,8 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
             event = json.loads(raw)
             assert event == {
                 "type": "audio-settings",
-                "koch_wpm": 20,
-                "farnsworth_wpm": 10,
+                "character_wpm": 20,
+                "effective_wpm": 10,
                 "farnsworth_enabled": True,
             }
 
@@ -431,8 +431,8 @@ async def test_set_audio_settings_rejects_invalid_timing(tmp_path, patched_playb
                 json.dumps(
                     {
                         "action": "set-audio-settings",
-                        "koch_wpm": 10,
-                        "farnsworth_wpm": 20,
+                        "character_wpm": 10,
+                        "effective_wpm": 20,
                     }
                 )
             )

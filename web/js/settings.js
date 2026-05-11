@@ -2,14 +2,16 @@
 //
 // This page writes the shared [audio] timing keys used by every listening
 // environment. User-facing labels follow established Morse learning terms:
-// Koch = character speed, Farnsworth = effective speed after spacing.
+// character speed = symbol cadence, effective speed = pressure after spacing.
 
 const wsUrl = `ws://${location.host}/ws`;
 const form = document.getElementById("audio-settings-form");
-const kochInput = document.getElementById("koch-wpm");
-const farnsworthInput = document.getElementById("farnsworth-wpm");
+const characterInput = document.getElementById("character-wpm");
+const effectiveInput = document.getElementById("effective-wpm");
 const saveButton = document.getElementById("save-audio-settings");
 const statusEl = document.getElementById("settings-status");
+const characterSummary = document.getElementById("character-speed-summary");
+const effectiveSummary = document.getElementById("effective-speed-summary");
 
 let socket = null;
 let isSaving = false;
@@ -20,38 +22,49 @@ function setStatus(status, text) {
 }
 
 function setFormEnabled(enabled) {
-    kochInput.disabled = !enabled;
-    farnsworthInput.disabled = !enabled;
+    characterInput.disabled = !enabled;
+    effectiveInput.disabled = !enabled;
     saveButton.disabled = !enabled;
 }
 
 function currentTiming() {
-    const koch = Number(kochInput.value);
-    const farnsworth = Number(farnsworthInput.value);
-    return { koch, farnsworth };
+    const character = Number(characterInput.value);
+    const effective = Number(effectiveInput.value);
+    return { character, effective };
+}
+
+function updateSummaries() {
+    const { character, effective } = currentTiming();
+    characterSummary.textContent =
+        Number.isFinite(character) && character > 0 ? `${character} WPM` : "Character WPM";
+    effectiveSummary.textContent =
+        Number.isFinite(effective) && effective > 0 ? `${effective} WPM` : "Effective WPM";
 }
 
 function validateTiming() {
-    const { koch, farnsworth } = currentTiming();
-    if (!Number.isInteger(koch) || koch <= 0) {
-        return "Koch WPM must be a positive whole number.";
+    const { character, effective } = currentTiming();
+    if (!Number.isInteger(character) || character <= 0) {
+        return "Character speed must be a positive whole number.";
     }
-    if (!Number.isInteger(farnsworth) || farnsworth <= 0) {
-        return "Farnsworth WPM must be a positive whole number.";
+    if (!Number.isInteger(effective) || effective <= 0) {
+        return "Effective speed must be a positive whole number.";
     }
-    if (farnsworth > koch) {
-        return "Farnsworth WPM cannot exceed Koch WPM.";
+    if (effective > character) {
+        return "Effective speed cannot exceed character speed.";
     }
     return "";
 }
 
 function renderAudioSettings(event) {
-    kochInput.value = event.koch_wpm;
-    farnsworthInput.value = event.farnsworth_wpm;
-    const mode = event.farnsworth_enabled ? "Farnsworth spacing active" : "standard spacing";
+    characterInput.value = event.character_wpm;
+    effectiveInput.value = event.effective_wpm;
+    updateSummaries();
     const prefix = isSaving ? "saved" : "ready";
     isSaving = false;
-    setStatus("connected", `${prefix} - ${mode}`);
+    setStatus(
+        "connected",
+        `${prefix} - ${event.character_wpm} WPM characters / ${event.effective_wpm} WPM effective`
+    );
     setFormEnabled(true);
 }
 
@@ -104,25 +117,27 @@ form.addEventListener("submit", (event) => {
         return;
     }
 
-    const { koch, farnsworth } = currentTiming();
+    const { character, effective } = currentTiming();
     setFormEnabled(false);
     isSaving = true;
     setStatus("connected", "saving");
     socket.send(
         JSON.stringify({
             action: "set-audio-settings",
-            koch_wpm: koch,
-            farnsworth_wpm: farnsworth,
+            character_wpm: character,
+            effective_wpm: effective,
         })
     );
 });
 
-kochInput.addEventListener("input", () => {
+characterInput.addEventListener("input", () => {
+    updateSummaries();
     const validationError = validateTiming();
     if (!validationError) setStatus("connected", "ready");
 });
 
-farnsworthInput.addEventListener("input", () => {
+effectiveInput.addEventListener("input", () => {
+    updateSummaries();
     const validationError = validateTiming();
     if (!validationError) setStatus("connected", "ready");
 });
