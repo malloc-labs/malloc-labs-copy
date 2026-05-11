@@ -10,7 +10,6 @@ This repository is the Copy component of the broader `/srv/work/malloc-labs` wor
 - `pip install -e ".[dev]"`: refresh the package plus pytest tooling when dependencies change.
 - `python -m copy_653`: start the local engine; it binds to `127.0.0.1:8653` or the next available port.
 - `python -m copy_653 --port 9000`: run the server on a specific port.
-- `python -m copy_653.audio.demo KMK`: synthesize and play a sequence without the server.
 - `pytest`: run the full test suite.
 - `ruff check src tests` and `black --check src tests`: match CI lint and formatting checks.
 - `pre-commit run --all-files`: run all repository hooks, including Black, Ruff, markdownlint, YAML formatting, and gitleaks.
@@ -29,4 +28,4 @@ Recent history follows Conventional Commits, for example `feat(web): ...`, `fix(
 
 ## Security & Configuration Tips
 
-Do not commit secrets or local config; gitleaks runs in hooks and CI. Audio playback uses sustained tones, so keep hardware volume low when testing demos, especially with headphones. Local runtime config belongs under `~/.local/share/copy_653/config.toml`, not in the repository.
+Do not commit secrets or local config; gitleaks runs in hooks and CI. Audio playback uses sustained tones, so keep hardware volume low when testing playback, especially with headphones. Local runtime config belongs under `~/.local/share/copy_653/config.toml`, not in the repository.

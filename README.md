@@ -24,8 +24,6 @@ pip install -e .
 
 python -m copy_653                  # start the engine on http://127.0.0.1:8653
 python -m copy_653 --port 9000      # bind a different port
-python -m copy_653.audio.demo K     # CLI: synthesise and play "K" (no server)
-python -m copy_653.audio.demo KMK   # CLI: synthesise and play a sequence
 ```
 
 The engine starts an HTTP + WebSocket server on `127.0.0.1:8653`. If that port is in use, the engine probes upward by up to 20 ports and prints the bound URL on stdout (per spec §1.5 — fail loudly, never silently). Press `Ctrl-C` to stop.
