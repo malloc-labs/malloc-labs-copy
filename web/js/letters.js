@@ -13,7 +13,55 @@
 
 const wsUrl = `ws://${location.host}/ws`;
 const cells = document.querySelectorAll(".letter-cell");
+const toggleBtn = document.querySelector(".timeline-toggle");
+const truthBody = document.querySelector(".timeline-body");
+const truthEvents = document.getElementById("symbol-truth-events");
+const truthMeta = toggleBtn.querySelector(".timeline-meta");
 let socket = null;
+let lastCompletedSymbol = null;
+
+const PATTERNS = {
+    A: ".-",
+    B: "-...",
+    C: "-.-.",
+    D: "-..",
+    E: ".",
+    F: "..-.",
+    G: "--.",
+    H: "....",
+    I: "..",
+    J: ".---",
+    K: "-.-",
+    L: ".-..",
+    M: "--",
+    N: "-.",
+    O: "---",
+    P: ".--.",
+    Q: "--.-",
+    R: ".-.",
+    S: "...",
+    T: "-",
+    U: "..-",
+    V: "...-",
+    W: ".--",
+    X: "-..-",
+    Y: "-.--",
+    Z: "--..",
+    0: "-----",
+    1: ".----",
+    2: "..---",
+    3: "...--",
+    4: "....-",
+    5: ".....",
+    6: "-....",
+    7: "--...",
+    8: "---..",
+    9: "----.",
+};
+
+function spokenPattern(pattern) {
+    return [...pattern].map((mark) => (mark === "-" ? "dah" : "dit")).join(" ");
+}
 
 function setActiveCell(letter) {
     cells.forEach((c) => {
@@ -33,6 +81,50 @@ function setCellsEnabled(enabled) {
     });
 }
 
+function setTruthOpen(open) {
+    const arrow = toggleBtn.querySelector(".timeline-arrow");
+    if (open) {
+        truthBody.hidden = false;
+        arrow.textContent = "▼";
+        toggleBtn.setAttribute("aria-expanded", "true");
+    } else {
+        truthBody.hidden = true;
+        arrow.textContent = "▶";
+        toggleBtn.setAttribute("aria-expanded", "false");
+    }
+}
+
+function setTruthLocked(locked) {
+    if (locked) {
+        toggleBtn.setAttribute("aria-disabled", "true");
+        toggleBtn.classList.add("timeline-toggle--locked");
+    } else {
+        toggleBtn.removeAttribute("aria-disabled");
+        toggleBtn.classList.remove("timeline-toggle--locked");
+    }
+}
+
+function renderTruth(symbol) {
+    const pattern = PATTERNS[symbol];
+    if (!pattern) {
+        truthMeta.textContent = `${symbol} · no pattern`;
+        truthEvents.replaceChildren();
+        return;
+    }
+
+    truthMeta.textContent = `${symbol} · reveal pattern`;
+    const li = document.createElement("li");
+    li.dataset.kind = "symbol";
+    li.textContent = `${symbol}  ${spokenPattern(pattern)}  ${pattern}`;
+    truthEvents.replaceChildren(li);
+}
+
+toggleBtn.addEventListener("click", () => {
+    if (toggleBtn.getAttribute("aria-disabled") === "true") return;
+    const isOpen = toggleBtn.getAttribute("aria-expanded") === "true";
+    setTruthOpen(!isOpen);
+});
+
 function connect() {
     socket = new WebSocket(wsUrl);
 
@@ -50,15 +142,36 @@ function connect() {
         // The server pushes claimed-symbols on connect on the same WS
         // that drives the Exercises page; ignore here.
         if (event.type === "letter-start") {
+            lastCompletedSymbol = null;
             setActiveCell(event.symbol);
+            truthMeta.textContent = "listening…";
+            truthEvents.replaceChildren();
+            setTruthOpen(false);
+            setTruthLocked(true);
         } else if (event.type === "letter-end") {
+            lastCompletedSymbol = event.symbol;
             clearActiveCells();
+            renderTruth(event.symbol);
+            setTruthLocked(false);
+        } else if (event.type === "error") {
+            lastCompletedSymbol = null;
+            clearActiveCells();
+            truthMeta.textContent = "—";
+            truthEvents.replaceChildren();
+            setTruthOpen(false);
+            setTruthLocked(true);
         }
     });
 
     socket.addEventListener("close", () => {
         setCellsEnabled(false);
         clearActiveCells();
+        if (!lastCompletedSymbol) {
+            truthMeta.textContent = "—";
+            truthEvents.replaceChildren();
+            setTruthOpen(false);
+            setTruthLocked(true);
+        }
     });
 
     socket.addEventListener("error", () => {
@@ -79,4 +192,6 @@ cells.forEach((cell) => {
 });
 
 setCellsEnabled(false);
+setTruthOpen(false);
+setTruthLocked(true);
 connect();
