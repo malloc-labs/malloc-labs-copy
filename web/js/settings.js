@@ -15,16 +15,16 @@ const effectiveSummary = document.getElementById("effective-speed-summary");
 
 let socket = null;
 let isSaving = false;
+let savedTiming = null;
 
 function setStatus(status, text) {
     statusEl.dataset.status = status;
     statusEl.textContent = text;
 }
 
-function setFormEnabled(enabled) {
+function setInputsEnabled(enabled) {
     characterInput.disabled = !enabled;
     effectiveInput.disabled = !enabled;
-    saveButton.disabled = !enabled;
 }
 
 function currentTiming() {
@@ -55,9 +55,42 @@ function validateTiming() {
     return "";
 }
 
+function isDirty() {
+    if (!savedTiming) return false;
+    const { character, effective } = currentTiming();
+    return character !== savedTiming.character || effective !== savedTiming.effective;
+}
+
+function updateSaveState() {
+    const validationError = validateTiming();
+    const dirty = isDirty();
+    saveButton.classList.remove("btn--primary");
+
+    if (isSaving) {
+        saveButton.disabled = true;
+        saveButton.textContent = "Saving";
+    } else if (validationError) {
+        saveButton.disabled = true;
+        saveButton.textContent = dirty ? "Save Timing" : "Saved";
+    } else if (dirty) {
+        saveButton.disabled = false;
+        saveButton.classList.add("btn--primary");
+        saveButton.textContent = "Save Timing";
+    } else {
+        saveButton.disabled = true;
+        saveButton.textContent = "Saved";
+    }
+
+    return { validationError, dirty };
+}
+
 function renderAudioSettings(event) {
     characterInput.value = event.character_wpm;
     effectiveInput.value = event.effective_wpm;
+    savedTiming = {
+        character: event.character_wpm,
+        effective: event.effective_wpm,
+    };
     updateSummaries();
     const prefix = isSaving ? "saved" : "ready";
     isSaving = false;
@@ -65,11 +98,13 @@ function renderAudioSettings(event) {
         "connected",
         `${prefix} - ${event.character_wpm} WPM characters / ${event.effective_wpm} WPM effective`
     );
-    setFormEnabled(true);
+    setInputsEnabled(true);
+    updateSaveState();
 }
 
 function connect() {
-    setFormEnabled(false);
+    setInputsEnabled(false);
+    updateSaveState();
     setStatus("connecting", "connecting");
     socket = new WebSocket(wsUrl);
 
@@ -91,13 +126,16 @@ function connect() {
         } else if (event.type === "error" && event.reason === "invalid-audio-settings") {
             isSaving = false;
             setStatus("error", event.detail || "invalid settings");
-            setFormEnabled(true);
+            setInputsEnabled(true);
+            updateSaveState();
         }
     });
 
     socket.addEventListener("close", () => {
         isSaving = false;
-        setFormEnabled(false);
+        setInputsEnabled(false);
+        saveButton.disabled = true;
+        saveButton.classList.remove("btn--primary");
         setStatus("disconnected", "disconnected");
     });
 
@@ -116,10 +154,12 @@ form.addEventListener("submit", (event) => {
         setStatus("error", validationError);
         return;
     }
+    if (!isDirty()) return;
 
     const { character, effective } = currentTiming();
-    setFormEnabled(false);
+    setInputsEnabled(false);
     isSaving = true;
+    updateSaveState();
     setStatus("connected", "saving");
     socket.send(
         JSON.stringify({
@@ -132,14 +172,32 @@ form.addEventListener("submit", (event) => {
 
 characterInput.addEventListener("input", () => {
     updateSummaries();
-    const validationError = validateTiming();
-    if (!validationError) setStatus("connected", "ready");
+    const { validationError, dirty } = updateSaveState();
+    if (validationError) {
+        setStatus("error", validationError);
+    } else if (dirty) {
+        setStatus("connected", "unsaved changes");
+    } else {
+        setStatus(
+            "connected",
+            `ready - ${savedTiming.character} WPM characters / ${savedTiming.effective} WPM effective`
+        );
+    }
 });
 
 effectiveInput.addEventListener("input", () => {
     updateSummaries();
-    const validationError = validateTiming();
-    if (!validationError) setStatus("connected", "ready");
+    const { validationError, dirty } = updateSaveState();
+    if (validationError) {
+        setStatus("error", validationError);
+    } else if (dirty) {
+        setStatus("connected", "unsaved changes");
+    } else {
+        setStatus(
+            "connected",
+            `ready - ${savedTiming.character} WPM characters / ${savedTiming.effective} WPM effective`
+        );
+    }
 });
 
 connect();
