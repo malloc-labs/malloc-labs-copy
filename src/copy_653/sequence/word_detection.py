@@ -127,7 +127,9 @@ def generate_word_detection(
         lexicon_schema_version, loaded = load_foundation_lexicon()
         lexicon = loaded
 
-    candidates = [entry for entry in lexicon if set(entry.letters) & {s.lower() for s in focus_tuple}]
+    candidates = [
+        entry for entry in lexicon if set(entry.letters) & {s.lower() for s in focus_tuple}
+    ]
     if not candidates:
         raise ValueError(f"no foundation lexicon words contain focus symbols {focus_tuple!r}")
 
@@ -178,7 +180,9 @@ def _entry_from_json(item: object) -> LexiconEntry:
 
     word = _required_str(item, "word").lower()
     letters_raw = item.get("letters")
-    if not isinstance(letters_raw, list) or not all(isinstance(letter, str) for letter in letters_raw):
+    if not isinstance(letters_raw, list) or not all(
+        isinstance(letter, str) for letter in letters_raw
+    ):
         raise ValueError(f"lexicon entry {word!r} has invalid letters")
 
     return LexiconEntry(
@@ -187,7 +191,9 @@ def _entry_from_json(item: object) -> LexiconEntry:
         morse=_required_str(item, "morse"),
         length=_required_int(item, "length"),
         frequency=_required_int(item, "frequency"),
-        frequency_rank=item.get("frequency_rank") if isinstance(item.get("frequency_rank"), int) else None,
+        frequency_rank=(
+            item.get("frequency_rank") if isinstance(item.get("frequency_rank"), int) else None
+        ),
         commonness=_required_str(item, "commonness"),
         rhythm_signature=_required_str(item, "rhythm_signature"),
         rhythm_diversity=_required_float(item, "rhythm_diversity"),

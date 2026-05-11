@@ -193,7 +193,9 @@ def compute_timeline(symbols: list[str], params: AudioParameters) -> list[tuple[
     return out
 
 
-def compute_word_timeline(words: list[str], params: AudioParameters) -> list[tuple[str, float, float, int, str]]:
+def compute_word_timeline(
+    words: list[str], params: AudioParameters
+) -> list[tuple[str, float, float, int, str]]:
     """Return ``(symbol, t_on, t_off, word_index, word)`` rows for word streams."""
 
     if not words:

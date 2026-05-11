@@ -262,7 +262,9 @@ async def test_start_word_detection_runs_focus_word_session(tmp_path, patched_pl
         assert start_event["word_count"] == len(start_event["words"])
         assert start_event["word_count"] > 0
         assert all({"k", "m"} & set(word) for word in start_event["words"])
-        assert start_event["symbols"] == [letter.upper() for word in start_event["words"] for letter in word]
+        assert start_event["symbols"] == [
+            letter.upper() for word in start_event["words"] for letter in word
+        ]
 
         symbol_events = [event for event in events if event["type"] == "symbol"]
         assert len(symbol_events) == len(start_event["symbols"])
