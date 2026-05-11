@@ -48,14 +48,15 @@ Optional. Without a config file, the audio defaults from the spec apply.
 mkdir -p ~/.local/share/copy_653
 cat > ~/.local/share/copy_653/config.toml <<'EOF'
 [audio]
-character_speed_wpm = 25
+character_speed_wpm = 20      # Koch WPM: character speed
+effective_speed_wpm = 10      # Farnsworth WPM: effective speed
 tone_frequency_hz = 600
 amplitude = 0.3
 output_device = "Mac mini Speakers"   # name substring or device index
 EOF
 ```
 
-Any subset of `[audio]` keys is valid; omitted keys take defaults. Unknown keys are silently ignored (forward compatibility). Validation errors surface honestly per spec §1.5.
+Any subset of `[audio]` keys is valid; omitted keys take defaults. `effective_speed_wpm` must be less than or equal to `character_speed_wpm`; set them equal to disable Farnsworth spacing. Unknown keys are silently ignored (forward compatibility). Validation errors surface honestly per spec §1.5.
 
 ## Tests
 

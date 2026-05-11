@@ -17,7 +17,43 @@
             <h1 class="landing-title">Settings</h1>
         </header>
         <hr class="landing-rule">
-        <p class="landing-desc">Audio, MIDI, and symbol set configuration.</p>
+        <p class="landing-desc">Set the Morse timing used across Koch exercises and guided listening.</p>
+
+        <form class="settings-form" id="audio-settings-form">
+            <div class="settings-field">
+                <label for="koch-wpm">Koch WPM</label>
+                <input
+                    id="koch-wpm"
+                    name="koch_wpm"
+                    type="number"
+                    inputmode="numeric"
+                    min="1"
+                    step="1"
+                    required
+                >
+                <p>Koch sets the character speed: the dits and dahs themselves.</p>
+            </div>
+
+            <div class="settings-field">
+                <label for="farnsworth-wpm">Farnsworth WPM</label>
+                <input
+                    id="farnsworth-wpm"
+                    name="farnsworth_wpm"
+                    type="number"
+                    inputmode="numeric"
+                    min="1"
+                    step="1"
+                    required
+                >
+                <p>Farnsworth sets the effective speed by widening spacing between symbols.</p>
+            </div>
+
+            <div class="settings-actions">
+                <button type="submit" class="btn btn--primary" id="save-audio-settings" disabled>Save Timing</button>
+                <span class="settings-status" id="settings-status" data-status="connecting">connecting</span>
+            </div>
+        </form>
     </main>
+    <script type="module" src="../js/settings.js"></script>
 </body>
 </html>
