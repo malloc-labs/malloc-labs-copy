@@ -506,3 +506,20 @@
     min-height: 0;
     overflow-y: visible;
 }
+
+.symbol-truth-line {
+    display: block;
+    line-height: var(--mr-line-tight);
+}
+
+.symbol-truth-symbol,
+.symbol-truth-morse {
+    font-size: var(--mr-size-mono);
+    color: var(--mr-muted);
+}
+
+.symbol-truth-spoken {
+    font-size: 1.15rem;
+    color: var(--mr-text);
+    padding: var(--mr-space-1) 0;
+}

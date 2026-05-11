@@ -115,7 +115,20 @@ function renderTruth(symbol) {
     truthMeta.textContent = `${symbol} · reveal pattern`;
     const li = document.createElement("li");
     li.dataset.kind = "symbol";
-    li.textContent = `${symbol}  ${spokenPattern(pattern)}  ${pattern}`;
+
+    const symbolLine = document.createElement("span");
+    symbolLine.className = "symbol-truth-line symbol-truth-symbol";
+    symbolLine.textContent = symbol;
+
+    const spokenLine = document.createElement("span");
+    spokenLine.className = "symbol-truth-line symbol-truth-spoken";
+    spokenLine.textContent = spokenPattern(pattern);
+
+    const morseLine = document.createElement("span");
+    morseLine.className = "symbol-truth-line symbol-truth-morse";
+    morseLine.textContent = pattern;
+
+    li.replaceChildren(symbolLine, spokenLine, morseLine);
     truthEvents.replaceChildren(li);
 }
 
