@@ -7,7 +7,6 @@ The audio module is the engine's voice. It is split into:
 - :mod:`patterns` — CW (Morse) symbol patterns.
 - :mod:`synth` — pure sine + envelope synthesis (no I/O, testable).
 - :mod:`playback` — sounddevice integration (side effects).
-- :mod:`demo` — small CLI for hearing one or more symbols.
 
 The split between synth and playback is deliberate: synthesis is
 reproducible and unit-testable, playback depends on a working audio
