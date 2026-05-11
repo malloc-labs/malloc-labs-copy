@@ -17,35 +17,35 @@
             <h1 class="landing-title">Settings</h1>
         </header>
         <hr class="landing-rule">
-        <p class="landing-desc">Set the Morse timing used across Koch exercises and guided listening.</p>
+        <p class="landing-desc">Koch trains recognition. Farnsworth manages processing pressure.</p>
 
         <form class="settings-form" id="audio-settings-form">
             <div class="settings-field">
-                <label for="koch-wpm">Koch WPM</label>
+                <label for="character-wpm">Character Speed</label>
                 <input
-                    id="koch-wpm"
-                    name="koch_wpm"
+                    id="character-wpm"
+                    name="character_wpm"
                     type="number"
                     inputmode="numeric"
                     min="1"
                     step="1"
                     required
                 >
-                <p>Koch sets the character speed: the dits and dahs themselves.</p>
+                <p><strong id="character-speed-summary">20 WPM</strong> · Full-speed character rhythm helps train recognition through cadence rather than counting.</p>
             </div>
 
             <div class="settings-field">
-                <label for="farnsworth-wpm">Farnsworth WPM</label>
+                <label for="effective-wpm">Effective Speed</label>
                 <input
-                    id="farnsworth-wpm"
-                    name="farnsworth_wpm"
+                    id="effective-wpm"
+                    name="effective_wpm"
                     type="number"
                     inputmode="numeric"
                     min="1"
                     step="1"
                     required
                 >
-                <p>Farnsworth sets the effective speed by widening spacing between symbols.</p>
+                <p><strong id="effective-speed-summary">10 WPM</strong> · Additional spacing between characters and words provides time to absorb and recognise each symbol.</p>
             </div>
 
             <div class="settings-actions">

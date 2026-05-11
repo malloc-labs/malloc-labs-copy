@@ -31,7 +31,7 @@ Client → server, JSON over WS::
     {"action": "unclaim-symbol", "symbol": "U"}
     {"action": "play-letter", "symbol": "K"}
     {"action": "get-audio-settings"}
-    {"action": "set-audio-settings", "koch_wpm": 20, "farnsworth_wpm": 10}
+    {"action": "set-audio-settings", "character_wpm": 20, "effective_wpm": 10}
 
 Server → client, JSON over WS, one frame per event. Pushed
 unsolicited on connect, and after every change::
@@ -258,8 +258,8 @@ def _audio_settings_event_from_params(params: AudioParameters) -> dict[str, Any]
     """Build the learner-facing audio timing event payload."""
     return {
         "type": "audio-settings",
-        "koch_wpm": params.character_speed_wpm,
-        "farnsworth_wpm": params.effective_speed_wpm,
+        "character_wpm": params.character_speed_wpm,
+        "effective_wpm": params.effective_speed_wpm,
         "farnsworth_enabled": params.effective_speed_wpm < params.character_speed_wpm,
     }
 
@@ -429,11 +429,11 @@ async def _set_audio_settings_action(
     config_path: Path,
 ) -> None:
     try:
-        koch_wpm = _strict_positive_int(message.get("koch_wpm"), "koch_wpm")
-        farnsworth_wpm = _strict_positive_int(message.get("farnsworth_wpm"), "farnsworth_wpm")
+        character_wpm = _strict_positive_int(message.get("character_wpm"), "character_wpm")
+        effective_wpm = _strict_positive_int(message.get("effective_wpm"), "effective_wpm")
         params = save_audio_timing(
-            character_speed_wpm=koch_wpm,
-            effective_speed_wpm=farnsworth_wpm,
+            character_speed_wpm=character_wpm,
+            effective_speed_wpm=effective_wpm,
             path=config_path,
         )
     except ValueError as exc:

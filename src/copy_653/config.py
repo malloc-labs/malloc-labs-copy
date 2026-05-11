@@ -109,11 +109,11 @@ def save_audio_timing(
     effective_speed_wpm: int,
     path: Path | None = None,
 ) -> AudioParameters:
-    """Persist the learner-facing Koch/Farnsworth timing settings.
+    """Persist the learner-facing character/effective timing settings.
 
-    ``character_speed_wpm`` is the Koch character speed: how fast the
-    dits and dahs themselves are rendered. ``effective_speed_wpm`` is
-    the Farnsworth speed: the overall pace after spacing is widened.
+    ``character_speed_wpm`` is how fast the dits and dahs themselves
+    are rendered. ``effective_speed_wpm`` is the Farnsworth-managed
+    overall pace after spacing is widened.
 
     The rest of ``[audio]`` is preserved, so output routing, tone, and
     amplitude settings survive a Settings-page timing change.

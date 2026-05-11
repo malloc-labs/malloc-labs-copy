@@ -48,8 +48,8 @@ Optional. Without a config file, the audio defaults from the spec apply.
 mkdir -p ~/.local/share/copy_653
 cat > ~/.local/share/copy_653/config.toml <<'EOF'
 [audio]
-character_speed_wpm = 20      # Koch WPM: character speed
-effective_speed_wpm = 10      # Farnsworth WPM: effective speed
+character_speed_wpm = 20      # character rhythm
+effective_speed_wpm = 10      # effective speed after Farnsworth spacing
 tone_frequency_hz = 600
 amplitude = 0.3
 output_device = "Mac mini Speakers"   # name substring or device index
