@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.2.0...v0.3.0) (2026-05-12)
+
+
+### Features
+
+* **audio:** add signal texture settings ([47bebe1](https://github.com/malloc-labs/malloc-labs-copy/commit/47bebe1445f0bbc7de175b1879b7192cea277e06))
+* **audio:** tune signal texture defaults ([b8d98b2](https://github.com/malloc-labs/malloc-labs-copy/commit/b8d98b2d25b9f88375af023c484c26a45652f356))
+* **audio:** tune signal texture defaults ([88bb0ff](https://github.com/malloc-labs/malloc-labs-copy/commit/88bb0ff9e165022a0c0cac785d2e0d00811b636f))
+* **settings:** add signal texture test message ([82079fe](https://github.com/malloc-labs/malloc-labs-copy/commit/82079fe215235bd9551b0b0409d435aea2e17e69))
+* **settings:** add signal texture test message ([36e913d](https://github.com/malloc-labs/malloc-labs-copy/commit/36e913dc47a0ef0d1d21006a9d8ac85b41f85eaa))
+
+
+### Documentation
+
+* update settings test message readme ([c8591d6](https://github.com/malloc-labs/malloc-labs-copy/commit/c8591d672597fbad684040e4a46353fc58a794c3))
+* update settings test message readme ([5dc4791](https://github.com/malloc-labs/malloc-labs-copy/commit/5dc47915074bc36cdb3d48a910345cfa50d00391))
+
 ## [0.2.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.1.0...v0.2.0) (2026-05-12)
 
 
