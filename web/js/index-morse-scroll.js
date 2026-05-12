@@ -5,9 +5,7 @@
  * not training content or a navigation control.
  */
 (function () {
-    var WPM = 24.2; // 20wpm experiment, increased twice by 10%.
-    var CHARS_PER_STANDARD_WORD = 5;
-    var MIN_CYCLE_SECONDS = 25;
+    var CYCLE_SECONDS = 85;
     var REFRESH_BEATS = 4;
 
     var MORSE = [
@@ -61,8 +59,11 @@
         return tokens;
     }
 
-    function tokenLength(token) {
-        return 2 + token[0].length + 2 + token[1].length + 3;
+    function makeSpan(className, text) {
+        var span = document.createElement("span");
+        span.className = className;
+        span.textContent = text;
+        return span;
     }
 
     function appendLine(track, tokens) {
@@ -81,11 +82,12 @@
             rhythm.className = "morse-scroll__rhythm";
             rhythm.textContent = token[1];
 
-            item.appendChild(document.createTextNode("| "));
+            item.appendChild(makeSpan("morse-scroll__bar", "| "));
             item.appendChild(symbol);
             item.appendChild(document.createTextNode("  "));
             item.appendChild(rhythm);
-            item.appendChild(document.createTextNode("  |"));
+            item.appendChild(document.createTextNode("  "));
+            item.appendChild(makeSpan("morse-scroll__bar", "|"));
             line.appendChild(item);
         });
 
@@ -94,17 +96,13 @@
 
     function render(track) {
         var tokens = makeTokens(18);
-        var lineLength = tokens.reduce(function (total, token) {
-            return total + tokenLength(token);
-        }, 0);
-        var cycleSeconds = Math.max(MIN_CYCLE_SECONDS, Math.ceil((lineLength / (WPM * CHARS_PER_STANDARD_WORD)) * 60));
 
-        track.style.setProperty("--morse-scroll-duration", cycleSeconds + "s");
+        track.style.setProperty("--morse-scroll-duration", CYCLE_SECONDS + "s");
         track.replaceChildren();
         appendLine(track, tokens);
         appendLine(track, tokens);
 
-        return cycleSeconds;
+        return CYCLE_SECONDS;
     }
 
     document.addEventListener("DOMContentLoaded", function () {

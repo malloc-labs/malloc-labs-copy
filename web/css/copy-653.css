@@ -116,7 +116,7 @@
 }
 
 .morse-scroll__track {
-    --morse-scroll-duration: 48s;
+    --morse-scroll-duration: 85s;
     display: flex;
     width: max-content;
     max-width: none;
@@ -125,7 +125,6 @@
     line-height: 1;
     letter-spacing: 0.08em;
     color: var(--mr-muted);
-    opacity: 0.16;
     white-space: nowrap;
     animation: morse-scroll-left var(--morse-scroll-duration) linear infinite;
 }
@@ -139,13 +138,15 @@
     margin-right: var(--mr-space-6);
 }
 
-.morse-scroll__symbol {
-    color: var(--mr-anchor);
-    opacity: 0.9;
-}
-
+.morse-scroll__bar,
 .morse-scroll__rhythm {
     color: var(--mr-muted);
+    opacity: 0.16;
+}
+
+.morse-scroll__symbol {
+    color: var(--mr-anchor);
+    opacity: 0.26;
 }
 
 @keyframes morse-scroll-left {
