@@ -23,6 +23,7 @@ let claimedState = { symbols: [], suggested_next: null };
 let sessionDuration = 30;
 let sessionActive = false;
 let lastWordIndex = null;
+let sessionStartedAtMs = null;
 
 function setStatus(state, text) {
     statusEl.dataset.status = state;
@@ -91,18 +92,18 @@ function appendWordHeader(wordIndex, word) {
     eventsEl.appendChild(li);
 }
 
-function formatElapsedClock(seconds) {
-    const totalSeconds = Math.max(0, Math.floor(seconds));
-    const hours = Math.floor(totalSeconds / 3600) % 24;
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const secs = totalSeconds % 60;
-    return [hours, minutes, secs].map((part) => String(part).padStart(2, "0")).join(":");
+function formatClockTime(secondsAfterSessionStart) {
+    const baseMs = sessionStartedAtMs ?? Date.now();
+    const timestamp = new Date(baseMs + Math.max(0, secondsAfterSessionStart) * 1000);
+    return [timestamp.getHours(), timestamp.getMinutes(), timestamp.getSeconds()]
+        .map((part) => String(part).padStart(2, "0"))
+        .join(":");
 }
 
 function formatSymbolReview(event) {
     const pattern = PATTERNS[event.symbol];
     const spoken = pattern ? ` ${spokenMorsePattern(pattern)}` : "";
-    return `${formatElapsedClock(event.t_on)} ${event.symbol}${spoken}`;
+    return `${formatClockTime(event.t_on)} ${event.symbol}${spoken}`;
 }
 
 function appendEvent(event) {
@@ -117,6 +118,7 @@ function appendEvent(event) {
         sessionDuration = event.duration_seconds;
         sessionActive = true;
         lastWordIndex = null;
+        sessionStartedAtMs = Date.now();
 
         const meta = toggleBtn.querySelector(".timeline-meta");
         meta.textContent = `seed ${event.seed} · ${event.word_count ?? event.words.length} words`;
@@ -142,6 +144,7 @@ function appendEvent(event) {
         startBtn.disabled = false;
         stopBtn.disabled = true;
         clearBtn.disabled = false;
+        sessionStartedAtMs = null;
         setTimelineLocked(false);
 
     } else if (event.type === "error") {
@@ -154,6 +157,7 @@ function appendEvent(event) {
         stopBtn.disabled = true;
         clearBtn.disabled = false;
         sessionActive = false;
+        sessionStartedAtMs = null;
         setTimelineLocked(false);
 
     } else {
@@ -187,6 +191,7 @@ function connect() {
         stopBtn.disabled = true;
         clearBtn.disabled = true;
         sessionActive = false;
+        sessionStartedAtMs = null;
         setTimelineLocked(false);
     });
 
@@ -213,6 +218,7 @@ clearBtn.addEventListener("click", () => {
     const meta = toggleBtn.querySelector(".timeline-meta");
     meta.textContent = "—";
     lastWordIndex = null;
+    sessionStartedAtMs = null;
     setTimelineOpen(false);
     setTimelineLocked(true);
     clearBtn.disabled = true;
