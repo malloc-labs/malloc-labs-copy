@@ -32,8 +32,22 @@
     min-height: 100dvh;
 }
 
+/* Index-only composition: keep the existing shell, but align it with the
+ * Malloc Labs field rather than centring it like a parked-domain splash.
+ * Section landing pages retain the centred composition for contained tools.
+ */
+.landing-body--index {
+    place-items: center start;
+    padding-left: clamp(2rem, 5vw, 4rem);
+    padding-right: 2rem;
+}
+
 .landing-shell {
     width: min(100% - 3rem, 560px);
+}
+
+.landing-body--index .landing-shell {
+    width: min(100%, 560px);
 }
 
 .landing-header {
