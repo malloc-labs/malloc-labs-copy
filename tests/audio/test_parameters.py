@@ -13,8 +13,8 @@ def test_default_construction_uses_spec_defaults():
     assert p.sample_rate_hz == 48_000
     assert p.envelope_ramp_seconds == 0.005
     assert p.amplitude == 0.3
-    assert p.receiver_bed == 0
-    assert p.cadence_variation == 0
+    assert p.receiver_bed == 2
+    assert p.cadence_variation == 1
 
 
 def test_is_frozen():

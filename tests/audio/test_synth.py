@@ -105,7 +105,12 @@ def test_synthesize_symbol_k_has_expected_length():
 
 def test_synthesize_sequence_separates_with_inter_character_silence():
     # Two K's separated by inter-character silence.
-    params = AudioParameters(character_speed_wpm=20, effective_speed_wpm=20)
+    params = AudioParameters(
+        character_speed_wpm=20,
+        effective_speed_wpm=20,
+        receiver_bed=0,
+        cadence_variation=0,
+    )
     one = synth.synthesize_symbol("K", params)
     two = synth.synthesize_sequence(["K", "K"], params)
     inter_char_samples = int(round(timing.inter_character_seconds(params) * 48_000))
@@ -125,10 +130,16 @@ def test_synthesize_sequence_adds_receiver_bed_when_configured():
 
 
 def test_synthesize_sequence_cadence_variation_changes_gap_without_symbol_shape():
-    clean_params = AudioParameters(character_speed_wpm=20, effective_speed_wpm=20)
+    clean_params = AudioParameters(
+        character_speed_wpm=20,
+        effective_speed_wpm=20,
+        receiver_bed=0,
+        cadence_variation=0,
+    )
     varied_params = AudioParameters(
         character_speed_wpm=20,
         effective_speed_wpm=20,
+        receiver_bed=0,
         cadence_variation=5,
     )
 
@@ -183,7 +194,12 @@ def test_compute_timeline_inter_character_gap_with_farnsworth():
 
 
 def test_synthesize_words_separates_words_with_inter_word_silence():
-    params = AudioParameters(character_speed_wpm=20, effective_speed_wpm=20)
+    params = AudioParameters(
+        character_speed_wpm=20,
+        effective_speed_wpm=20,
+        receiver_bed=0,
+        cadence_variation=0,
+    )
     word_audio = synth.synthesize_words(["km", "u"], params)
     expected_seconds = (
         synth.symbol_duration_seconds("K", params)

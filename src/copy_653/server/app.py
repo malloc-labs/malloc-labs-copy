@@ -33,15 +33,15 @@ Client → server, JSON over WS::
     {"action": "play-letter", "symbol": "K"}
     {"action": "get-audio-settings"}
     {"action": "set-audio-settings", "character_wpm": 20, "effective_wpm": 10,
-     "tone_shape": 2, "receiver_bed": 0, "cadence_variation": 0}
+     "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1}
 
 Server → client, JSON over WS, one frame per event. Pushed
 unsolicited on connect, and after every change::
 
     {"type": "claimed-symbols", "symbols": ["K", "M"], "suggested_next": "U"}
     {"type": "audio-settings", "character_wpm": 20, "effective_wpm": 10,
-     "farnsworth_enabled": true, "tone_shape": 2, "receiver_bed": 0,
-     "cadence_variation": 0}
+     "farnsworth_enabled": true, "tone_shape": 2, "receiver_bed": 2,
+     "cadence_variation": 1}
 
 During a Koch Exercise session::
 

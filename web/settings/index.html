@@ -51,46 +51,49 @@
             <fieldset class="settings-section">
                 <legend>Signal Texture</legend>
 
-                <div class="settings-field settings-field--range">
+                <div class="settings-field">
                     <label for="tone-shape">Tone Shape</label>
                     <input
                         id="tone-shape"
                         name="tone_shape"
-                        type="range"
+                        type="number"
+                        inputmode="numeric"
                         min="0"
                         max="10"
                         step="1"
+                        required
                     >
-                    <output id="tone-shape-summary" for="tone-shape">2</output>
-                    <p>Softens the keying edge so the signal has material presence.</p>
+                    <p><strong id="tone-shape-summary">2</strong> · Softens the keying edge so the signal has material presence. Suggested range: 0-10.</p>
                 </div>
 
-                <div class="settings-field settings-field--range">
+                <div class="settings-field">
                     <label for="receiver-bed">Receiver Bed</label>
                     <input
                         id="receiver-bed"
                         name="receiver_bed"
-                        type="range"
+                        type="number"
+                        inputmode="numeric"
                         min="0"
                         max="10"
                         step="1"
+                        required
                     >
-                    <output id="receiver-bed-summary" for="receiver-bed">0</output>
-                    <p>Adds a very quiet listening floor beneath the signal.</p>
+                    <p><strong id="receiver-bed-summary">2</strong> · Adds a very quiet listening floor beneath the signal. Suggested range: 0-10.</p>
                 </div>
 
-                <div class="settings-field settings-field--range">
+                <div class="settings-field">
                     <label for="cadence-variation">Cadence Variation</label>
                     <input
                         id="cadence-variation"
                         name="cadence_variation"
-                        type="range"
+                        type="number"
+                        inputmode="numeric"
                         min="0"
                         max="5"
                         step="1"
+                        required
                     >
-                    <output id="cadence-variation-summary" for="cadence-variation">0</output>
-                    <p>Adds slight natural movement to spacing while preserving configured speed.</p>
+                    <p><strong id="cadence-variation-summary">1</strong> · Adds slight natural movement to spacing while preserving configured speed. Suggested range: 0-5.</p>
                 </div>
             </fieldset>
 

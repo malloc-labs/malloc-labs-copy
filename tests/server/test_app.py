@@ -417,8 +417,8 @@ async def test_get_audio_settings_returns_configured_timing(tmp_path, patched_pl
                 "effective_wpm": 25,
                 "farnsworth_enabled": False,
                 "tone_shape": 2,
-                "receiver_bed": 0,
-                "cadence_variation": 0,
+                "receiver_bed": 2,
+                "cadence_variation": 1,
             }
     finally:
         server.close()
