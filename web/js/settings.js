@@ -12,16 +12,18 @@ const toneShapeInput = document.getElementById("tone-shape");
 const receiverBedInput = document.getElementById("receiver-bed");
 const cadenceVariationInput = document.getElementById("cadence-variation");
 const saveButton = document.getElementById("save-audio-settings");
+const playTestButton = document.getElementById("play-test-message");
+const saveTestButton = document.getElementById("save-test-message");
 const statusEl = document.getElementById("settings-status");
 const characterSummary = document.getElementById("character-speed-summary");
 const effectiveSummary = document.getElementById("effective-speed-summary");
-const toneShapeSummary = document.getElementById("tone-shape-summary");
-const receiverBedSummary = document.getElementById("receiver-bed-summary");
-const cadenceVariationSummary = document.getElementById("cadence-variation-summary");
 
 let socket = null;
 let isSaving = false;
 let savedSettings = null;
+let isPlayingTestMessage = false;
+let isSavingTestMessage = false;
+let wavExport = null;
 
 function setStatus(status, text) {
     statusEl.dataset.status = status;
@@ -34,6 +36,8 @@ function setInputsEnabled(enabled) {
     toneShapeInput.disabled = !enabled;
     receiverBedInput.disabled = !enabled;
     cadenceVariationInput.disabled = !enabled;
+    playTestButton.disabled = !enabled;
+    saveTestButton.disabled = !enabled;
 }
 
 function currentSettings() {
@@ -46,15 +50,11 @@ function currentSettings() {
 }
 
 function updateSummaries() {
-    const { character, effective, toneShape, receiverBed, cadenceVariation } = currentSettings();
+    const { character, effective } = currentSettings();
     characterSummary.textContent =
         Number.isFinite(character) && character > 0 ? `${character} WPM` : "Character WPM";
     effectiveSummary.textContent =
         Number.isFinite(effective) && effective > 0 ? `${effective} WPM` : "Effective WPM";
-    toneShapeSummary.textContent = Number.isInteger(toneShape) ? String(toneShape) : "-";
-    receiverBedSummary.textContent = Number.isInteger(receiverBed) ? String(receiverBed) : "-";
-    cadenceVariationSummary.textContent =
-        Number.isInteger(cadenceVariation) ? String(cadenceVariation) : "-";
 }
 
 function validateSettings() {
@@ -106,7 +106,31 @@ function updateSaveState() {
         saveButton.textContent = "Saved";
     }
 
+    updateTestMessageState(validationError);
     return { validationError, dirty };
+}
+
+function updateTestMessageState(validationError = validateSettings()) {
+    const ready = !validationError && socket && socket.readyState === WebSocket.OPEN;
+    playTestButton.disabled = !ready || isSaving || isPlayingTestMessage || isSavingTestMessage;
+    playTestButton.textContent = isPlayingTestMessage ? "Playing" : "Play";
+    saveTestButton.disabled = !ready || isSaving || isSavingTestMessage || isPlayingTestMessage;
+    saveTestButton.textContent = isSavingTestMessage ? "Saving WAV" : "Save WAV";
+}
+
+function saveBase64Wav(chunks, filename) {
+    const binary = atob(chunks.join(""));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+
+    const url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
 }
 
 function renderAudioSettings(event) {
@@ -159,20 +183,58 @@ function connect() {
             setStatus("error", event.detail || "invalid settings");
             setInputsEnabled(true);
             updateSaveState();
+        } else if (event.type === "test-message-start") {
+            isPlayingTestMessage = true;
+            setStatus("connected", "playing test message");
+            updateTestMessageState();
+        } else if (event.type === "test-message-end") {
+            isPlayingTestMessage = false;
+            setStatus("connected", "test message complete");
+            updateTestMessageState();
+        } else if (event.type === "test-message-wav-start") {
+            wavExport = { filename: event.filename, chunks: [] };
+            isSavingTestMessage = true;
+            setStatus("connected", "saving WAV");
+            updateTestMessageState();
+        } else if (event.type === "test-message-wav-chunk" && wavExport) {
+            wavExport.chunks.push(event.data);
+        } else if (event.type === "test-message-wav-end" && wavExport) {
+            saveBase64Wav(wavExport.chunks, event.filename || wavExport.filename);
+            wavExport = null;
+            isSavingTestMessage = false;
+            setStatus("connected", "WAV saved");
+            updateTestMessageState();
+        } else if (
+            event.type === "error" &&
+            (event.reason === "invalid-test-message-settings" ||
+                event.reason === "test-message-playback-failed")
+        ) {
+            isPlayingTestMessage = false;
+            isSavingTestMessage = false;
+            wavExport = null;
+            setStatus("error", event.detail || "test message failed");
+            updateTestMessageState();
         }
     });
 
     socket.addEventListener("close", () => {
         isSaving = false;
+        isPlayingTestMessage = false;
+        isSavingTestMessage = false;
+        wavExport = null;
         setInputsEnabled(false);
         saveButton.disabled = true;
+        playTestButton.disabled = true;
         saveButton.classList.remove("btn--primary");
         setStatus("disconnected", "disconnected");
     });
 
     socket.addEventListener("error", () => {
         isSaving = false;
+        isPlayingTestMessage = false;
+        isSavingTestMessage = false;
         setStatus("error", "connection error");
+        updateTestMessageState();
     });
 }
 
@@ -202,6 +264,47 @@ form.addEventListener("submit", (event) => {
             cadence_variation: cadenceVariation,
         })
     );
+});
+
+function testMessagePayload() {
+    const { character, effective, toneShape, receiverBed, cadenceVariation } = currentSettings();
+    return {
+        character_wpm: character,
+        effective_wpm: effective,
+        tone_shape: toneShape,
+        receiver_bed: receiverBed,
+        cadence_variation: cadenceVariation,
+    };
+}
+
+playTestButton.addEventListener("click", () => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
+    const validationError = validateSettings();
+    if (validationError) {
+        setStatus("error", validationError);
+        updateTestMessageState(validationError);
+        return;
+    }
+
+    socket.send(JSON.stringify({ action: "play-test-message", ...testMessagePayload() }));
+});
+
+saveTestButton.addEventListener("click", () => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
+    const validationError = validateSettings();
+    if (validationError) {
+        setStatus("error", validationError);
+        updateTestMessageState(validationError);
+        return;
+    }
+
+    isSavingTestMessage = true;
+    wavExport = null;
+    setStatus("connected", "saving WAV");
+    updateTestMessageState();
+    socket.send(JSON.stringify({ action: "save-test-message", ...testMessagePayload() }));
 });
 
 function onSettingsInput() {

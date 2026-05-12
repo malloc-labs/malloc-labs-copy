@@ -34,6 +34,10 @@ Client → server, JSON over WS::
     {"action": "get-audio-settings"}
     {"action": "set-audio-settings", "character_wpm": 20, "effective_wpm": 10,
      "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1}
+    {"action": "play-test-message", "character_wpm": 20, "effective_wpm": 10,
+     "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1}
+    {"action": "save-test-message", "character_wpm": 20, "effective_wpm": 10,
+     "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1}
 
 Server → client, JSON over WS, one frame per event. Pushed
 unsolicited on connect, and after every change::
@@ -60,6 +64,14 @@ During a Letters playback (Koch hub → Letters page)::
 
     {"type": "letter-start", "symbol": "K"}
     {"type": "letter-end",   "symbol": "K"}
+
+During Settings test-message playback/export::
+
+    {"type": "test-message-start"}
+    {"type": "test-message-end"}
+    {"type": "test-message-wav-start", "filename": "...wav", "byte_length": 123}
+    {"type": "test-message-wav-chunk", "data": "<base64>"}
+    {"type": "test-message-wav-end", "filename": "...wav"}
 
 ``stop`` cancels an in-flight session. The engine cancels the audio
 task and sends ``session-end`` before closing the session. If no
@@ -91,6 +103,7 @@ honest about what is actually configured.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import mimetypes
@@ -98,6 +111,7 @@ import socket
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from websockets.datastructures import Headers
 from websockets.exceptions import ConnectionClosed
@@ -106,6 +120,7 @@ from websockets.server import WebSocketServerProtocol, serve
 from copy_653 import __version__, sequence
 from copy_653.audio import patterns, playback, synth, texture
 from copy_653.audio.parameters import AudioParameters
+from copy_653.audio.wav import encode_pcm16_wav
 from copy_653.config import (
     DEFAULT_CONFIG_PATH,
     load_audio_parameters,
@@ -120,10 +135,13 @@ from copy_653.letters import (
     find_anchors_dir,
     play_letter_sequence,
 )
+from copy_653.server.test_message_audio import build_marconi_test_message
 from copy_653.server.word_detection_audio import build_word_detection_audio
 
 DEFAULT_PORT = 8653
 DEFAULT_PORT_SEARCH_SPAN = 20
+# Divisible by 3 so every non-final base64 chunk can be concatenated safely.
+WAV_EXPORT_CHUNK_SIZE = 245_760
 
 logger = logging.getLogger(__name__)
 
@@ -187,7 +205,8 @@ def _build_static_handler(web_root: Path):
         """Serve static HTTP requests or allow the WebSocket upgrade."""
         # Strip the query string for static lookups; we do not use it
         # for anything in v0.
-        clean_path = path.split("?", 1)[0]
+        parsed_path = urlsplit(path)
+        clean_path = parsed_path.path
 
         # /ws is the only WS endpoint. Returning None hands control
         # back to websockets to complete the upgrade.
@@ -584,12 +603,125 @@ async def _set_audio_settings_action(
     await _send_event(ws, _audio_settings_event_from_params(params))
 
 
+async def _play_test_message_action(
+    ws: WebSocketServerProtocol,
+    message: dict[str, Any],
+) -> None:
+    try:
+        params = _audio_params_from_settings_message(message)
+    except ValueError as exc:
+        await _send_event(
+            ws,
+            {
+                "type": "error",
+                "reason": "invalid-test-message-settings",
+                "detail": str(exc),
+            },
+        )
+        return
+
+    await _send_event(ws, {"type": "test-message-start"})
+    try:
+        await asyncio.to_thread(playback.play, build_marconi_test_message(params), params)
+    except asyncio.CancelledError:
+        try:
+            import sounddevice as sd
+
+            sd.stop()
+        except Exception:
+            pass
+        raise
+    except Exception as exc:
+        await _send_event(
+            ws,
+            {
+                "type": "error",
+                "reason": "test-message-playback-failed",
+                "detail": str(exc),
+            },
+        )
+        raise
+    await _send_event(ws, {"type": "test-message-end"})
+
+
+async def _save_test_message_action(
+    ws: WebSocketServerProtocol,
+    message: dict[str, Any],
+) -> None:
+    try:
+        params = _audio_params_from_settings_message(message)
+        wav_bytes = await asyncio.to_thread(
+            lambda: encode_pcm16_wav(build_marconi_test_message(params), params.sample_rate_hz)
+        )
+    except ValueError as exc:
+        await _send_event(
+            ws,
+            {
+                "type": "error",
+                "reason": "invalid-test-message-settings",
+                "detail": str(exc),
+            },
+        )
+        return
+
+    filename = "copy-653-marconi-test-message.wav"
+    await _send_event(
+        ws,
+        {
+            "type": "test-message-wav-start",
+            "filename": filename,
+            "byte_length": len(wav_bytes),
+        },
+    )
+    for start in range(0, len(wav_bytes), WAV_EXPORT_CHUNK_SIZE):
+        encoded = base64.b64encode(wav_bytes[start : start + WAV_EXPORT_CHUNK_SIZE]).decode("ascii")
+        await _send_event(ws, {"type": "test-message-wav-chunk", "data": encoded})
+    await _send_event(ws, {"type": "test-message-wav-end", "filename": filename})
+
+
+def _audio_params_from_settings_message(message: dict[str, Any]) -> AudioParameters:
+    character_wpm = _strict_positive_int(message.get("character_wpm"), "character_wpm")
+    effective_wpm = _strict_positive_int(message.get("effective_wpm"), "effective_wpm")
+    tone_shape = _strict_bounded_int(
+        message.get("tone_shape"),
+        "tone_shape",
+        texture.MIN_TONE_SHAPE,
+        texture.MAX_TONE_SHAPE,
+    )
+    receiver_bed = _strict_bounded_int(
+        message.get("receiver_bed"),
+        "receiver_bed",
+        texture.MIN_RECEIVER_BED,
+        texture.MAX_RECEIVER_BED,
+    )
+    cadence_variation = _strict_bounded_int(
+        message.get("cadence_variation"),
+        "cadence_variation",
+        texture.MIN_CADENCE_VARIATION,
+        texture.MAX_CADENCE_VARIATION,
+    )
+    return AudioParameters(
+        character_speed_wpm=character_wpm,
+        effective_speed_wpm=effective_wpm,
+        envelope_ramp_seconds=texture.envelope_seconds_for_tone_shape(tone_shape),
+        receiver_bed=receiver_bed,
+        cadence_variation=cadence_variation,
+    )
+
+
 def _strict_positive_int(value: Any, field: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValueError(f"{field} must be a positive integer")
     if value <= 0:
         raise ValueError(f"{field} must be a positive integer")
     return value
+
+
+def _strict_bounded_int(value: Any, field: str, minimum: int, maximum: int) -> int:
+    parsed = _optional_bounded_int(value, field, minimum, maximum)
+    if parsed is None:
+        raise ValueError(f"{field} must be an integer from {minimum} to {maximum}")
+    return parsed
 
 
 def _optional_bounded_int(value: Any, field: str, minimum: int, maximum: int) -> int | None:
@@ -657,6 +789,7 @@ async def handler(
     # and replaces the letter task.
     current_session_task: asyncio.Task[None] | None = None
     current_letter_task: asyncio.Task[None] | None = None
+    current_test_message_task: asyncio.Task[None] | None = None
 
     # Push current state on connect so the UI does not need to ask.
     claimed = load_claimed_symbols(config_path)
@@ -710,6 +843,19 @@ async def handler(
                 await _get_audio_settings_action(ws, config_path)
             elif action == "set-audio-settings":
                 await _set_audio_settings_action(ws, message, config_path)
+            elif action == "play-test-message":
+                if current_test_message_task is not None and not current_test_message_task.done():
+                    current_test_message_task.cancel()
+                    try:
+                        await current_test_message_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+
+                current_test_message_task = asyncio.create_task(
+                    _play_test_message_action(ws, message)
+                )
+            elif action == "save-test-message":
+                await _save_test_message_action(ws, message)
             elif action == "play-letter":
                 symbol = message.get("symbol", "")
                 if not isinstance(symbol, str) or len(symbol) != 1:
@@ -748,6 +894,8 @@ async def handler(
             current_session_task.cancel()
         if current_letter_task is not None and not current_letter_task.done():
             current_letter_task.cancel()
+        if current_test_message_task is not None and not current_test_message_task.done():
+            current_test_message_task.cancel()
 
 
 async def serve_app(

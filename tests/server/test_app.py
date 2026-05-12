@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import io
 import json
 import socket
 import textwrap
 import urllib.request
+import wave
 from pathlib import Path
 from typing import Any
 
@@ -544,6 +547,138 @@ async def test_set_audio_settings_rejects_invalid_texture(tmp_path, patched_play
             assert event["type"] == "error"
             assert event["reason"] == "invalid-audio-settings"
             assert "tone_shape" in event["detail"]
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_play_test_message_uses_payload_settings(tmp_path, patched_playback):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+
+            await ws.send(
+                json.dumps(
+                    {
+                        "action": "play-test-message",
+                        "character_wpm": 20,
+                        "effective_wpm": 10,
+                        "tone_shape": 3,
+                        "receiver_bed": 4,
+                        "cadence_variation": 2,
+                    }
+                )
+            )
+            events = await _drain_until(
+                ws,
+                lambda e: e["type"] == "test-message-end",
+                timeout=5.0,
+            )
+
+        assert events == [{"type": "test-message-start"}, {"type": "test-message-end"}]
+        assert len(patched_playback) == 1
+        samples, params = patched_playback[0]
+        assert samples.size > 0
+        assert params.character_speed_wpm == 20
+        assert params.effective_speed_wpm == 10
+        assert params.envelope_ramp_seconds == 0.007
+        assert params.receiver_bed == 4
+        assert params.cadence_variation == 2
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_save_test_message_returns_chunked_wav(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+
+            await ws.send(
+                json.dumps(
+                    {
+                        "action": "save-test-message",
+                        "character_wpm": 20,
+                        "effective_wpm": 10,
+                        "tone_shape": 3,
+                        "receiver_bed": 4,
+                        "cadence_variation": 2,
+                    }
+                )
+            )
+            events = await _drain_until(
+                ws,
+                lambda e: e["type"] == "test-message-wav-end",
+                timeout=5.0,
+            )
+
+        assert events[0]["type"] == "test-message-wav-start"
+        assert events[0]["filename"] == "copy-653-marconi-test-message.wav"
+        chunks = [event["data"] for event in events if event["type"] == "test-message-wav-chunk"]
+        assert chunks
+        body = b"".join(base64.b64decode(chunk) for chunk in chunks)
+        assert len(body) == events[0]["byte_length"]
+
+        with wave.open(io.BytesIO(body), "rb") as wav:
+            assert wav.getnchannels() == 1
+            assert wav.getsampwidth() == 2
+            assert wav.getframerate() == 48_000
+            assert wav.getnframes() > 48_000 * 4
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_save_test_message_rejects_invalid_settings(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+
+            await ws.send(
+                json.dumps(
+                    {
+                        "action": "save-test-message",
+                        "character_wpm": 10,
+                        "effective_wpm": 20,
+                        "tone_shape": 3,
+                        "receiver_bed": 4,
+                        "cadence_variation": 2,
+                    }
+                )
+            )
+            raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            event = json.loads(raw)
+
+        assert event["type"] == "error"
+        assert event["reason"] == "invalid-test-message-settings"
+        assert "cannot exceed" in event["detail"]
     finally:
         server.close()
         await server.wait_closed()
