@@ -1,12 +1,14 @@
 /*
- * index-morse-scroll.js — faint decorative Morse ticker for the Copy 653 index.
+ * Copy 653 landing-page Morse readout.
  *
- * The strip is intentionally aria-hidden in markup. It is a visual texture only,
- * not training content or a navigation control.
+ * Decorative only: displays a single, right-aligned symbol/rhythm sample in the
+ * narrow band between the title rule and the navigation rule, changing at a
+ * slow two-second cadence.
  */
 (function () {
-    var CYCLE_SECONDS = 85;
-    var REFRESH_BEATS = 4;
+    "use strict";
+
+    var UPDATE_MS = 2000;
 
     var MORSE = [
         ["A", "dit Dah"],
@@ -51,14 +53,6 @@
         return items[Math.floor(Math.random() * items.length)];
     }
 
-    function makeTokens(count) {
-        var tokens = [];
-        for (var i = 0; i < count; i += 1) {
-            tokens.push(randomItem(MORSE));
-        }
-        return tokens;
-    }
-
     function makeSpan(className, text) {
         var span = document.createElement("span");
         span.className = className;
@@ -66,52 +60,28 @@
         return span;
     }
 
-    function appendLine(track, tokens) {
-        var line = document.createElement("span");
-        line.className = "morse-scroll__line";
-
-        tokens.forEach(function (token) {
-            var item = document.createElement("span");
-            item.className = "morse-scroll__item";
-
-            var symbol = document.createElement("span");
-            symbol.className = "morse-scroll__symbol";
-            symbol.textContent = token[0];
-
-            var rhythm = document.createElement("span");
-            rhythm.className = "morse-scroll__rhythm";
-            rhythm.textContent = token[1];
-
-            item.appendChild(makeSpan("morse-scroll__bar", "| "));
-            item.appendChild(symbol);
-            item.appendChild(document.createTextNode("  "));
-            item.appendChild(rhythm);
-            item.appendChild(document.createTextNode("  "));
-            item.appendChild(makeSpan("morse-scroll__bar", "|"));
-            line.appendChild(item);
-        });
-
-        track.appendChild(line);
-    }
-
     function render(track) {
-        var tokens = makeTokens(18);
+        var token = randomItem(MORSE);
+        var item = document.createElement("span");
+        item.className = "morse-scroll__item";
 
-        track.style.setProperty("--morse-scroll-duration", CYCLE_SECONDS + "s");
-        track.replaceChildren();
-        appendLine(track, tokens);
-        appendLine(track, tokens);
+        item.appendChild(makeSpan("morse-scroll__bar", "| "));
+        item.appendChild(makeSpan("morse-scroll__symbol", token[0]));
+        item.appendChild(document.createTextNode("  "));
+        item.appendChild(makeSpan("morse-scroll__rhythm", token[1]));
+        item.appendChild(document.createTextNode("  "));
+        item.appendChild(makeSpan("morse-scroll__bar", "|"));
 
-        return CYCLE_SECONDS;
+        track.replaceChildren(item);
     }
 
     document.addEventListener("DOMContentLoaded", function () {
         var track = document.querySelector("[data-morse-scroll-track]");
         if (!track) return;
 
-        var cycleSeconds = render(track);
+        render(track);
         window.setInterval(function () {
-            cycleSeconds = render(track);
-        }, cycleSeconds * REFRESH_BEATS * 1000);
+            render(track);
+        }, UPDATE_MS);
     });
 }());

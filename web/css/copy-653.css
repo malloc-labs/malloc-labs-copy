@@ -67,6 +67,7 @@
     font-family: var(--mr-font-mono);
     font-size: var(--mr-size-small);
     color: var(--mr-muted);
+    opacity: 0.58;
 }
 
 .landing-header {
@@ -96,8 +97,8 @@
     border-top: var(--mr-border-rule);
 }
 
-/* Decorative index ticker: zero-height so the two rules below the title keep
- * their original spacing. The strip is positioned into the existing gap.
+/* Decorative index Morse readout: zero-height so the two rules below the title
+ * keep their original spacing. The strip is positioned into the existing gap.
  */
 .morse-scroll {
     position: relative;
@@ -116,9 +117,9 @@
 }
 
 .morse-scroll__track {
-    --morse-scroll-duration: 85s;
     display: flex;
-    width: max-content;
+    justify-content: flex-end;
+    width: 100%;
     max-width: none;
     font-family: var(--mr-font-mono);
     font-size: var(--mr-size-small);
@@ -126,16 +127,11 @@
     letter-spacing: 0.08em;
     color: var(--mr-muted);
     white-space: nowrap;
-    animation: morse-scroll-left var(--morse-scroll-duration) linear infinite;
-}
-
-.morse-scroll__line {
-    flex: 0 0 auto;
-    padding-right: var(--mr-space-6);
 }
 
 .morse-scroll__item {
-    margin-right: var(--mr-space-6);
+    display: inline-block;
+    text-align: right;
 }
 
 .morse-scroll__bar,
@@ -147,18 +143,6 @@
 .morse-scroll__symbol {
     color: var(--mr-anchor);
     opacity: 0.26;
-}
-
-@keyframes morse-scroll-left {
-    from { transform: translateX(0); }
-    to { transform: translateX(-50%); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .morse-scroll__track {
-        animation: none;
-        transform: none;
-    }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
