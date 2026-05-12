@@ -5,7 +5,7 @@
  * not training content or a navigation control.
  */
 (function () {
-    var WPM = 22; // 20wpm experiment, increased by 10%.
+    var WPM = 24.2; // 20wpm experiment, increased twice by 10%.
     var CHARS_PER_STANDARD_WORD = 5;
     var MIN_CYCLE_SECONDS = 25;
     var REFRESH_BEATS = 4;
@@ -62,7 +62,7 @@
     }
 
     function tokenLength(token) {
-        return token[0].length + 3 + token[1].length + 5;
+        return 2 + token[0].length + 2 + token[1].length + 3;
     }
 
     function appendLine(track, tokens) {
@@ -79,10 +79,13 @@
 
             var rhythm = document.createElement("span");
             rhythm.className = "morse-scroll__rhythm";
-            rhythm.textContent = " / " + token[1];
+            rhythm.textContent = token[1];
 
+            item.appendChild(document.createTextNode("| "));
             item.appendChild(symbol);
+            item.appendChild(document.createTextNode("  "));
             item.appendChild(rhythm);
+            item.appendChild(document.createTextNode("  |"));
             line.appendChild(item);
         });
 
