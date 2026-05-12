@@ -37,9 +37,11 @@
  * Section landing pages retain the centred composition for contained tools.
  */
 .landing-body--index {
-    place-items: center start;
-    padding-left: clamp(2rem, 5vw, 4rem);
-    padding-right: 2rem;
+    --copy-index-offset: clamp(2rem, 5vw, 4rem);
+    --copy-index-gutter: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
 }
 
 .landing-shell {
@@ -47,7 +49,24 @@
 }
 
 .landing-body--index .landing-shell {
-    width: min(100%, 560px);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    width: min(calc(100% - var(--copy-index-offset) - var(--copy-index-gutter)), 560px);
+    margin-left: var(--copy-index-offset);
+    margin-right: var(--copy-index-gutter);
+}
+
+.index-footer {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--mr-space-4);
+    padding: var(--mr-space-5) var(--copy-index-gutter);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
 }
 
 .landing-header {
