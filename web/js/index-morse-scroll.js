@@ -8,7 +8,7 @@
 (function () {
     "use strict";
 
-    var UPDATE_MS = 2000;
+    var UPDATE_MS = 12000;
 
     var MORSE = [
         ["A", "dit Dah"],
@@ -65,12 +65,10 @@
         var item = document.createElement("span");
         item.className = "morse-scroll__item";
 
-        item.appendChild(makeSpan("morse-scroll__bar", "| "));
         item.appendChild(makeSpan("morse-scroll__symbol", token[0]));
         item.appendChild(document.createTextNode("  "));
         item.appendChild(makeSpan("morse-scroll__rhythm", token[1]));
         item.appendChild(document.createTextNode("  "));
-        item.appendChild(makeSpan("morse-scroll__bar", "|"));
 
         track.replaceChildren(item);
     }
