@@ -28,7 +28,7 @@ python -m copy_653 --port 9000      # bind a different port
 
 The engine starts an HTTP + WebSocket server on `127.0.0.1:8653`. If that port is in use, the engine probes upward by up to 20 ports and prints the bound URL on stdout (per spec §1.5 — fail loudly, never silently). Press `Ctrl-C` to stop.
 
-Status: audio synthesis, Koch sequence generation, Word Detection, Letters playback, audio timing settings, and locked post-session review are wired. MIDI input and persistent session records are still pending.
+Status: audio synthesis, Koch sequence generation, Word Detection, Letters playback, audio timing and signal texture settings, Settings-page test message playback/export, and locked post-session review are wired. MIDI input and persistent session records are still pending.
 
 ## Signal texture
 
@@ -45,6 +45,12 @@ has enough shape, floor, and small cadence movement to feel more natural.
 | Receiver Bed | 2 | 0-10 | Adds deterministic shaped floor at roughly `-50 + (level * 1.5)` dB relative to configured tone amplitude; level 2 is about -47 dB. | Gives the signal quiet acoustic space without turning it into band-condition training. |
 | Cadence Variation | 1 | 0-5 | Applies deterministic spacing variation up to `level * 0.6%` around inter-character and inter-word gaps; level 1 is at most +/-0.6%, level 5 is at most +/-3%. | Reduces metronomic sterility while preserving dit/dah identity and configured WPM. |
 
+The Settings page includes a fixed Morse test message for quickly auditioning
+those values: `ARE YOU READY`, a two-second phrase gap, `CAN YOU HEAR ME`,
+another two-second gap, then `YES LOUD AND CLEAR`. **Play** sends it through the
+current audio output; **Save WAV** exports the same generated signal so the
+clean and textured versions can be inspected or compared with external tools.
+
 ## Browser test
 
 After `python -m copy_653`, open the URL it prints (default `http://127.0.0.1:8653`) in any modern browser. Current browser surfaces include:
@@ -52,7 +58,7 @@ After `python -m copy_653`, open the URL it prints (default `http://127.0.0.1:86
 - **Koch Method → Exercises**: claim/unclaim symbols, start or stop a random Koch listening session, then expand the locked review to see clock-time symbol entries with spoken Morse patterns.
 - **Koch Method → Word Detection**: listen for claimed symbols inside short words, including spoken focus prompts for K, M, and U where recordings are available.
 - **Koch Method → Letters**: play a single symbol's spoken anchor plus Morse sequence for reference.
-- **Settings**: adjust character speed and effective speed; the server persists those values in the shared config.
+- **Settings**: adjust character speed, effective speed, and signal texture; play or export the fixed test message; the server persists saved values in the shared config.
 
 The WebSocket protocol is documented at the top of [`src/copy_653/server/app.py`](src/copy_653/server/app.py).
 
