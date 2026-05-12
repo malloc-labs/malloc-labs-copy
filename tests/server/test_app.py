@@ -109,6 +109,23 @@ def _make_web_root(tmp_path: Path) -> Path:
     return web_root
 
 
+def test_word_detection_instruction_symbols_are_limited_to_focus_letters():
+    assert app._word_detection_instruction_symbols("make", frozenset({"K", "M"})) == ("M", "K")
+    assert app._word_detection_instruction_symbols("make", frozenset({"U"})) == ()
+
+
+def test_word_detection_audio_inserts_spoken_instruction_before_focus_word():
+    params = app.AudioParameters(character_speed_wpm=25, effective_speed_wpm=25)
+    plain_samples = app.synth.synthesize_words(["km"], params)
+    prompted_samples, prompted_timeline = app._synthesize_word_detection_audio(
+        ["km"], ("K",), params
+    )
+
+    assert len(prompted_samples) > len(plain_samples)
+    assert prompted_timeline[0][0] == "K"
+    assert prompted_timeline[0][1] > 0.0
+
+
 async def _drain_until(ws, predicate, timeout=5.0):
     """Collect events until ``predicate(event)`` returns True. Returns
     the full list of events received (including the matching one).
