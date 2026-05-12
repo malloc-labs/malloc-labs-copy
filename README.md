@@ -28,17 +28,18 @@ python -m copy_653 --port 9000      # bind a different port
 
 The engine starts an HTTP + WebSocket server on `127.0.0.1:8653`. If that port is in use, the engine probes upward by up to 20 ports and prints the bound URL on stdout (per spec §1.5 — fail loudly, never silently). Press `Ctrl-C` to stop.
 
-Status: audio synthesis and the engine ↔ UI seam are wired. Session lifecycle, sequence generation, MIDI input, and the listening/review UI are still pending.
+Status: audio synthesis, Koch sequence generation, Word Detection, Letters playback, audio timing settings, and locked post-session review are wired. MIDI input and persistent session records are still pending.
 
 ## Browser test
 
-After `python -m copy_653`, open the URL it prints (default `http://127.0.0.1:8653`) in any modern browser. The dev shell shows:
+After `python -m copy_653`, open the URL it prints (default `http://127.0.0.1:8653`) in any modern browser. Current browser surfaces include:
 
-- A connection status line (`connected` once the WebSocket is up).
-- A **Play KMK** button — sends `{"action":"play","symbols":"KMK"}` over the WebSocket. The engine synthesises the audio, plays it via PortAudio, and pushes per-symbol `{symbol, t_on, t_off}` events back. The page renders them as a mono timeline.
-- A **Stop** button — present per the listening-screen affordance budget (spec §8.3); wired to no-op until session cancellation lands.
+- **Koch Method → Exercises**: claim/unclaim symbols, start or stop a random Koch listening session, then expand the locked review to see clock-time symbol entries with spoken Morse patterns.
+- **Koch Method → Word Detection**: listen for claimed symbols inside short words, including spoken focus prompts for K, M, and U where recordings are available.
+- **Koch Method → Letters**: play a single symbol's spoken anchor plus Morse sequence for reference.
+- **Settings**: adjust character speed and effective speed; the server persists those values in the shared config.
 
-The wire protocol is documented at the top of [`src/copy_653/server/app.py`](src/copy_653/server/app.py). The `play` action is a development placeholder and is replaced when `sequence/` and `session/` arrive.
+The WebSocket protocol is documented at the top of [`src/copy_653/server/app.py`](src/copy_653/server/app.py).
 
 ## Configure
 

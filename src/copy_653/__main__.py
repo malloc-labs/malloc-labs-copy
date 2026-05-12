@@ -13,6 +13,7 @@ from copy_653.server import DEFAULT_PORT, DEFAULT_PORT_SEARCH_SPAN, run
 
 
 def main() -> None:
+    """Parse CLI options and run the Copy engine until interrupted."""
     parser = argparse.ArgumentParser(prog="copy-653", description="Copy engine.")
     parser.add_argument(
         "--port",

@@ -1,12 +1,8 @@
-// Copy — minimal v0 UI shell.
+// Copy — Koch Exercise UI.
 //
-// One WebSocket to the engine. Send JSON commands; render the events
-// the engine pushes back as a plain timeline. No state machine, no
-// framework, no buildstep (spec §12).
-//
-// This file is a development scaffold for the engine ↔ UI seam. It
-// will be reshaped once Detection and Full Copy modes land; the
-// listening screen affordance budget is five (spec §8.3).
+// One WebSocket to the engine. The page manages the claimed Koch symbol
+// set, starts/stops listening sessions, and keeps truth disclosure locked
+// until session-end. No framework, no build step (spec §12).
 
 import { PATTERNS, spokenMorsePattern } from "./morse-display.js";
 
