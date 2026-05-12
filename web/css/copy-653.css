@@ -127,13 +127,25 @@
     color: var(--mr-muted);
     opacity: 0.16;
     white-space: nowrap;
-    text-transform: uppercase;
     animation: morse-scroll-left var(--morse-scroll-duration) linear infinite;
 }
 
 .morse-scroll__line {
     flex: 0 0 auto;
     padding-right: var(--mr-space-6);
+}
+
+.morse-scroll__item {
+    margin-right: var(--mr-space-6);
+}
+
+.morse-scroll__symbol {
+    color: var(--mr-anchor);
+    opacity: 0.9;
+}
+
+.morse-scroll__rhythm {
+    color: var(--mr-muted);
 }
 
 @keyframes morse-scroll-left {

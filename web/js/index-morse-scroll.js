@@ -5,47 +5,47 @@
  * not training content or a navigation control.
  */
 (function () {
-    var WPM = 20;
+    var WPM = 22; // 20wpm experiment, increased by 10%.
     var CHARS_PER_STANDARD_WORD = 5;
-    var MIN_CYCLE_SECONDS = 28;
+    var MIN_CYCLE_SECONDS = 25;
     var REFRESH_BEATS = 4;
 
     var MORSE = [
-        ["A", "Dit Dah"],
-        ["B", "Dah Dit Dit Dit"],
-        ["C", "Dah Dit Dah Dit"],
-        ["D", "Dah Dit Dit"],
-        ["E", "Dit"],
-        ["F", "Dit Dit Dah Dit"],
-        ["G", "Dah Dah Dit"],
-        ["H", "Dit Dit Dit Dit"],
-        ["I", "Dit Dit"],
-        ["J", "Dit Dah Dah Dah"],
-        ["K", "Dah Dit Dah"],
-        ["L", "Dit Dah Dit Dit"],
+        ["A", "dit Dah"],
+        ["B", "Dah dit dit dit"],
+        ["C", "Dah dit Dah dit"],
+        ["D", "Dah dit dit"],
+        ["E", "dit"],
+        ["F", "dit dit Dah dit"],
+        ["G", "Dah Dah dit"],
+        ["H", "dit dit dit dit"],
+        ["I", "dit dit"],
+        ["J", "dit Dah Dah Dah"],
+        ["K", "Dah dit Dah"],
+        ["L", "dit Dah dit dit"],
         ["M", "Dah Dah"],
-        ["N", "Dah Dit"],
+        ["N", "Dah dit"],
         ["O", "Dah Dah Dah"],
-        ["P", "Dit Dah Dah Dit"],
-        ["Q", "Dah Dah Dit Dah"],
-        ["R", "Dit Dah Dit"],
-        ["S", "Dit Dit Dit"],
+        ["P", "dit Dah Dah dit"],
+        ["Q", "Dah Dah dit Dah"],
+        ["R", "dit Dah dit"],
+        ["S", "dit dit dit"],
         ["T", "Dah"],
-        ["U", "Dit Dit Dah"],
-        ["V", "Dit Dit Dit Dah"],
-        ["W", "Dit Dah Dah"],
-        ["X", "Dah Dit Dit Dah"],
-        ["Y", "Dah Dit Dah Dah"],
-        ["Z", "Dah Dah Dit Dit"],
-        ["1", "Dit Dah Dah Dah Dah"],
-        ["2", "Dit Dit Dah Dah Dah"],
-        ["3", "Dit Dit Dit Dah Dah"],
-        ["4", "Dit Dit Dit Dit Dah"],
-        ["5", "Dit Dit Dit Dit Dit"],
-        ["6", "Dah Dit Dit Dit Dit"],
-        ["7", "Dah Dah Dit Dit Dit"],
-        ["8", "Dah Dah Dah Dit Dit"],
-        ["9", "Dah Dah Dah Dah Dit"],
+        ["U", "dit dit Dah"],
+        ["V", "dit dit dit Dah"],
+        ["W", "dit Dah Dah"],
+        ["X", "Dah dit dit Dah"],
+        ["Y", "Dah dit Dah Dah"],
+        ["Z", "Dah Dah dit dit"],
+        ["1", "dit Dah Dah Dah Dah"],
+        ["2", "dit dit Dah Dah Dah"],
+        ["3", "dit dit dit Dah Dah"],
+        ["4", "dit dit dit dit Dah"],
+        ["5", "dit dit dit dit dit"],
+        ["6", "Dah dit dit dit dit"],
+        ["7", "Dah Dah dit dit dit"],
+        ["8", "Dah Dah Dah dit dit"],
+        ["9", "Dah Dah Dah Dah dit"],
         ["0", "Dah Dah Dah Dah Dah"]
     ];
 
@@ -53,32 +53,53 @@
         return items[Math.floor(Math.random() * items.length)];
     }
 
-    function makeToken() {
-        var item = randomItem(MORSE);
-        return item[0] + " / " + item[1];
-    }
-
-    function makeLine(count) {
+    function makeTokens(count) {
         var tokens = [];
         for (var i = 0; i < count; i += 1) {
-            tokens.push(makeToken());
+            tokens.push(randomItem(MORSE));
         }
-        return tokens.join("     ");
+        return tokens;
+    }
+
+    function tokenLength(token) {
+        return token[0].length + 3 + token[1].length + 5;
+    }
+
+    function appendLine(track, tokens) {
+        var line = document.createElement("span");
+        line.className = "morse-scroll__line";
+
+        tokens.forEach(function (token) {
+            var item = document.createElement("span");
+            item.className = "morse-scroll__item";
+
+            var symbol = document.createElement("span");
+            symbol.className = "morse-scroll__symbol";
+            symbol.textContent = token[0];
+
+            var rhythm = document.createElement("span");
+            rhythm.className = "morse-scroll__rhythm";
+            rhythm.textContent = " / " + token[1];
+
+            item.appendChild(symbol);
+            item.appendChild(rhythm);
+            line.appendChild(item);
+        });
+
+        track.appendChild(line);
     }
 
     function render(track) {
-        var line = makeLine(18);
-        var cycleSeconds = Math.max(MIN_CYCLE_SECONDS, Math.ceil((line.length / (WPM * CHARS_PER_STANDARD_WORD)) * 60));
+        var tokens = makeTokens(18);
+        var lineLength = tokens.reduce(function (total, token) {
+            return total + tokenLength(token);
+        }, 0);
+        var cycleSeconds = Math.max(MIN_CYCLE_SECONDS, Math.ceil((lineLength / (WPM * CHARS_PER_STANDARD_WORD)) * 60));
 
         track.style.setProperty("--morse-scroll-duration", cycleSeconds + "s");
         track.replaceChildren();
-
-        [line, line].forEach(function (text) {
-            var span = document.createElement("span");
-            span.className = "morse-scroll__line";
-            span.textContent = text;
-            track.appendChild(span);
-        });
+        appendLine(track, tokens);
+        appendLine(track, tokens);
 
         return cycleSeconds;
     }
