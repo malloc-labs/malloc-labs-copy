@@ -32,13 +32,16 @@ Client → server, JSON over WS::
     {"action": "unclaim-symbol", "symbol": "U"}
     {"action": "play-letter", "symbol": "K"}
     {"action": "get-audio-settings"}
-    {"action": "set-audio-settings", "character_wpm": 20, "effective_wpm": 10}
+    {"action": "set-audio-settings", "character_wpm": 20, "effective_wpm": 10,
+     "tone_shape": 2, "receiver_bed": 0, "cadence_variation": 0}
 
 Server → client, JSON over WS, one frame per event. Pushed
 unsolicited on connect, and after every change::
 
     {"type": "claimed-symbols", "symbols": ["K", "M"], "suggested_next": "U"}
-    {"type": "audio-settings", "character_wpm": 20, "effective_wpm": 10, "farnsworth_enabled": true}
+    {"type": "audio-settings", "character_wpm": 20, "effective_wpm": 10,
+     "farnsworth_enabled": true, "tone_shape": 2, "receiver_bed": 0,
+     "cadence_variation": 0}
 
 During a Koch Exercise session::
 
@@ -101,7 +104,7 @@ from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol, serve
 
 from copy_653 import __version__, sequence
-from copy_653.audio import patterns, playback, synth
+from copy_653.audio import patterns, playback, synth, texture
 from copy_653.audio.parameters import AudioParameters
 from copy_653.config import (
     DEFAULT_CONFIG_PATH,
@@ -283,6 +286,9 @@ def _audio_settings_event_from_params(params: AudioParameters) -> dict[str, Any]
         "character_wpm": params.character_speed_wpm,
         "effective_wpm": params.effective_speed_wpm,
         "farnsworth_enabled": params.effective_speed_wpm < params.character_speed_wpm,
+        "tone_shape": texture.tone_shape_for_envelope_seconds(params.envelope_ramp_seconds),
+        "receiver_bed": params.receiver_bed,
+        "cadence_variation": params.cadence_variation,
     }
 
 
@@ -538,9 +544,30 @@ async def _set_audio_settings_action(
     try:
         character_wpm = _strict_positive_int(message.get("character_wpm"), "character_wpm")
         effective_wpm = _strict_positive_int(message.get("effective_wpm"), "effective_wpm")
+        tone_shape = _optional_bounded_int(
+            message.get("tone_shape"),
+            "tone_shape",
+            texture.MIN_TONE_SHAPE,
+            texture.MAX_TONE_SHAPE,
+        )
+        receiver_bed = _optional_bounded_int(
+            message.get("receiver_bed"),
+            "receiver_bed",
+            texture.MIN_RECEIVER_BED,
+            texture.MAX_RECEIVER_BED,
+        )
+        cadence_variation = _optional_bounded_int(
+            message.get("cadence_variation"),
+            "cadence_variation",
+            texture.MIN_CADENCE_VARIATION,
+            texture.MAX_CADENCE_VARIATION,
+        )
         params = save_audio_timing(
             character_speed_wpm=character_wpm,
             effective_speed_wpm=effective_wpm,
+            tone_shape=tone_shape,
+            receiver_bed=receiver_bed,
+            cadence_variation=cadence_variation,
             path=config_path,
         )
     except ValueError as exc:
@@ -562,6 +589,16 @@ def _strict_positive_int(value: Any, field: str) -> int:
         raise ValueError(f"{field} must be a positive integer")
     if value <= 0:
         raise ValueError(f"{field} must be a positive integer")
+    return value
+
+
+def _optional_bounded_int(value: Any, field: str, minimum: int, maximum: int) -> int | None:
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{field} must be an integer from {minimum} to {maximum}")
+    if not minimum <= value <= maximum:
+        raise ValueError(f"{field} must be an integer from {minimum} to {maximum}")
     return value
 
 

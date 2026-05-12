@@ -113,6 +113,33 @@ def test_synthesize_sequence_separates_with_inter_character_silence():
     assert abs(len(two) - expected) <= 2
 
 
+def test_synthesize_sequence_adds_receiver_bed_when_configured():
+    clean = synth.synthesize_sequence(["K"], AudioParameters(receiver_bed=0))
+    textured = synth.synthesize_sequence(["K"], AudioParameters(receiver_bed=2))
+
+    assert textured.dtype == np.float32
+    assert len(textured) == len(clean)
+    assert not np.array_equal(textured, clean)
+    assert textured.max() <= 1.0
+    assert textured.min() >= -1.0
+
+
+def test_synthesize_sequence_cadence_variation_changes_gap_without_symbol_shape():
+    clean_params = AudioParameters(character_speed_wpm=20, effective_speed_wpm=20)
+    varied_params = AudioParameters(
+        character_speed_wpm=20,
+        effective_speed_wpm=20,
+        cadence_variation=5,
+    )
+
+    one = synth.synthesize_symbol("K", clean_params)
+    clean = synth.synthesize_sequence(["K", "K"], clean_params)
+    varied = synth.synthesize_sequence(["K", "K"], varied_params)
+
+    assert len(varied) != len(clean)
+    assert np.array_equal(varied[: len(one)], clean[: len(one)])
+
+
 def test_synthesize_sequence_empty_returns_empty_buffer():
     params = AudioParameters()
     result = synth.synthesize_sequence([], params)

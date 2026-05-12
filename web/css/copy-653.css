@@ -637,6 +637,23 @@
     border-top: var(--mr-border-rule);
 }
 
+.settings-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: var(--mr-space-2) 0 0;
+    padding: 0;
+    border: 0;
+}
+
+.settings-section legend {
+    padding: 0 0 var(--mr-space-2);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-text);
+    text-transform: uppercase;
+}
+
 .settings-field label {
     font-family: var(--mr-font-mono);
     font-size: var(--mr-size-small);
@@ -657,6 +674,25 @@
 
 .settings-field input:disabled {
     opacity: 0.45;
+}
+
+.settings-field--range {
+    grid-template-columns: minmax(8rem, 0.36fr) minmax(8rem, 1fr) minmax(2.5rem, auto);
+    align-items: center;
+}
+
+.settings-field input[type="range"] {
+    accent-color: var(--mr-anchor);
+    background: transparent;
+    border: 0;
+    padding: 0;
+}
+
+.settings-field output {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-text);
+    text-align: right;
 }
 
 .settings-field p {
@@ -690,8 +726,13 @@
 }
 
 @media (max-width: 520px) {
-    .settings-field {
+    .settings-field,
+    .settings-field--range {
         grid-template-columns: 1fr;
+    }
+
+    .settings-field output {
+        text-align: left;
     }
 
     .settings-actions {

@@ -8,14 +8,20 @@ const wsUrl = `ws://${location.host}/ws`;
 const form = document.getElementById("audio-settings-form");
 const characterInput = document.getElementById("character-wpm");
 const effectiveInput = document.getElementById("effective-wpm");
+const toneShapeInput = document.getElementById("tone-shape");
+const receiverBedInput = document.getElementById("receiver-bed");
+const cadenceVariationInput = document.getElementById("cadence-variation");
 const saveButton = document.getElementById("save-audio-settings");
 const statusEl = document.getElementById("settings-status");
 const characterSummary = document.getElementById("character-speed-summary");
 const effectiveSummary = document.getElementById("effective-speed-summary");
+const toneShapeSummary = document.getElementById("tone-shape-summary");
+const receiverBedSummary = document.getElementById("receiver-bed-summary");
+const cadenceVariationSummary = document.getElementById("cadence-variation-summary");
 
 let socket = null;
 let isSaving = false;
-let savedTiming = null;
+let savedSettings = null;
 
 function setStatus(status, text) {
     statusEl.dataset.status = status;
@@ -25,24 +31,34 @@ function setStatus(status, text) {
 function setInputsEnabled(enabled) {
     characterInput.disabled = !enabled;
     effectiveInput.disabled = !enabled;
+    toneShapeInput.disabled = !enabled;
+    receiverBedInput.disabled = !enabled;
+    cadenceVariationInput.disabled = !enabled;
 }
 
-function currentTiming() {
+function currentSettings() {
     const character = Number(characterInput.value);
     const effective = Number(effectiveInput.value);
-    return { character, effective };
+    const toneShape = Number(toneShapeInput.value);
+    const receiverBed = Number(receiverBedInput.value);
+    const cadenceVariation = Number(cadenceVariationInput.value);
+    return { character, effective, toneShape, receiverBed, cadenceVariation };
 }
 
 function updateSummaries() {
-    const { character, effective } = currentTiming();
+    const { character, effective, toneShape, receiverBed, cadenceVariation } = currentSettings();
     characterSummary.textContent =
         Number.isFinite(character) && character > 0 ? `${character} WPM` : "Character WPM";
     effectiveSummary.textContent =
         Number.isFinite(effective) && effective > 0 ? `${effective} WPM` : "Effective WPM";
+    toneShapeSummary.textContent = Number.isInteger(toneShape) ? String(toneShape) : "-";
+    receiverBedSummary.textContent = Number.isInteger(receiverBed) ? String(receiverBed) : "-";
+    cadenceVariationSummary.textContent =
+        Number.isInteger(cadenceVariation) ? String(cadenceVariation) : "-";
 }
 
-function validateTiming() {
-    const { character, effective } = currentTiming();
+function validateSettings() {
+    const { character, effective, toneShape, receiverBed, cadenceVariation } = currentSettings();
     if (!Number.isInteger(character) || character <= 0) {
         return "Character speed must be a positive whole number.";
     }
@@ -52,17 +68,26 @@ function validateTiming() {
     if (effective > character) {
         return "Effective speed cannot exceed character speed.";
     }
+    if (!Number.isInteger(toneShape) || toneShape < 0 || toneShape > 10) {
+        return "Tone Shape must be between 0 and 10.";
+    }
+    if (!Number.isInteger(receiverBed) || receiverBed < 0 || receiverBed > 10) {
+        return "Receiver Bed must be between 0 and 10.";
+    }
+    if (!Number.isInteger(cadenceVariation) || cadenceVariation < 0 || cadenceVariation > 5) {
+        return "Cadence Variation must be between 0 and 5.";
+    }
     return "";
 }
 
 function isDirty() {
-    if (!savedTiming) return false;
-    const { character, effective } = currentTiming();
-    return character !== savedTiming.character || effective !== savedTiming.effective;
+    if (!savedSettings) return false;
+    const current = currentSettings();
+    return Object.keys(savedSettings).some((key) => current[key] !== savedSettings[key]);
 }
 
 function updateSaveState() {
-    const validationError = validateTiming();
+    const validationError = validateSettings();
     const dirty = isDirty();
     saveButton.classList.remove("btn--primary");
 
@@ -71,11 +96,11 @@ function updateSaveState() {
         saveButton.textContent = "Saving";
     } else if (validationError) {
         saveButton.disabled = true;
-        saveButton.textContent = dirty ? "Save Timing" : "Saved";
+        saveButton.textContent = dirty ? "Save Settings" : "Saved";
     } else if (dirty) {
         saveButton.disabled = false;
         saveButton.classList.add("btn--primary");
-        saveButton.textContent = "Save Timing";
+        saveButton.textContent = "Save Settings";
     } else {
         saveButton.disabled = true;
         saveButton.textContent = "Saved";
@@ -87,9 +112,15 @@ function updateSaveState() {
 function renderAudioSettings(event) {
     characterInput.value = event.character_wpm;
     effectiveInput.value = event.effective_wpm;
-    savedTiming = {
+    toneShapeInput.value = event.tone_shape;
+    receiverBedInput.value = event.receiver_bed;
+    cadenceVariationInput.value = event.cadence_variation;
+    savedSettings = {
         character: event.character_wpm,
         effective: event.effective_wpm,
+        toneShape: event.tone_shape,
+        receiverBed: event.receiver_bed,
+        cadenceVariation: event.cadence_variation,
     };
     updateSummaries();
     const prefix = isSaving ? "saved" : "ready";
@@ -149,14 +180,14 @@ form.addEventListener("submit", (event) => {
     event.preventDefault();
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
-    const validationError = validateTiming();
+    const validationError = validateSettings();
     if (validationError) {
         setStatus("error", validationError);
         return;
     }
     if (!isDirty()) return;
 
-    const { character, effective } = currentTiming();
+    const { character, effective, toneShape, receiverBed, cadenceVariation } = currentSettings();
     setInputsEnabled(false);
     isSaving = true;
     updateSaveState();
@@ -166,27 +197,17 @@ form.addEventListener("submit", (event) => {
             action: "set-audio-settings",
             character_wpm: character,
             effective_wpm: effective,
+            tone_shape: toneShape,
+            receiver_bed: receiverBed,
+            cadence_variation: cadenceVariation,
         })
     );
 });
 
-characterInput.addEventListener("input", () => {
+function onSettingsInput() {
     updateSummaries();
-    const { validationError, dirty } = updateSaveState();
-    if (validationError) {
-        setStatus("error", validationError);
-    } else if (dirty) {
-        setStatus("connected", "unsaved changes");
-    } else {
-        setStatus(
-            "connected",
-            `ready - ${savedTiming.character} WPM characters / ${savedTiming.effective} WPM effective`
-        );
-    }
-});
+    if (!savedSettings) return;
 
-effectiveInput.addEventListener("input", () => {
-    updateSummaries();
     const { validationError, dirty } = updateSaveState();
     if (validationError) {
         setStatus("error", validationError);
@@ -195,9 +216,17 @@ effectiveInput.addEventListener("input", () => {
     } else {
         setStatus(
             "connected",
-            `ready - ${savedTiming.character} WPM characters / ${savedTiming.effective} WPM effective`
+            `ready - ${savedSettings.character} WPM characters / ${savedSettings.effective} WPM effective`
         );
     }
-});
+}
+
+[
+    characterInput,
+    effectiveInput,
+    toneShapeInput,
+    receiverBedInput,
+    cadenceVariationInput,
+].forEach((input) => input.addEventListener("input", onSettingsInput));
 
 connect();

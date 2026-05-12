@@ -46,6 +46,16 @@ DEFAULT_ENVELOPE_RAMP_SECONDS = 0.005
 # Copy to be loud by default. See spec §2.7.
 DEFAULT_AMPLITUDE = 0.3
 
+# Signal texture defaults are intentionally conservative. Tone shape continues
+# to be represented by envelope_ramp_seconds; these two values add optional
+# receiver presence and spacing movement without changing the default output.
+DEFAULT_RECEIVER_BED = 0
+MIN_RECEIVER_BED = 0
+MAX_RECEIVER_BED = 10
+DEFAULT_CADENCE_VARIATION = 0
+MIN_CADENCE_VARIATION = 0
+MAX_CADENCE_VARIATION = 5
+
 
 @dataclass(frozen=True, slots=True)
 class AudioParameters:
@@ -80,6 +90,12 @@ class AudioParameters:
         headphone users; the learner is expected to adjust hardware
         volume to a comfortable level rather than relying on Copy to
         be loud. See spec §2.7.
+    receiver_bed:
+        Learner-facing 0-10 level for a very quiet receiver-like
+        listening floor under generated session audio.
+    cadence_variation:
+        Learner-facing 0-5 level for tiny deterministic movement in
+        inter-character and inter-word spacing.
     output_device:
         Audio output device to play through. ``None`` (the default)
         means the system default output. An integer is treated as a
@@ -96,6 +112,8 @@ class AudioParameters:
     sample_rate_hz: int = DEFAULT_SAMPLE_RATE_HZ
     envelope_ramp_seconds: float = DEFAULT_ENVELOPE_RAMP_SECONDS
     amplitude: float = DEFAULT_AMPLITUDE
+    receiver_bed: int = DEFAULT_RECEIVER_BED
+    cadence_variation: int = DEFAULT_CADENCE_VARIATION
     output_device: int | str | None = None
 
     def __post_init__(self) -> None:
@@ -129,3 +147,21 @@ class AudioParameters:
             # asks for, and clipping (>1) would distort. The valid range
             # is (0, 1] — the default sits well below 1 by design.
             raise ValueError(f"amplitude must be in (0, 1], got {self.amplitude}")
+        if not isinstance(self.receiver_bed, int) or isinstance(self.receiver_bed, bool):
+            raise ValueError(
+                f"receiver_bed must be an integer from {MIN_RECEIVER_BED} " f"to {MAX_RECEIVER_BED}"
+            )
+        if not MIN_RECEIVER_BED <= self.receiver_bed <= MAX_RECEIVER_BED:
+            raise ValueError(
+                f"receiver_bed must be an integer from {MIN_RECEIVER_BED} " f"to {MAX_RECEIVER_BED}"
+            )
+        if not isinstance(self.cadence_variation, int) or isinstance(self.cadence_variation, bool):
+            raise ValueError(
+                f"cadence_variation must be an integer from {MIN_CADENCE_VARIATION} "
+                f"to {MAX_CADENCE_VARIATION}"
+            )
+        if not MIN_CADENCE_VARIATION <= self.cadence_variation <= MAX_CADENCE_VARIATION:
+            raise ValueError(
+                f"cadence_variation must be an integer from {MIN_CADENCE_VARIATION} "
+                f"to {MAX_CADENCE_VARIATION}"
+            )

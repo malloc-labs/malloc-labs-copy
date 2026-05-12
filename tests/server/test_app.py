@@ -416,6 +416,9 @@ async def test_get_audio_settings_returns_configured_timing(tmp_path, patched_pl
                 "character_wpm": 25,
                 "effective_wpm": 25,
                 "farnsworth_enabled": False,
+                "tone_shape": 2,
+                "receiver_bed": 0,
+                "cadence_variation": 0,
             }
     finally:
         server.close()
@@ -442,6 +445,9 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
                         "action": "set-audio-settings",
                         "character_wpm": 20,
                         "effective_wpm": 10,
+                        "tone_shape": 3,
+                        "receiver_bed": 2,
+                        "cadence_variation": 1,
                     }
                 )
             )
@@ -452,6 +458,9 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
                 "character_wpm": 20,
                 "effective_wpm": 10,
                 "farnsworth_enabled": True,
+                "tone_shape": 3,
+                "receiver_bed": 2,
+                "cadence_variation": 1,
             }
 
         from copy_653.config import load_audio_parameters
@@ -459,6 +468,9 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
         params = load_audio_parameters(config_path)
         assert params.character_speed_wpm == 20
         assert params.effective_speed_wpm == 10
+        assert params.envelope_ramp_seconds == 0.007
+        assert params.receiver_bed == 2
+        assert params.cadence_variation == 1
     finally:
         server.close()
         await server.wait_closed()
@@ -498,6 +510,40 @@ async def test_set_audio_settings_rejects_invalid_timing(tmp_path, patched_playb
         params = load_audio_parameters(config_path)
         assert params.character_speed_wpm == 25
         assert params.effective_speed_wpm == 25
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_set_audio_settings_rejects_invalid_texture(tmp_path, patched_playback):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+
+            await ws.send(
+                json.dumps(
+                    {
+                        "action": "set-audio-settings",
+                        "character_wpm": 20,
+                        "effective_wpm": 10,
+                        "tone_shape": 11,
+                    }
+                )
+            )
+            raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            event = json.loads(raw)
+            assert event["type"] == "error"
+            assert event["reason"] == "invalid-audio-settings"
+            assert "tone_shape" in event["detail"]
     finally:
         server.close()
         await server.wait_closed()

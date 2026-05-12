@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from copy_653.audio import patterns, timing
+from copy_653.audio import patterns, texture, timing
 from copy_653.audio.parameters import AudioParameters
 
 
@@ -121,14 +121,23 @@ def synthesize_sequence(symbols: list[str], params: AudioParameters) -> np.ndarr
     if not symbols:
         return np.zeros(0, dtype=np.float32)
 
-    inter_char = synthesize_silence(timing.inter_character_seconds(params), params)
+    inter_char_seconds = timing.inter_character_seconds(params)
 
     parts: list[np.ndarray] = []
+    gap_index = 0
+    context = f"sequence:{''.join(symbols)}"
     for i, symbol in enumerate(symbols):
         if i > 0:
-            parts.append(inter_char)
+            gap_seconds = texture.cadence_gap_seconds(
+                inter_char_seconds,
+                params,
+                gap_index=gap_index,
+                context=context,
+            )
+            gap_index += 1
+            parts.append(synthesize_silence(gap_seconds, params))
         parts.append(synthesize_symbol(symbol, params))
-    return np.concatenate(parts)
+    return texture.add_receiver_bed(np.concatenate(parts), params, context=context)
 
 
 def synthesize_words(words: list[str], params: AudioParameters) -> np.ndarray:
@@ -137,18 +146,35 @@ def synthesize_words(words: list[str], params: AudioParameters) -> np.ndarray:
     if not words:
         return np.zeros(0, dtype=np.float32)
 
-    inter_char = synthesize_silence(timing.inter_character_seconds(params), params)
-    inter_word = synthesize_silence(timing.inter_word_seconds(params), params)
+    inter_char_seconds = timing.inter_character_seconds(params)
+    inter_word_seconds = timing.inter_word_seconds(params)
 
     parts: list[np.ndarray] = []
+    gap_index = 0
+    context = f"words:{'|'.join(word.lower() for word in words)}"
     for word_index, word in enumerate(words):
         if word_index > 0:
-            parts.append(inter_word)
+            gap_seconds = texture.cadence_gap_seconds(
+                inter_word_seconds,
+                params,
+                gap_index=gap_index,
+                context=context,
+            )
+            gap_index += 1
+            parts.append(synthesize_silence(gap_seconds, params))
         for symbol_index, symbol in enumerate(word.upper()):
             if symbol_index > 0:
-                parts.append(inter_char)
+                gap_seconds = texture.cadence_gap_seconds(
+                    inter_char_seconds,
+                    params,
+                    gap_index=gap_index,
+                    context=context,
+                )
+                gap_index += 1
+                parts.append(synthesize_silence(gap_seconds, params))
             parts.append(synthesize_symbol(symbol, params))
-    return np.concatenate(parts) if parts else np.zeros(0, dtype=np.float32)
+    samples = np.concatenate(parts) if parts else np.zeros(0, dtype=np.float32)
+    return texture.add_receiver_bed(samples, params, context=context)
 
 
 def symbol_duration_seconds(symbol: str, params: AudioParameters) -> float:

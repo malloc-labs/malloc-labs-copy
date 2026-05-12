@@ -13,6 +13,8 @@ def test_default_construction_uses_spec_defaults():
     assert p.sample_rate_hz == 48_000
     assert p.envelope_ramp_seconds == 0.005
     assert p.amplitude == 0.3
+    assert p.receiver_bed == 0
+    assert p.cadence_variation == 0
 
 
 def test_is_frozen():
@@ -87,3 +89,19 @@ def test_output_device_accepts_string_name():
     # device names; not validated at construction time.
     p = AudioParameters(output_device="Mac mini Speakers")
     assert p.output_device == "Mac mini Speakers"
+
+
+def test_receiver_bed_range_is_bounded():
+    AudioParameters(receiver_bed=10)
+    with pytest.raises(ValueError, match="receiver_bed"):
+        AudioParameters(receiver_bed=11)
+    with pytest.raises(ValueError, match="receiver_bed"):
+        AudioParameters(receiver_bed=-1)
+
+
+def test_cadence_variation_range_is_bounded():
+    AudioParameters(cadence_variation=5)
+    with pytest.raises(ValueError, match="cadence_variation"):
+        AudioParameters(cadence_variation=6)
+    with pytest.raises(ValueError, match="cadence_variation"):
+        AudioParameters(cadence_variation=-1)

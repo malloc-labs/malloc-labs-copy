@@ -34,11 +34,15 @@ def test_reads_audio_table_overrides(tmp_path: Path):
             character_speed_wpm = 25
             tone_frequency_hz = 700
             amplitude = 0.5
+            receiver_bed = 2
+            cadence_variation = 1
             """))
     params = load_audio_parameters(config_file)
     assert params.character_speed_wpm == 25
     assert params.tone_frequency_hz == 700
     assert params.amplitude == 0.5
+    assert params.receiver_bed == 2
+    assert params.cadence_variation == 1
     # Unmentioned fields take their defaults.
     assert params.effective_speed_wpm == 10
     assert params.sample_rate_hz == 48_000
@@ -122,13 +126,26 @@ def test_returns_defaults_when_audio_table_missing(tmp_path: Path):
 
 def test_save_audio_timing_writes_new_file(tmp_path: Path):
     config_file = tmp_path / "config.toml"
-    params = save_audio_timing(character_speed_wpm=22, effective_speed_wpm=12, path=config_file)
+    params = save_audio_timing(
+        character_speed_wpm=22,
+        effective_speed_wpm=12,
+        tone_shape=3,
+        receiver_bed=2,
+        cadence_variation=1,
+        path=config_file,
+    )
 
     assert params.character_speed_wpm == 22
     assert params.effective_speed_wpm == 12
+    assert params.envelope_ramp_seconds == 0.007
+    assert params.receiver_bed == 2
+    assert params.cadence_variation == 1
     loaded = load_audio_parameters(config_file)
     assert loaded.character_speed_wpm == 22
     assert loaded.effective_speed_wpm == 12
+    assert loaded.envelope_ramp_seconds == 0.007
+    assert loaded.receiver_bed == 2
+    assert loaded.cadence_variation == 1
 
 
 def test_save_audio_timing_preserves_other_audio_and_tables(tmp_path: Path):
@@ -139,6 +156,8 @@ def test_save_audio_timing_preserves_other_audio_and_tables(tmp_path: Path):
         effective_speed_wpm = 10
         tone_frequency_hz = 700
         amplitude = 0.4
+        receiver_bed = 4
+        cadence_variation = 2
         output_device = "Mac mini Speakers"
 
         [symbols]
@@ -152,6 +171,8 @@ def test_save_audio_timing_preserves_other_audio_and_tables(tmp_path: Path):
     assert loaded.effective_speed_wpm == 15
     assert loaded.tone_frequency_hz == 700
     assert loaded.amplitude == 0.4
+    assert loaded.receiver_bed == 4
+    assert loaded.cadence_variation == 2
     assert loaded.output_device == "Mac mini Speakers"
     assert load_claimed_symbols(config_file) == ("K", "M")
 
@@ -181,6 +202,30 @@ def test_save_audio_timing_rejects_farnsworth_faster_than_koch(tmp_path: Path):
 def test_save_audio_timing_rejects_non_positive_wpm(tmp_path: Path):
     with pytest.raises(ValueError, match="positive"):
         save_audio_timing(character_speed_wpm=0, effective_speed_wpm=10, path=tmp_path / "c.toml")
+
+
+def test_save_audio_timing_rejects_invalid_texture_values(tmp_path: Path):
+    with pytest.raises(ValueError, match="tone_shape"):
+        save_audio_timing(
+            character_speed_wpm=20,
+            effective_speed_wpm=10,
+            tone_shape=11,
+            path=tmp_path / "c.toml",
+        )
+    with pytest.raises(ValueError, match="receiver_bed"):
+        save_audio_timing(
+            character_speed_wpm=20,
+            effective_speed_wpm=10,
+            receiver_bed=-1,
+            path=tmp_path / "c.toml",
+        )
+    with pytest.raises(ValueError, match="cadence_variation"):
+        save_audio_timing(
+            character_speed_wpm=20,
+            effective_speed_wpm=10,
+            cadence_variation=6,
+            path=tmp_path / "c.toml",
+        )
 
 
 # ---------- claimed symbols --------------------------------------------

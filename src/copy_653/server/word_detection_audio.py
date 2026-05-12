@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
-from copy_653.audio import synth, timing
+from copy_653.audio import synth, texture, timing
 from copy_653.audio.parameters import AudioParameters
 from copy_653.letters import NATO_PHONETIC_NAMES, find_anchors_dir, load_wav
 
@@ -57,20 +57,28 @@ def build_word_detection_audio(
     instruction_dir = find_instruction_dir()
     wav_cache: dict[Path, np.ndarray] = {}
 
-    inter_char = synth.synthesize_silence(
-        timing.inter_character_seconds(audio_params), audio_params
-    )
-    inter_word = synth.synthesize_silence(timing.inter_word_seconds(audio_params), audio_params)
+    inter_char_seconds = timing.inter_character_seconds(audio_params)
+    inter_word_seconds = timing.inter_word_seconds(audio_params)
 
     parts: list[np.ndarray] = []
     timeline: list[TimelineRow] = []
     cursor = 0.0
     sample_rate = audio_params.sample_rate_hz
+    gap_index = 0
+    context = f"word-detection:{'|'.join(word.lower() for word in words)}"
 
     for word_index, word in enumerate(words, start=1):
         if word_index > 1:
-            parts.append(inter_word)
-            cursor += len(inter_word) / sample_rate
+            gap_seconds = texture.cadence_gap_seconds(
+                inter_word_seconds,
+                audio_params,
+                gap_index=gap_index,
+                context=context,
+            )
+            gap_index += 1
+            word_gap = synth.synthesize_silence(gap_seconds, audio_params)
+            parts.append(word_gap)
+            cursor += len(word_gap) / sample_rate
 
         instruction = _instruction_samples(
             word,
@@ -87,8 +95,16 @@ def build_word_detection_audio(
         normalized_word = word.lower()
         for symbol_index, symbol in enumerate(word.upper()):
             if symbol_index > 0:
-                parts.append(inter_char)
-                cursor += len(inter_char) / sample_rate
+                gap_seconds = texture.cadence_gap_seconds(
+                    inter_char_seconds,
+                    audio_params,
+                    gap_index=gap_index,
+                    context=context,
+                )
+                gap_index += 1
+                character_gap = synth.synthesize_silence(gap_seconds, audio_params)
+                parts.append(character_gap)
+                cursor += len(character_gap) / sample_rate
 
             symbol_samples = synth.synthesize_symbol(symbol, audio_params)
             t_on = cursor
@@ -97,6 +113,7 @@ def build_word_detection_audio(
             parts.append(symbol_samples)
 
     samples = np.concatenate(parts) if parts else np.zeros(0, dtype=np.float32)
+    samples = texture.add_receiver_bed(samples, audio_params, context=context)
     return samples.astype(np.float32, copy=False), timeline
 
 

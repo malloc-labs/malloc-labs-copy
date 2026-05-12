@@ -48,6 +48,52 @@
                 <p><strong id="effective-speed-summary">10 WPM</strong> · Additional spacing between characters and words provides time to absorb and recognise each symbol.</p>
             </div>
 
+            <fieldset class="settings-section">
+                <legend>Signal Texture</legend>
+
+                <div class="settings-field settings-field--range">
+                    <label for="tone-shape">Tone Shape</label>
+                    <input
+                        id="tone-shape"
+                        name="tone_shape"
+                        type="range"
+                        min="0"
+                        max="10"
+                        step="1"
+                    >
+                    <output id="tone-shape-summary" for="tone-shape">2</output>
+                    <p>Softens the keying edge so the signal has material presence.</p>
+                </div>
+
+                <div class="settings-field settings-field--range">
+                    <label for="receiver-bed">Receiver Bed</label>
+                    <input
+                        id="receiver-bed"
+                        name="receiver_bed"
+                        type="range"
+                        min="0"
+                        max="10"
+                        step="1"
+                    >
+                    <output id="receiver-bed-summary" for="receiver-bed">0</output>
+                    <p>Adds a very quiet listening floor beneath the signal.</p>
+                </div>
+
+                <div class="settings-field settings-field--range">
+                    <label for="cadence-variation">Cadence Variation</label>
+                    <input
+                        id="cadence-variation"
+                        name="cadence_variation"
+                        type="range"
+                        min="0"
+                        max="5"
+                        step="1"
+                    >
+                    <output id="cadence-variation-summary" for="cadence-variation">0</output>
+                    <p>Adds slight natural movement to spacing while preserving configured speed.</p>
+                </div>
+            </fieldset>
+
             <div class="settings-actions">
                 <button type="submit" class="btn" id="save-audio-settings" disabled>Saved</button>
                 <span class="settings-status" id="settings-status" data-status="connecting">connecting</span>

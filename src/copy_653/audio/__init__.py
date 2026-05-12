@@ -6,6 +6,7 @@ The audio module is the engine's voice. It is split into:
 - :mod:`timing` — WPM ↔ second conversions, including Farnsworth.
 - :mod:`patterns` — CW (Morse) symbol patterns.
 - :mod:`synth` — pure sine + envelope synthesis (no I/O, testable).
+- :mod:`texture` — restrained signal presence helpers.
 - :mod:`playback` — sounddevice integration (side effects).
 
 The split between synth and playback is deliberate: synthesis is

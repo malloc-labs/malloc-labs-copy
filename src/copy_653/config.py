@@ -53,6 +53,7 @@ import tomli_w
 
 from copy_653.audio import patterns
 from copy_653.audio.parameters import AudioParameters
+from copy_653.audio.texture import envelope_seconds_for_tone_shape
 from copy_653.letters.sequence import LettersConfig
 
 # XDG-style default. Used on both Linux and macOS for consistency
@@ -107,16 +108,20 @@ def save_audio_timing(
     *,
     character_speed_wpm: int,
     effective_speed_wpm: int,
+    tone_shape: int | None = None,
+    receiver_bed: int | None = None,
+    cadence_variation: int | None = None,
     path: Path | None = None,
 ) -> AudioParameters:
-    """Persist the learner-facing character/effective timing settings.
+    """Persist the learner-facing timing and signal texture settings.
 
     ``character_speed_wpm`` is how fast the dits and dahs themselves
     are rendered. ``effective_speed_wpm`` is the Farnsworth-managed
     overall pace after spacing is widened.
 
+    Texture values are optional for compatibility with older callers.
     The rest of ``[audio]`` is preserved, so output routing, tone, and
-    amplitude settings survive a Settings-page timing change.
+    amplitude settings survive a Settings-page save.
     """
     config_path = path if path is not None else DEFAULT_CONFIG_PATH
     data = _read_toml(config_path) or {}
@@ -126,10 +131,22 @@ def save_audio_timing(
     filtered = {k: v for k, v in audio_table.items() if k in known_keys}
     filtered["character_speed_wpm"] = character_speed_wpm
     filtered["effective_speed_wpm"] = effective_speed_wpm
+    if tone_shape is not None:
+        filtered["envelope_ramp_seconds"] = envelope_seconds_for_tone_shape(tone_shape)
+    if receiver_bed is not None:
+        filtered["receiver_bed"] = receiver_bed
+    if cadence_variation is not None:
+        filtered["cadence_variation"] = cadence_variation
     params = AudioParameters(**filtered)
 
     audio_table["character_speed_wpm"] = params.character_speed_wpm
     audio_table["effective_speed_wpm"] = params.effective_speed_wpm
+    if tone_shape is not None:
+        audio_table["envelope_ramp_seconds"] = params.envelope_ramp_seconds
+    if receiver_bed is not None:
+        audio_table["receiver_bed"] = params.receiver_bed
+    if cadence_variation is not None:
+        audio_table["cadence_variation"] = params.cadence_variation
     _write_toml_atomic(data, config_path)
     return params
 
