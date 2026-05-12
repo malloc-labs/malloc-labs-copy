@@ -684,6 +684,27 @@
     max-width: none;
 }
 
+.settings-test {
+    display: grid;
+    gap: var(--mr-space-3);
+    padding: var(--mr-space-4) 0;
+    border-top: var(--mr-border-rule);
+}
+
+.settings-test p {
+    margin: 0;
+    color: var(--mr-muted);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    line-height: var(--mr-line-body);
+}
+
+.settings-test-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--mr-space-3);
+}
+
 .settings-actions {
     display: flex;
     align-items: center;
