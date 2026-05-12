@@ -26,6 +26,7 @@ Wire protocol (v0)
 Client → server, JSON over WS::
 
     {"action": "start"}
+    {"action": "start-word-detection"}
     {"action": "stop"}
     {"action": "claim-symbol", "symbol": "U"}
     {"action": "unclaim-symbol", "symbol": "U"}
@@ -37,13 +38,20 @@ Server → client, JSON over WS, one frame per event. Pushed
 unsolicited on connect, and after every change::
 
     {"type": "claimed-symbols", "symbols": ["K", "M"], "suggested_next": "U"}
+    {"type": "audio-settings", "character_wpm": 20, "effective_wpm": 10, "farnsworth_enabled": true}
 
-During a session::
+During a Koch Exercise session::
 
     {"type": "session-start", "symbols": ["K","M","K"], "duration_seconds": 30, "seed": 12345}
     {"type": "symbol", "symbol": "K", "t_on": 0.0,  "t_off": 0.18}
     {"type": "symbol", "symbol": "M", "t_on": 0.42, "t_off": 0.6}
     {"type": "session-end"}
+
+During a Word Detection session::
+
+    {"type": "session-start", "mode": "word-detection", "words": ["lak"], "word_count": 1, ...}
+    {"type": "symbol", "symbol": "L", "t_on": 3.29, "t_off": 3.54, "word_index": 1, "word": "lak"}
+    {"type": "session-end", "mode": "word-detection"}
 
 During a Letters playback (Koch hub → Letters page)::
 
@@ -75,10 +83,6 @@ disk per request rather than cached at server boot. A learner who
 hand-edits ``config.toml`` mid-session sees their change on the next
 ``start``. This costs one TOML parse per action and keeps the engine
 honest about what is actually configured.
-
-This is a development-grade pipe. ``start`` carries no mode dispatch
-yet; that arrives with :mod:`copy_653.session`. The wire protocol
-above is the seam ``session`` will widen — same shape, more fields.
 """
 
 from __future__ import annotations
@@ -194,6 +198,7 @@ def _build_static_handler(web_root: Path):
     async def process_request(
         path: str, request_headers: Headers
     ) -> tuple[HTTPStatus, list[tuple[str, str]], bytes] | None:
+        """Serve static HTTP requests or allow the WebSocket upgrade."""
         # Strip the query string for static lookups; we do not use it
         # for anything in v0.
         clean_path = path.split("?", 1)[0]
