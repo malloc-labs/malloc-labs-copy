@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 from websockets.client import connect as ws_connect
 
+from copy_653 import __version__
 from copy_653.server import app
 
 # ---------- find_available_port -----------------------------------------
@@ -137,6 +138,13 @@ async def test_serves_index_and_pushes_initial_claimed_state(tmp_path):
         index = await asyncio.to_thread(urllib.request.urlopen, f"http://127.0.0.1:{port}/")
         assert index.status == 200
         assert b"<title>t</title>" in index.read()
+
+        version = await asyncio.to_thread(
+            urllib.request.urlopen, f"http://127.0.0.1:{port}/api/version"
+        )
+        assert version.status == 200
+        assert version.headers["Content-Type"] == "application/json; charset=utf-8"
+        assert json.loads(version.read()) == {"version": __version__}
 
         # Path traversal is blocked.
         try:

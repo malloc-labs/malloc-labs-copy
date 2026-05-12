@@ -100,7 +100,7 @@ from websockets.datastructures import Headers
 from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol, serve
 
-from copy_653 import sequence
+from copy_653 import __version__, sequence
 from copy_653.audio import patterns, playback, synth
 from copy_653.audio.parameters import AudioParameters
 from copy_653.config import (
@@ -191,6 +191,9 @@ def _build_static_handler(web_root: Path):
         if clean_path == "/ws":
             return None
 
+        if clean_path == "/api/version":
+            return _json_response({"version": __version__})
+
         target = "index.html" if clean_path == "/" else clean_path.lstrip("/")
         resolved = (web_root / target).resolve()
 
@@ -233,6 +236,19 @@ def _http_response(
         [
             ("Content-Type", "text/plain; charset=utf-8"),
             ("Content-Length", str(len(body))),
+        ],
+        body,
+    )
+
+
+def _json_response(payload: dict[str, Any]) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
+    body = json.dumps(payload).encode("utf-8")
+    return (
+        HTTPStatus.OK,
+        [
+            ("Content-Type", "application/json; charset=utf-8"),
+            ("Content-Length", str(len(body))),
+            ("Cache-Control", "no-store"),
         ],
         body,
     )
