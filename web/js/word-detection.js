@@ -4,6 +4,8 @@
 // engine sends the full truth during playback, but the disclosure remains
 // locked until session-end so answers are not available while listening.
 
+import { PATTERNS, spokenMorsePattern } from "./morse-display.js";
+
 const wsUrl = `ws://${location.host}/ws`;
 
 const statusEl    = document.querySelector(".status");
@@ -89,6 +91,20 @@ function appendWordHeader(wordIndex, word) {
     eventsEl.appendChild(li);
 }
 
+function formatElapsedClock(seconds) {
+    const totalSeconds = Math.max(0, Math.floor(seconds));
+    const hours = Math.floor(totalSeconds / 3600) % 24;
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    return [hours, minutes, secs].map((part) => String(part).padStart(2, "0")).join(":");
+}
+
+function formatSymbolReview(event) {
+    const pattern = PATTERNS[event.symbol];
+    const spoken = pattern ? ` ${spokenMorsePattern(pattern)}` : "";
+    return `${formatElapsedClock(event.t_on)} ${event.symbol}${spoken}`;
+}
+
 function appendEvent(event) {
     if (event.type === "claimed-symbols") {
         renderFocus(event);
@@ -116,7 +132,7 @@ function appendEvent(event) {
             appendWordHeader(event.word_index, event.word);
             lastWordIndex = event.word_index;
         }
-        li.textContent = `${event.t_on.toFixed(2)}s  ${event.symbol}`;
+        li.textContent = formatSymbolReview(event);
         li.dataset.kind = "symbol";
 
     } else if (event.type === "session-end") {
