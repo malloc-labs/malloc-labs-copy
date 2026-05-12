@@ -8,6 +8,8 @@
 // will be reshaped once Detection and Full Copy modes land; the
 // listening screen affordance budget is five (spec §8.3).
 
+import { PATTERNS, spokenMorsePattern } from "./morse-display.js";
+
 const wsUrl = `ws://${location.host}/ws`;
 
 const statusEl     = document.querySelector(".status");
@@ -34,6 +36,7 @@ const PERMANENT = new Set(["K", "M"]);
 let claimedState    = { symbols: [], suggested_next: null };
 let sessionDuration = 30; // updated from session-start
 let sessionActive   = false;
+let sessionStartedAtMs = null;
 
 let socket = null;
 
@@ -154,6 +157,20 @@ function setStatus(state, text) {
 
 // ─── Event rendering ──────────────────────────────────────────────────────────
 
+function formatClockTime(secondsAfterSessionStart) {
+    const baseMs = sessionStartedAtMs ?? Date.now();
+    const timestamp = new Date(baseMs + Math.max(0, secondsAfterSessionStart) * 1000);
+    return [timestamp.getHours(), timestamp.getMinutes(), timestamp.getSeconds()]
+        .map((part) => String(part).padStart(2, "0"))
+        .join(":");
+}
+
+function formatSymbolReview(event) {
+    const pattern = PATTERNS[event.symbol];
+    const spoken = pattern ? ` ${spokenMorsePattern(pattern)}` : "";
+    return `${formatClockTime(event.t_on)} ${event.symbol}${spoken}`;
+}
+
 function appendEvent(event) {
     if (event.type === "claimed-symbols") {
         renderSequence(event);
@@ -163,12 +180,13 @@ function appendEvent(event) {
     const li = document.createElement("li");
 
     if (event.type === "symbol") {
-        li.textContent  = `${event.t_on.toFixed(2)}s  ${event.symbol}`;
+        li.textContent  = formatSymbolReview(event);
         li.dataset.kind = "symbol";
 
     } else if (event.type === "session-start") {
         sessionDuration = event.duration_seconds;
         sessionActive   = true;
+        sessionStartedAtMs = Date.now();
 
         const meta = toggleBtn.querySelector(".timeline-meta");
         meta.textContent =
@@ -187,6 +205,7 @@ function appendEvent(event) {
         startBtn.disabled = false;
         stopBtn.disabled  = true;
         clearBtn.disabled = false;
+        sessionStartedAtMs = null;
         setTimelineLocked(false);
 
     } else if (event.type === "error") {
@@ -199,6 +218,7 @@ function appendEvent(event) {
         stopBtn.disabled  = true;
         clearBtn.disabled = false;
         sessionActive     = false;
+        sessionStartedAtMs = null;
         setTimelineLocked(false);
 
     } else {
@@ -234,6 +254,7 @@ function connect() {
         stopBtn.disabled  = true;
         clearBtn.disabled = true;
         sessionActive     = false;
+        sessionStartedAtMs = null;
         setTimelineLocked(false);
     });
 
@@ -261,6 +282,7 @@ clearBtn.addEventListener("click", () => {
     eventsEl.replaceChildren();
     const meta = toggleBtn.querySelector(".timeline-meta");
     meta.textContent = "—";
+    sessionStartedAtMs = null;
     setTimelineOpen(false);
     setTimelineLocked(true);
     clearBtn.disabled = true;
