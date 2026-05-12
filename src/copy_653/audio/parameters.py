@@ -46,13 +46,13 @@ DEFAULT_ENVELOPE_RAMP_SECONDS = 0.005
 # Copy to be loud by default. See spec §2.7.
 DEFAULT_AMPLITUDE = 0.3
 
-# Signal texture defaults are intentionally conservative. Tone shape continues
-# to be represented by envelope_ramp_seconds; these two values add optional
-# receiver presence and spacing movement without changing the default output.
-DEFAULT_RECEIVER_BED = 0
+# Signal texture defaults are intentionally conservative but non-zero. Tone
+# shape continues to be represented by envelope_ramp_seconds; these two values
+# add quiet receiver presence and very small spacing movement by default.
+DEFAULT_RECEIVER_BED = 2
 MIN_RECEIVER_BED = 0
 MAX_RECEIVER_BED = 10
-DEFAULT_CADENCE_VARIATION = 0
+DEFAULT_CADENCE_VARIATION = 1
 MIN_CADENCE_VARIATION = 0
 MAX_CADENCE_VARIATION = 5
 

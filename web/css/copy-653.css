@@ -676,25 +676,6 @@
     opacity: 0.45;
 }
 
-.settings-field--range {
-    grid-template-columns: minmax(8rem, 0.36fr) minmax(8rem, 1fr) minmax(2.5rem, auto);
-    align-items: center;
-}
-
-.settings-field input[type="range"] {
-    accent-color: var(--mr-anchor);
-    background: transparent;
-    border: 0;
-    padding: 0;
-}
-
-.settings-field output {
-    font-family: var(--mr-font-mono);
-    font-size: var(--mr-size-small);
-    color: var(--mr-text);
-    text-align: right;
-}
-
 .settings-field p {
     grid-column: 1 / -1;
     color: var(--mr-muted);
@@ -726,13 +707,8 @@
 }
 
 @media (max-width: 520px) {
-    .settings-field,
-    .settings-field--range {
+    .settings-field {
         grid-template-columns: 1fr;
-    }
-
-    .settings-field output {
-        text-align: left;
     }
 
     .settings-actions {

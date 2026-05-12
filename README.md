@@ -30,6 +30,21 @@ The engine starts an HTTP + WebSocket server on `127.0.0.1:8653`. If that port i
 
 Status: audio synthesis, Koch sequence generation, Word Detection, Letters playback, audio timing settings, and locked post-session review are wired. MIDI input and persistent session records are still pending.
 
+## Signal texture
+
+Copy's generated CW is intentionally clean, but not completely sterile. A
+perfect sine tone in silence can become tiring over longer listening sessions,
+more like a monitor beep than a signal with physical presence. Signal texture
+adds a restrained listening condition beneath the normal CW timing: the learner
+still hears the configured character speed and Farnsworth spacing, but the tone
+has enough shape, floor, and small cadence movement to feel more natural.
+
+| Setting | Default | Range | Mathematical mapping | Intent |
+| --- | ---: | ---: | --- | --- |
+| Tone Shape | 2 | 0-10 | Maps to raised-cosine envelope ramp seconds: `0 -> 0ms`, `1 -> 3ms`, `2 -> 5ms`, `3 -> 7ms`, `4 -> 8.5ms`, `5 -> 10ms`, then 11-15ms through level 10. | Softens the keying edge without changing the symbol timing contract. |
+| Receiver Bed | 2 | 0-10 | Adds deterministic shaped floor at roughly `-50 + (level * 1.5)` dB relative to configured tone amplitude; level 2 is about -47 dB. | Gives the signal quiet acoustic space without turning it into band-condition training. |
+| Cadence Variation | 1 | 0-5 | Applies deterministic spacing variation up to `level * 0.6%` around inter-character and inter-word gaps; level 1 is at most +/-0.6%, level 5 is at most +/-3%. | Reduces metronomic sterility while preserving dit/dah identity and configured WPM. |
+
 ## Browser test
 
 After `python -m copy_653`, open the URL it prints (default `http://127.0.0.1:8653`) in any modern browser. Current browser surfaces include:
@@ -53,11 +68,18 @@ character_speed_wpm = 20      # character rhythm
 effective_speed_wpm = 10      # effective speed after Farnsworth spacing
 tone_frequency_hz = 600
 amplitude = 0.3
+receiver_bed = 2
+cadence_variation = 1
 output_device = "Mac mini Speakers"   # name substring or device index
 EOF
 ```
 
-Any subset of `[audio]` keys is valid; omitted keys take defaults. `effective_speed_wpm` must be less than or equal to `character_speed_wpm`; set them equal to disable Farnsworth spacing. Unknown keys are silently ignored (forward compatibility). Validation errors surface honestly per spec §1.5.
+Any subset of `[audio]` keys is valid; omitted keys take defaults.
+`effective_speed_wpm` must be less than or equal to `character_speed_wpm`; set
+them equal to disable Farnsworth spacing. Tone Shape is stored as
+`envelope_ramp_seconds` in config; the Settings page maps the 0-10 control to
+the ramp values shown above. Unknown keys are silently ignored (forward
+compatibility). Validation errors surface honestly per spec §1.5.
 
 ## Tests
 

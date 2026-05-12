@@ -43,7 +43,12 @@ def test_audio_inserts_spoken_instruction_before_focus_word():
 
 
 def test_multi_symbol_prompt_includes_and_wav(monkeypatch, tmp_path):
-    params = AudioParameters(character_speed_wpm=25, effective_speed_wpm=25)
+    params = AudioParameters(
+        character_speed_wpm=25,
+        effective_speed_wpm=25,
+        receiver_bed=0,
+        cadence_variation=0,
+    )
     anchors_dir = tmp_path / "nato_phonetic"
     instruction_dir = tmp_path / "instruction"
     loaded_names: list[str] = []
@@ -71,7 +76,12 @@ def test_multi_symbol_prompt_includes_and_wav(monkeypatch, tmp_path):
 
 
 def test_prompt_wavs_are_resampled_to_session_rate(monkeypatch, tmp_path):
-    params = AudioParameters(character_speed_wpm=25, effective_speed_wpm=25)
+    params = AudioParameters(
+        character_speed_wpm=25,
+        effective_speed_wpm=25,
+        receiver_bed=0,
+        cadence_variation=0,
+    )
     anchors_dir = tmp_path / "nato_phonetic"
     instruction_dir = tmp_path / "instruction"
 
@@ -89,7 +99,7 @@ def test_prompt_wavs_are_resampled_to_session_rate(monkeypatch, tmp_path):
 
 
 def test_prompted_audio_preserves_internal_morse_spacing():
-    params = AudioParameters(character_speed_wpm=20, effective_speed_wpm=10)
+    params = AudioParameters(character_speed_wpm=20, effective_speed_wpm=10, cadence_variation=0)
     _, timeline = build_word_detection_audio(["km"], ("K", "M"), params)
 
     gap = timeline[1][1] - timeline[0][2]
