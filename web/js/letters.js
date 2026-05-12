@@ -11,7 +11,7 @@
 // engine is reachable does nothing surprising. No retries on close —
 // the page is not the right surface for an offline reconnect loop.
 
-import { displayMorsePattern } from "./morse-display.js";
+import { PATTERNS, displayMorsePattern, spokenMorsePattern } from "./morse-display.js";
 
 const wsUrl = `ws://${location.host}/ws`;
 const cells = document.querySelectorAll(".letter-cell");
@@ -21,54 +21,6 @@ const truthEvents = document.getElementById("symbol-truth-events");
 const truthMeta = toggleBtn.querySelector(".timeline-meta");
 let socket = null;
 let lastCompletedSymbol = null;
-
-const PATTERNS = {
-    A: ".-",
-    B: "-...",
-    C: "-.-.",
-    D: "-..",
-    E: ".",
-    F: "..-.",
-    G: "--.",
-    H: "....",
-    I: "..",
-    J: ".---",
-    K: "-.-",
-    L: ".-..",
-    M: "--",
-    N: "-.",
-    O: "---",
-    P: ".--.",
-    Q: "--.-",
-    R: ".-.",
-    S: "...",
-    T: "-",
-    U: "..-",
-    V: "...-",
-    W: ".--",
-    X: "-..-",
-    Y: "-.--",
-    Z: "--..",
-    0: "-----",
-    1: ".----",
-    2: "..---",
-    3: "...--",
-    4: "....-",
-    5: ".....",
-    6: "-....",
-    7: "--...",
-    8: "---..",
-    9: "----.",
-    ".": ".-.-.-",
-    ",": "--..--",
-    "?": "..--..",
-    "/": "-..-.",
-    "=": "-...-",
-};
-
-function spokenPattern(pattern) {
-    return [...pattern].map((mark) => (mark === "-" ? "Dah" : "dit")).join(" ");
-}
 
 function setActiveCell(letter) {
     cells.forEach((c) => {
@@ -129,7 +81,7 @@ function renderTruth(symbol) {
 
     const spokenLine = document.createElement("span");
     spokenLine.className = "symbol-truth-line symbol-truth-spoken";
-    spokenLine.textContent = spokenPattern(pattern);
+    spokenLine.textContent = spokenMorsePattern(pattern);
 
     const morseLine = document.createElement("span");
     morseLine.className = "symbol-truth-line symbol-truth-morse";
