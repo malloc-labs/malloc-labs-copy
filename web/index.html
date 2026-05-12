@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="css/copy-653.css">
     <!-- Runs blocking before CSS paint to prevent theme flash -->
     <script src="js/theme.js"></script>
+    <script src="js/index-morse-scroll.js" defer></script>
 </head>
 <body class="landing-body landing-body--index">
     <button class="theme-btn" id="theme-toggle" aria-label="Switch theme">light</button>
@@ -17,6 +18,11 @@
             <h1 class="landing-title">Copy 653</h1>
         </header>
         <hr class="landing-rule">
+        <div class="morse-scroll" aria-hidden="true">
+            <div class="morse-scroll__viewport">
+                <div class="morse-scroll__track" data-morse-scroll-track></div>
+            </div>
+        </div>
         <nav class="landing-nav" aria-label="Primary navigation">
             <a href="guided/index.html" class="nav-item">
                 <span class="nav-item__label">Guided Listening</span>
