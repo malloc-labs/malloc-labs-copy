@@ -4,6 +4,10 @@
 // environment. User-facing labels follow established Morse learning terms:
 // character speed = symbol cadence, effective speed = pressure after spacing.
 
+import { getDeveloperModeEnabled, setDeveloperModeEnabled } from "./developer-mode.js";
+
+const RUNAWAY_GUARD_STORAGE_KEY = "copy-653:runaway-guard-enabled";
+
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const wsUrl = `${wsProtocol}//${location.host}/ws`;
 const form = document.getElementById("audio-settings-form");
@@ -19,6 +23,31 @@ const saveTestButton = document.getElementById("save-test-message");
 const statusEl = document.getElementById("settings-status");
 const characterSummary = document.getElementById("character-speed-summary");
 const effectiveSummary = document.getElementById("effective-speed-summary");
+const developerModeInput = document.getElementById("developer-mode");
+const runawayGuardInput = document.getElementById("runaway-guard-enabled");
+
+developerModeInput.checked = getDeveloperModeEnabled();
+developerModeInput.addEventListener("change", () => {
+    setDeveloperModeEnabled(developerModeInput.checked);
+});
+
+function isRunawayGuardEnabled() {
+    try {
+        return window.localStorage?.getItem(RUNAWAY_GUARD_STORAGE_KEY) !== "false";
+    } catch (_) {
+        return true;
+    }
+}
+
+runawayGuardInput.checked = isRunawayGuardEnabled();
+runawayGuardInput.addEventListener("change", () => {
+    try {
+        window.localStorage?.setItem(
+            RUNAWAY_GUARD_STORAGE_KEY,
+            runawayGuardInput.checked ? "true" : "false",
+        );
+    } catch (_) { /* localStorage unavailable */ }
+});
 
 let socket = null;
 let isSaving = false;

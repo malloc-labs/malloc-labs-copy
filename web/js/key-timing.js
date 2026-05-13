@@ -3,6 +3,8 @@
 // Read-only sequence display for known symbols. The engine pushes the same
 // claimed-symbols event used by Koch Exercises; this page only renders it.
 
+import "./developer-mode.js";
+
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const wsUrl = `${wsProtocol}//${location.host}/ws`;
 
@@ -45,6 +47,7 @@ let activeSocket = null;
 let diagnosticEvents = [];
 let formedElementGuard = newFormedElementGuard();
 let midiInputArmed = true;
+let runawayGuardEnabled = loadRunawayGuardEnabled();
 
 // Canonical Koch order — mirrors KOCH_ORDER in patterns.py.
 const KOCH_ORDER = [
@@ -99,11 +102,31 @@ function resetFormedElementGuard() {
     formedElementGuard = newFormedElementGuard();
 }
 
+const RUNAWAY_GUARD_STORAGE_KEY = "copy-653:runaway-guard-enabled";
+
+function loadRunawayGuardEnabled() {
+    try {
+        const stored = window.localStorage?.getItem(RUNAWAY_GUARD_STORAGE_KEY);
+        if (stored === "false") return false;
+    } catch (_) { /* localStorage unavailable */ }
+    return true;
+}
+
+window.addEventListener("storage", (event) => {
+    if (event.key !== RUNAWAY_GUARD_STORAGE_KEY) return;
+    const enabled = event.newValue !== "false";
+    if (enabled === runawayGuardEnabled) return;
+    runawayGuardEnabled = enabled;
+    if (!enabled) resetFormedElementGuard();
+    recordDiagnostic("runaway-guard-toggle", { enabled, reason: "settings change" });
+});
+
 function characterGapSeconds() {
     return (Number(keyConfig?.character_gap_ms) || DEFAULT_DIT_MS * 3) / 1000;
 }
 
 function shouldAcceptFormedEvent(event, kind) {
+    if (!runawayGuardEnabled) return true;
     const now = Number(event.timestamp);
     if (Number.isFinite(formedElementGuard.blockedUntil)) {
         if (now < formedElementGuard.blockedUntil) {
@@ -177,6 +200,7 @@ function diagnosticText() {
         visibility: document.visibilityState,
         focused: document.hasFocus(),
         midi_input_armed: midiInputArmed,
+        runaway_guard_enabled: runawayGuardEnabled,
         key_config: keyConfig,
         browser_midi_input_mode: BROWSER_MIDI_INPUT_MODE,
     };

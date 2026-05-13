@@ -18,6 +18,10 @@
         </header>
         <hr class="landing-rule">
 
+        <div class="key-page-actions">
+            <button type="button" class="key-sound-toggle" id="key-sound-toggle">enable sound</button>
+        </div>
+
         <section class="koch-sequence" aria-label="Known symbol sequence">
             <p class="sequence-label">Sequence</p>
             <div class="sequence-row sequence-row--read-only" id="sequence-row" role="list"></div>
@@ -32,13 +36,12 @@
             <ol class="key-sent-history" id="sent-history" aria-label="Recent sent symbols"></ol>
         </section>
 
-        <section class="key-diagnostics" aria-label="Key diagnostics">
+        <section class="key-diagnostics developer-only" aria-label="Key diagnostics">
             <div class="key-diagnostics__header">
                 <p class="sequence-label">Diagnostics</p>
                 <div class="key-diagnostics-actions">
                     <button type="button" class="key-sound-toggle" id="copy-diagnostics">copy diagnostics</button>
                     <button type="button" class="key-sound-toggle" id="key-input-toggle">input armed</button>
-                    <button type="button" class="key-sound-toggle" id="key-sound-toggle">enable sound</button>
                 </div>
             </div>
             <dl class="key-diagnostics-grid">

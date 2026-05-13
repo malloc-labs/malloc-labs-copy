@@ -479,3 +479,7 @@ hr {
     color: var(--mr-anchor);
     border: none;
 }
+
+body:not(.developer-mode) .developer-only {
+    display: none;
+}
