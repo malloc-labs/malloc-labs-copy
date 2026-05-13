@@ -17,39 +17,43 @@
             <h1 class="landing-title">Settings</h1>
         </header>
         <hr class="landing-rule">
-        <p class="landing-desc">Koch trains recognition. Farnsworth manages processing pressure.</p>
 
         <form class="settings-form" id="audio-settings-form">
-            <div class="settings-field">
-                <label for="character-wpm">Character Speed</label>
-                <input
-                    id="character-wpm"
-                    name="character_wpm"
-                    type="number"
-                    inputmode="numeric"
-                    min="1"
-                    step="1"
-                    required
-                >
-                <p><strong id="character-speed-summary">20 WPM</strong> · Full-speed character rhythm helps train recognition through cadence rather than counting.</p>
-            </div>
+            <details class="settings-section">
+                <summary>Words Per Minute</summary>
+                <p class="settings-section__desc">Koch trains recognition. Farnsworth manages processing pressure.</p>
 
-            <div class="settings-field">
-                <label for="effective-wpm">Effective Speed</label>
-                <input
-                    id="effective-wpm"
-                    name="effective_wpm"
-                    type="number"
-                    inputmode="numeric"
-                    min="1"
-                    step="1"
-                    required
-                >
-                <p><strong id="effective-speed-summary">10 WPM</strong> · Additional spacing between characters and words provides time to absorb and recognise each symbol.</p>
-            </div>
+                <div class="settings-field">
+                    <label for="character-wpm">Character Speed</label>
+                    <input
+                        id="character-wpm"
+                        name="character_wpm"
+                        type="number"
+                        inputmode="numeric"
+                        min="1"
+                        step="1"
+                        required
+                    >
+                    <p><strong id="character-speed-summary">20 WPM</strong> · Full-speed character rhythm helps train recognition through cadence rather than counting.</p>
+                </div>
 
-            <fieldset class="settings-section">
-                <legend>Signal Texture</legend>
+                <div class="settings-field">
+                    <label for="effective-wpm">Effective Speed</label>
+                    <input
+                        id="effective-wpm"
+                        name="effective_wpm"
+                        type="number"
+                        inputmode="numeric"
+                        min="1"
+                        step="1"
+                        required
+                    >
+                    <p><strong id="effective-speed-summary">10 WPM</strong> · Additional spacing between characters and words provides time to absorb and recognise each symbol.</p>
+                </div>
+            </details>
+
+            <details class="settings-section">
+                <summary>Signal Texture</summary>
 
                 <div class="settings-field">
                     <label for="tone-shape">Tone Shape</label>
@@ -95,10 +99,10 @@
                     >
                     <p>Adds slight natural movement to spacing while preserving configured speed. Range: 0-5.</p>
                 </div>
-            </fieldset>
+            </details>
 
-            <fieldset class="settings-section">
-                <legend>Key Input</legend>
+            <details class="settings-section">
+                <summary>Key Input</summary>
 
                 <div class="settings-field settings-field--check">
                     <label for="trinkey-buzzer">Trinkey Buzzer</label>
@@ -109,10 +113,10 @@
                     >
                     <p>Allows the Trinkey hardware buzzer to sound while Copy decodes input. Off keeps key input silent for now.</p>
                 </div>
-            </fieldset>
+            </details>
 
-            <fieldset class="settings-section">
-                <legend>Test Message</legend>
+            <details class="settings-section">
+                <summary>Test Message</summary>
                 <div class="settings-test">
                     <p>ARE YOU READY / CAN YOU HEAR ME / YES LOUD AND CLEAR</p>
                     <div class="settings-test-actions">
@@ -120,7 +124,31 @@
                         <button type="button" class="btn" id="save-test-message">Save WAV</button>
                     </div>
                 </div>
-            </fieldset>
+            </details>
+
+            <details class="settings-section">
+                <summary>Runaway Guard</summary>
+                <div class="settings-field settings-field--check">
+                    <label for="runaway-guard-enabled">Enable Runaway Guard</label>
+                    <input
+                        id="runaway-guard-enabled"
+                        type="checkbox"
+                    >
+                    <p>Disarm Copy's MIDI input when the firmware emits six consecutive same-kind elements inside a character. Turn off to observe raw firmware behaviour without intervention.</p>
+                </div>
+            </details>
+
+            <details class="settings-section">
+                <summary>Developer</summary>
+                <div class="settings-field settings-field--check">
+                    <label for="developer-mode">Developer Mode</label>
+                    <input
+                        id="developer-mode"
+                        type="checkbox"
+                    >
+                    <p>Reveal diagnostic interfaces such as the Key timing page's MIDI and decoder telemetry.</p>
+                </div>
+            </details>
 
             <div class="settings-actions">
                 <button type="submit" class="btn" id="save-audio-settings" disabled>Saved</button>
