@@ -584,6 +584,106 @@
     color: var(--mr-muted);
 }
 
+.key-diagnostics {
+    margin-top: var(--mr-space-5);
+    border-top: var(--mr-border-rule);
+    padding-top: var(--mr-space-4);
+}
+
+.key-diagnostics__header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--mr-space-3);
+}
+
+.key-diagnostics-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--mr-space-2);
+    justify-content: flex-end;
+}
+
+.key-sound-toggle {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    border: 1px solid var(--mr-border);
+    background: none;
+    color: var(--mr-text);
+    padding: var(--mr-space-1) var(--mr-space-2);
+    cursor: pointer;
+}
+
+.key-sound-toggle:disabled {
+    color: var(--mr-muted);
+    cursor: default;
+    opacity: 0.65;
+}
+
+.key-diagnostics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: var(--mr-space-3) var(--mr-space-4);
+    margin: 0;
+}
+
+.key-diagnostics-grid div {
+    min-width: 0;
+}
+
+.key-diagnostics-grid dt {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    margin-bottom: var(--mr-space-1);
+}
+
+.key-diagnostics-grid dd {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-text);
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.key-diagnostics-table-wrap {
+    margin-top: var(--mr-space-4);
+    overflow-x: auto;
+}
+
+.key-diagnostics-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+}
+
+.key-diagnostics-table caption {
+    color: var(--mr-muted);
+    font-weight: 400;
+    padding: 0 0 var(--mr-space-2);
+    text-align: left;
+}
+
+.key-diagnostics-table th,
+.key-diagnostics-table td {
+    border-top: var(--mr-border-rule);
+    padding: var(--mr-space-2);
+    text-align: left;
+    max-width: 18rem;
+    overflow-wrap: anywhere;
+    vertical-align: top;
+}
+
+.key-diagnostics-table th {
+    color: var(--mr-muted);
+    font-weight: 400;
+}
+
+.key-diagnostics-table td {
+    color: var(--mr-text);
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
    9. Timeline disclosure toggle
    ─────────────────────────────────────────────────────────────────────────────

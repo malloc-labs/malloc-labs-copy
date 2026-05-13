@@ -11,16 +11,63 @@ from copy_653.audio.parameters import AudioParameters
 from copy_653.config import (
     DEFAULT_SESSION_DURATION_SECONDS,
     KeyerSettings,
+    ServerSettings,
     load_audio_parameters,
     load_claimed_symbols,
     load_keyer_settings,
     load_letters_config,
+    load_server_settings,
     load_session_duration,
     save_audio_timing,
     save_claimed_symbols,
     save_keyer_settings,
 )
 from copy_653.letters.sequence import LettersConfig
+
+# ---------- server -----------------------------------------------------
+
+
+def test_load_server_settings_defaults_when_file_missing(tmp_path: Path):
+    assert load_server_settings(tmp_path / "missing.toml") == ServerSettings()
+
+
+def test_load_server_settings_reads_server_table(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(textwrap.dedent("""
+            [server]
+            host = "127.0.0.1"
+            port = 8653
+            port_search_span = 1
+            """))
+
+    assert load_server_settings(config_file) == ServerSettings(
+        host="127.0.0.1",
+        port=8653,
+        port_search_span=1,
+    )
+
+
+@pytest.mark.parametrize(
+    ("toml", "field"),
+    [
+        ('host = ""', "host"),
+        ("host = 123", "host"),
+        ("port = 0", "port"),
+        ("port = 65536", "port"),
+        ('port = "8653"', "port"),
+        ("port_search_span = 0", "port_search_span"),
+    ],
+)
+def test_load_server_settings_rejects_invalid_values(
+    tmp_path: Path,
+    toml: str,
+    field: str,
+):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(f"[server]\n{toml}\n")
+
+    with pytest.raises(ValueError, match=field):
+        load_server_settings(config_file)
 
 
 def test_returns_defaults_when_file_missing(tmp_path: Path):

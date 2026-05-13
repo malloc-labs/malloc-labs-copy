@@ -22,18 +22,26 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e .
 
-python -m copy_653                  # start the engine on http://127.0.0.1:8653
-python -m copy_653 --port 9000      # bind a different port
+python -m copy_653                  # start the engine on configured/default host:port
+python -m copy_653 --port 9000      # override the configured port
 ```
 
-For USB MIDI key input, install the optional MIDI backend in the environment
-that runs Copy:
+For same-machine USB MIDI key input, install the optional MIDI backend in the
+environment that runs Copy:
 
 ```sh
 pip install -e ".[midi]"
 ```
 
-The engine starts an HTTP + WebSocket server on `127.0.0.1:8653`. If that port is in use, the engine probes upward by up to 20 ports and prints the bound URL on stdout (per spec §1.5 — fail loudly, never silently). Press `Ctrl-C` to stop.
+For hosted/headless use, leave the optional MIDI backend uninstalled and use a
+browser with Web MIDI support on the machine that has the key attached. The Key
+Timing page reads the local browser MIDI device and sends normalized key events
+to the Copy service over the websocket.
+
+The engine starts an HTTP + WebSocket server on `127.0.0.1:8653` by default.
+If that port is in use, the engine probes upward by up to 20 ports and prints
+the bound URL on stdout (per spec §1.5 — fail loudly, never silently). Press
+`Ctrl-C` to stop.
 
 Status: audio synthesis, Koch sequence generation, Word Detection, Letters playback, audio timing and signal texture settings, Settings-page test message playback/export, Key MIDI input display, and locked post-session review are wired. Persistent session records are still pending.
 
@@ -85,10 +93,15 @@ amplitude = 0.3
 receiver_bed = 2
 cadence_variation = 1
 output_device = "Mac mini Speakers"   # name substring or device index
+
+[server]
+host = "127.0.0.1"
+port = 8653
+port_search_span = 20
 EOF
 ```
 
-Any subset of `[audio]` keys is valid; omitted keys take defaults.
+Any subset of `[audio]` and `[server]` keys is valid; omitted keys take defaults.
 `effective_speed_wpm` must be less than or equal to `character_speed_wpm`; set
 them equal to disable Farnsworth spacing. Tone Shape is stored as
 `envelope_ramp_seconds` in config; the Settings page maps the 0-10 control to

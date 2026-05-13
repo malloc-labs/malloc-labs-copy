@@ -13,6 +13,7 @@ each in its own table:
 - ``[session]`` — runtime knobs for sessions. Currently just the dev
   default ``duration_seconds``; spec §4.2 will eventually add
   per-mode keys.
+- ``[server]`` — HTTP/WebSocket bind settings for hosted service use.
 - ``[midi.key]`` — physical key input defaults for the reference
   TRRS Trinkey and Copy-owned sidetone.
 
@@ -68,6 +69,18 @@ DEFAULT_CONFIG_PATH = Path.home() / ".local" / "share" / "copy_653" / "config.to
 # this when session/ proper lands. 30 seconds is a development default
 # — long enough to hear randomness, short enough to iterate.
 DEFAULT_SESSION_DURATION_SECONDS = 30.0
+DEFAULT_SERVER_HOST = "127.0.0.1"
+DEFAULT_SERVER_PORT = 8653
+DEFAULT_SERVER_PORT_SEARCH_SPAN = 20
+
+
+@dataclass(frozen=True, slots=True)
+class ServerSettings:
+    """HTTP/WebSocket bind settings."""
+
+    host: str = DEFAULT_SERVER_HOST
+    port: int = DEFAULT_SERVER_PORT
+    port_search_span: int = DEFAULT_SERVER_PORT_SEARCH_SPAN
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +94,52 @@ class KeyerSettings:
     straight_note: int = 0
     dit_ms: int = 100
     character_gap_dits: int = 3
+
+
+# ---------- server -----------------------------------------------------
+
+
+def load_server_settings(path: Path | None = None) -> ServerSettings:
+    """Load HTTP/WebSocket bind settings from ``[server]``."""
+    data = _read_toml(path)
+    if data is None:
+        return ServerSettings()
+
+    server_table = data.get("server", {})
+    if not isinstance(server_table, dict):
+        return ServerSettings()
+
+    return ServerSettings(
+        host=_server_host(server_table.get("host"), "host", default=DEFAULT_SERVER_HOST),
+        port=_server_port(server_table.get("port"), "port", default=DEFAULT_SERVER_PORT),
+        port_search_span=_key_positive_int(
+            server_table.get("port_search_span"),
+            "port_search_span",
+            default=DEFAULT_SERVER_PORT_SEARCH_SPAN,
+            table="server",
+        ),
+    )
+
+
+def _server_host(value: Any, field: str, *, default: str) -> str:
+    if value is None:
+        return default
+    if not isinstance(value, str):
+        raise ValueError(f"[server].{field} must be a string")
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError(f"[server].{field} must not be empty")
+    return stripped
+
+
+def _server_port(value: Any, field: str, *, default: int) -> int:
+    if value is None:
+        return default
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"[server].{field} must be a TCP port from 1 to 65535")
+    if not 1 <= value <= 65535:
+        raise ValueError(f"[server].{field} must be a TCP port from 1 to 65535")
+    return value
 
 
 # ---------- audio ------------------------------------------------------
@@ -227,13 +286,19 @@ def _key_optional_string(value: Any, field: str, *, default: str | None) -> str 
     return stripped or None
 
 
-def _key_positive_int(value: Any, field: str, *, default: int) -> int:
+def _key_positive_int(
+    value: Any,
+    field: str,
+    *,
+    default: int,
+    table: str = "midi.key",
+) -> int:
     if value is None:
         return default
     if not isinstance(value, int) or isinstance(value, bool):
-        raise ValueError(f"[midi.key].{field} must be a positive integer")
+        raise ValueError(f"[{table}].{field} must be a positive integer")
     if value <= 0:
-        raise ValueError(f"[midi.key].{field} must be a positive integer")
+        raise ValueError(f"[{table}].{field} must be a positive integer")
     return value
 
 
