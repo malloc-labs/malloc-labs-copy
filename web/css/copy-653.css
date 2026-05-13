@@ -150,7 +150,7 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 /*
- * Three plain full-width link rows. The entire row is the tap/click target.
+ * Plain full-width link rows. The entire row is the tap/click target.
  * No icons, no arrows, no hover backgrounds — the label carries the destination;
  * the description is quiet context only.
  */
@@ -489,6 +489,10 @@
     cursor: pointer;
     text-align: center;
     transition: color 0.1s ease, opacity 0.1s ease, border-color 0.1s ease;
+}
+
+.sequence-row--read-only .seq-token {
+    cursor: default;
 }
 
 /* Claimed — full brightness, slightly bolder */
