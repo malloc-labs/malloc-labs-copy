@@ -150,13 +150,17 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 /*
- * Three plain full-width link rows. The entire row is the tap/click target.
+ * Plain full-width link rows. The entire row is the tap/click target.
  * No icons, no arrows, no hover backgrounds — the label carries the destination;
  * the description is quiet context only.
  */
 .landing-nav {
     display: flex;
     flex-direction: column;
+}
+
+.nav-group {
+    border-bottom: var(--mr-border-rule);
 }
 
 .nav-item {
@@ -170,8 +174,12 @@
     transition: color 0.1s ease;
 }
 
-.landing-nav .nav-item:first-child {
+.landing-nav > .nav-item:first-child {
     border-top: var(--mr-border-rule);
+}
+
+.nav-group .nav-item {
+    border-bottom: 0;
 }
 
 .nav-item:hover {
@@ -187,6 +195,34 @@
 }
 
 .nav-item__desc {
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    line-height: var(--mr-line-body);
+}
+
+.nav-subitem {
+    display: flex;
+    flex-direction: column;
+    gap: var(--mr-space-1);
+    padding: 0 0 var(--mr-space-4) var(--mr-space-5);
+    text-decoration: none;
+    color: var(--mr-text);
+    transition: color 0.1s ease;
+}
+
+.nav-subitem:hover {
+    color: var(--mr-anchor);
+    text-decoration: none;
+}
+
+.nav-subitem__label {
+    font-size: var(--mr-size-small);
+    font-weight: 500;
+    color: inherit;
+    line-height: var(--mr-line-tight);
+}
+
+.nav-subitem__desc {
     font-size: var(--mr-size-small);
     color: var(--mr-muted);
     line-height: var(--mr-line-body);
