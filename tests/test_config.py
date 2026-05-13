@@ -10,12 +10,15 @@ from copy_653.audio import patterns
 from copy_653.audio.parameters import AudioParameters
 from copy_653.config import (
     DEFAULT_SESSION_DURATION_SECONDS,
+    KeyerSettings,
     load_audio_parameters,
     load_claimed_symbols,
+    load_keyer_settings,
     load_letters_config,
     load_session_duration,
     save_audio_timing,
     save_claimed_symbols,
+    save_keyer_settings,
 )
 from copy_653.letters.sequence import LettersConfig
 
@@ -226,6 +229,46 @@ def test_save_audio_timing_rejects_invalid_texture_values(tmp_path: Path):
             cadence_variation=6,
             path=tmp_path / "c.toml",
         )
+
+
+# ---------- key input ---------------------------------------------------
+
+
+def test_load_keyer_settings_defaults_to_trinkey_buzzer_off(tmp_path: Path):
+    assert load_keyer_settings(tmp_path / "missing.toml") == KeyerSettings()
+
+
+def test_load_keyer_settings_reads_trinkey_buzzer(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text("[midi.key]\ntrinkey_buzzer_enabled = true\n")
+
+    assert load_keyer_settings(config_file) == KeyerSettings(trinkey_buzzer_enabled=True)
+
+
+def test_load_keyer_settings_rejects_non_boolean_buzzer(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[midi.key]\ntrinkey_buzzer_enabled = "yes"\n')
+
+    with pytest.raises(ValueError, match="trinkey_buzzer_enabled"):
+        load_keyer_settings(config_file)
+
+
+def test_save_keyer_settings_preserves_other_tables(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(textwrap.dedent("""
+        [audio]
+        character_speed_wpm = 22
+
+        [symbols]
+        claimed = ["K", "M"]
+        """))
+
+    saved = save_keyer_settings(trinkey_buzzer_enabled=True, path=config_file)
+
+    assert saved == KeyerSettings(trinkey_buzzer_enabled=True)
+    assert load_keyer_settings(config_file) == KeyerSettings(trinkey_buzzer_enabled=True)
+    assert load_audio_parameters(config_file).character_speed_wpm == 22
+    assert load_claimed_symbols(config_file) == ("K", "M")
 
 
 # ---------- claimed symbols --------------------------------------------

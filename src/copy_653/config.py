@@ -43,6 +43,7 @@ comments survive only as long as no programmatic write occurs.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import os
 import tempfile
 import tomllib
@@ -65,6 +66,13 @@ DEFAULT_CONFIG_PATH = Path.home() / ".local" / "share" / "copy_653" / "config.to
 # this when session/ proper lands. 30 seconds is a development default
 # — long enough to hear randomness, short enough to iterate.
 DEFAULT_SESSION_DURATION_SECONDS = 30.0
+
+
+@dataclass(frozen=True, slots=True)
+class KeyerSettings:
+    """Settings for physical key input and local sidetone behaviour."""
+
+    trinkey_buzzer_enabled: bool = False
 
 
 # ---------- audio ------------------------------------------------------
@@ -149,6 +157,57 @@ def save_audio_timing(
         audio_table["cadence_variation"] = params.cadence_variation
     _write_toml_atomic(data, config_path)
     return params
+
+
+# ---------- key input ---------------------------------------------------
+
+
+def load_keyer_settings(path: Path | None = None) -> KeyerSettings:
+    """Load physical key input settings from ``[midi.key]``.
+
+    Missing settings default to Copy owning the sidetone, with the
+    Trinkey buzzer disabled.
+    """
+    data = _read_toml(path)
+    if data is None:
+        return KeyerSettings()
+
+    midi_table = data.get("midi", {})
+    if not isinstance(midi_table, dict):
+        return KeyerSettings()
+    key_table = midi_table.get("key", {})
+    if not isinstance(key_table, dict):
+        return KeyerSettings()
+
+    raw_buzzer = key_table.get("trinkey_buzzer_enabled")
+    if raw_buzzer is None:
+        return KeyerSettings()
+    if not isinstance(raw_buzzer, bool):
+        raise ValueError(
+            "[midi.key].trinkey_buzzer_enabled must be a boolean, "
+            f"got {type(raw_buzzer).__name__}"
+        )
+
+    return KeyerSettings(trinkey_buzzer_enabled=raw_buzzer)
+
+
+def save_keyer_settings(
+    *,
+    trinkey_buzzer_enabled: bool,
+    path: Path | None = None,
+) -> KeyerSettings:
+    """Persist physical key input settings, preserving other tables."""
+    if not isinstance(trinkey_buzzer_enabled, bool):
+        raise ValueError("trinkey_buzzer_enabled must be a boolean")
+
+    config_path = path if path is not None else DEFAULT_CONFIG_PATH
+    data = _read_toml(config_path) or {}
+    midi_table = data.setdefault("midi", {})
+    key_table = midi_table.setdefault("key", {})
+    key_table["trinkey_buzzer_enabled"] = trinkey_buzzer_enabled
+
+    _write_toml_atomic(data, config_path)
+    return KeyerSettings(trinkey_buzzer_enabled=trinkey_buzzer_enabled)
 
 
 # ---------- claimed symbols --------------------------------------------

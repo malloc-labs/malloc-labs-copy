@@ -123,12 +123,15 @@ from copy_653.audio.parameters import AudioParameters
 from copy_653.audio.wav import encode_pcm16_wav
 from copy_653.config import (
     DEFAULT_CONFIG_PATH,
+    KeyerSettings,
     load_audio_parameters,
     load_claimed_symbols,
+    load_keyer_settings,
     load_letters_config,
     load_session_duration,
     save_audio_timing,
     save_claimed_symbols,
+    save_keyer_settings,
 )
 from copy_653.letters import (
     ANCHORED_SYMBOLS,
@@ -298,8 +301,13 @@ def _claimed_symbols_event(claimed: tuple[str, ...]) -> dict[str, Any]:
     }
 
 
-def _audio_settings_event_from_params(params: AudioParameters) -> dict[str, Any]:
+def _audio_settings_event_from_params(
+    params: AudioParameters,
+    keyer_settings: KeyerSettings | None = None,
+) -> dict[str, Any]:
     """Build the learner-facing audio timing event payload."""
+    if keyer_settings is None:
+        keyer_settings = KeyerSettings()
     return {
         "type": "audio-settings",
         "character_wpm": params.character_speed_wpm,
@@ -308,6 +316,7 @@ def _audio_settings_event_from_params(params: AudioParameters) -> dict[str, Any]
         "tone_shape": texture.tone_shape_for_envelope_seconds(params.envelope_ramp_seconds),
         "receiver_bed": params.receiver_bed,
         "cadence_variation": params.cadence_variation,
+        "trinkey_buzzer_enabled": keyer_settings.trinkey_buzzer_enabled,
     }
 
 
@@ -552,7 +561,8 @@ async def _get_audio_settings_action(
     config_path: Path,
 ) -> None:
     params = load_audio_parameters(config_path)
-    await _send_event(ws, _audio_settings_event_from_params(params))
+    keyer_settings = load_keyer_settings(config_path)
+    await _send_event(ws, _audio_settings_event_from_params(params, keyer_settings))
 
 
 async def _set_audio_settings_action(
@@ -581,6 +591,10 @@ async def _set_audio_settings_action(
             texture.MIN_CADENCE_VARIATION,
             texture.MAX_CADENCE_VARIATION,
         )
+        trinkey_buzzer_enabled = _optional_bool(
+            message.get("trinkey_buzzer_enabled"),
+            "trinkey_buzzer_enabled",
+        )
         params = save_audio_timing(
             character_speed_wpm=character_wpm,
             effective_speed_wpm=effective_wpm,
@@ -588,6 +602,14 @@ async def _set_audio_settings_action(
             receiver_bed=receiver_bed,
             cadence_variation=cadence_variation,
             path=config_path,
+        )
+        keyer_settings = (
+            save_keyer_settings(
+                trinkey_buzzer_enabled=trinkey_buzzer_enabled,
+                path=config_path,
+            )
+            if trinkey_buzzer_enabled is not None
+            else load_keyer_settings(config_path)
         )
     except ValueError as exc:
         await _send_event(
@@ -600,7 +622,7 @@ async def _set_audio_settings_action(
         )
         return
 
-    await _send_event(ws, _audio_settings_event_from_params(params))
+    await _send_event(ws, _audio_settings_event_from_params(params, keyer_settings))
 
 
 async def _play_test_message_action(
@@ -731,6 +753,14 @@ def _optional_bounded_int(value: Any, field: str, minimum: int, maximum: int) ->
         raise ValueError(f"{field} must be an integer from {minimum} to {maximum}")
     if not minimum <= value <= maximum:
         raise ValueError(f"{field} must be an integer from {minimum} to {maximum}")
+    return value
+
+
+def _optional_bool(value: Any, field: str) -> bool | None:
+    if value is None:
+        return None
+    if not isinstance(value, bool):
+        raise ValueError(f"{field} must be a boolean")
     return value
 
 
