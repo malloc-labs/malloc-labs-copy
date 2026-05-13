@@ -367,8 +367,6 @@ def _key_input_start_payload(
         "dit_note": settings.dit_note,
         "dah_note": settings.dah_note,
         "straight_note": settings.straight_note,
-        "dit_ms": settings.dit_ms,
-        "character_gap_dits": settings.character_gap_dits,
         "trinkey_buzzer_enabled": settings.trinkey_buzzer_enabled,
         "character_wpm": params.character_speed_wpm,
         "effective_wpm": params.effective_speed_wpm,
