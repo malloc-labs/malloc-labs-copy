@@ -6,6 +6,7 @@ from copy_653.midi.key_input import (
     iter_midi_note_events,
     key_element_from_note_event,
     midi_message_to_note_event,
+    resolve_midi_input_name,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "iter_midi_note_events",
     "key_element_from_note_event",
     "midi_message_to_note_event",
+    "resolve_midi_input_name",
 ]

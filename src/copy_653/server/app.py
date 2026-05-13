@@ -333,6 +333,7 @@ def _key_input_start_event(settings: KeyerSettings) -> dict[str, Any]:
     """Build the Key page event announcing active MIDI input."""
     return {
         "type": "key-input-start",
+        "input_name": settings.input_name,
         "dit_note": settings.dit_note,
         "dah_note": settings.dah_note,
         "straight_note": settings.straight_note,
@@ -759,7 +760,9 @@ async def _run_key_input_action(
         dit_seconds=settings.dit_ms / 1000,
         character_gap_dits=settings.character_gap_dits,
     )
-    source = note_source or (lambda stop: iter_midi_note_events(stop_event=stop))
+    source = note_source or (
+        lambda stop: iter_midi_note_events(port_name=settings.input_name, stop_event=stop)
+    )
     queue: asyncio.Queue[MidiNoteEvent | BaseException | None] = asyncio.Queue()
     stop_event = threading.Event()
     loop = asyncio.get_running_loop()

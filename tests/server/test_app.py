@@ -115,6 +115,7 @@ def _write_test_config_with_keyer(
 
             [midi.key]
             trinkey_buzzer_enabled = {str(trinkey_buzzer_enabled).lower()}
+            input_name = "TRRS Trinkey"
             dit_note = 1
             dah_note = 2
             straight_note = 0
@@ -609,6 +610,7 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
         data = tomllib.loads(config_path.read_text())
         assert data["midi"]["key"] == {
             "trinkey_buzzer_enabled": True,
+            "input_name": "TRRS Trinkey",
             "dit_note": 1,
             "dah_note": 2,
             "straight_note": 0,
