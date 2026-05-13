@@ -18,6 +18,7 @@ import pytest
 from websockets.client import connect as ws_connect
 
 from copy_653 import __version__
+from copy_653.midi import DecodedSymbol
 from copy_653.server import app
 
 # ---------- find_available_port -----------------------------------------
@@ -112,6 +113,40 @@ def _make_web_root(tmp_path: Path) -> Path:
     (web_root / "css" / "core.css").write_text("/* test */")
     (web_root / "js" / "main.js").write_text("// test")
     return web_root
+
+
+def test_sent_symbol_event_serializes_decoder_output():
+    event = app._sent_symbol_event(
+        DecodedSymbol(
+            pattern="-.-",
+            symbol="K",
+            started_at=1.2,
+            ended_at=1.9,
+        )
+    )
+
+    assert event == {
+        "type": "sent-symbol",
+        "symbol": "K",
+        "pattern": "-.-",
+        "started_at": 1.2,
+        "ended_at": 1.9,
+    }
+
+
+def test_sent_symbol_event_allows_unknown_pattern():
+    event = app._sent_symbol_event(
+        DecodedSymbol(
+            pattern="......",
+            symbol=None,
+            started_at=1.2,
+            ended_at=2.3,
+        )
+    )
+
+    assert event["type"] == "sent-symbol"
+    assert event["symbol"] is None
+    assert event["pattern"] == "......"
 
 
 async def _drain_until(ws, predicate, timeout=5.0):
