@@ -86,6 +86,7 @@ function connect() {
 
     socket.addEventListener("open", () => {
         setStatus("connected", "connected");
+        socket.send(JSON.stringify({ action: "start-key-input" }));
     });
 
     socket.addEventListener("message", (message) => {
@@ -94,8 +95,12 @@ function connect() {
             renderSequence(event);
         } else if (event.type === "sent-symbol") {
             renderSentSymbol(event);
+        } else if (event.type === "key-input-start") {
+            setStatus("connected", "key ready");
         } else if (event.type === "error") {
-            setStatus("connecting", "error");
+            const midiError = event.reason === "key-input-unavailable" ||
+                event.reason === "key-input-failed";
+            setStatus("connecting", midiError ? "midi unavailable" : "error");
         }
     });
 

@@ -38,6 +38,8 @@ Client → server, JSON over WS::
      "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1}
     {"action": "save-test-message", "character_wpm": 20, "effective_wpm": 10,
      "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1}
+    {"action": "start-key-input"}
+    {"action": "stop-key-input"}
 
 Server → client, JSON over WS, one frame per event. Pushed
 unsolicited on connect, and after every change::
@@ -72,6 +74,11 @@ During Settings test-message playback/export::
     {"type": "test-message-wav-start", "filename": "...wav", "byte_length": 123}
     {"type": "test-message-wav-chunk", "data": "<base64>"}
     {"type": "test-message-wav-end", "filename": "...wav"}
+
+During Key timing input::
+
+    {"type": "key-input-start", "dit_note": 1, "dah_note": 2, ...}
+    {"type": "sent-symbol", "symbol": "K", "pattern": "-.-", "started_at": 1.0, "ended_at": 1.9}
 
 ``stop`` cancels an in-flight session. The engine cancels the audio
 task and sends ``session-end`` before closing the session. If no
@@ -108,9 +115,10 @@ import json
 import logging
 import mimetypes
 import socket
+import threading
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Iterator
 from urllib.parse import urlsplit
 
 from websockets.datastructures import Headers
@@ -138,7 +146,14 @@ from copy_653.letters import (
     find_anchors_dir,
     play_letter_sequence,
 )
-from copy_653.midi import DecodedSymbol
+from copy_653.midi import (
+    DecodedSymbol,
+    KeyDecoder,
+    KeyElement,
+    MidiNoteEvent,
+    iter_midi_note_events,
+    key_element_from_note_event,
+)
 from copy_653.server.test_message_audio import build_marconi_test_message
 from copy_653.server.word_detection_audio import build_word_detection_audio
 
@@ -146,6 +161,7 @@ DEFAULT_PORT = 8653
 DEFAULT_PORT_SEARCH_SPAN = 20
 # Divisible by 3 so every non-final base64 chunk can be concatenated safely.
 WAV_EXPORT_CHUNK_SIZE = 245_760
+KeyNoteSource = Callable[[threading.Event], Iterator[MidiNoteEvent]]
 
 logger = logging.getLogger(__name__)
 
@@ -310,6 +326,19 @@ def _sent_symbol_event(decoded: DecodedSymbol) -> dict[str, Any]:
         "pattern": decoded.pattern,
         "started_at": decoded.started_at,
         "ended_at": decoded.ended_at,
+    }
+
+
+def _key_input_start_event(settings: KeyerSettings) -> dict[str, Any]:
+    """Build the Key page event announcing active MIDI input."""
+    return {
+        "type": "key-input-start",
+        "dit_note": settings.dit_note,
+        "dah_note": settings.dah_note,
+        "straight_note": settings.straight_note,
+        "dit_ms": settings.dit_ms,
+        "character_gap_dits": settings.character_gap_dits,
+        "trinkey_buzzer_enabled": settings.trinkey_buzzer_enabled,
     }
 
 
@@ -713,6 +742,134 @@ async def _save_test_message_action(
     await _send_event(ws, {"type": "test-message-wav-end", "filename": filename})
 
 
+async def _run_key_input_action(
+    ws: WebSocketServerProtocol,
+    config_path: Path,
+    note_source: KeyNoteSource | None = None,
+) -> None:
+    """Receive Trinkey MIDI note events, decode symbols, and push them to the page."""
+    try:
+        settings = load_keyer_settings(config_path)
+        audio_params = load_audio_parameters(config_path)
+    except ValueError as exc:
+        await _send_event(ws, {"type": "error", "reason": "invalid-config", "detail": str(exc)})
+        return
+
+    decoder = KeyDecoder(
+        dit_seconds=settings.dit_ms / 1000,
+        character_gap_dits=settings.character_gap_dits,
+    )
+    source = note_source or (lambda stop: iter_midi_note_events(stop_event=stop))
+    queue: asyncio.Queue[MidiNoteEvent | BaseException | None] = asyncio.Queue()
+    stop_event = threading.Event()
+    loop = asyncio.get_running_loop()
+
+    def _queue_from_thread(item: MidiNoteEvent | BaseException | None) -> None:
+        try:
+            loop.call_soon_threadsafe(queue.put_nowait, item)
+        except RuntimeError:
+            pass
+
+    def _read_midi() -> None:
+        try:
+            for note_event in source(stop_event):
+                if stop_event.is_set():
+                    break
+                _queue_from_thread(note_event)
+        except BaseException as exc:
+            _queue_from_thread(exc)
+        finally:
+            _queue_from_thread(None)
+
+    thread = threading.Thread(target=_read_midi, name="copy-653-key-midi", daemon=True)
+    thread.start()
+    character_gap_seconds = settings.dit_ms / 1000 * settings.character_gap_dits
+
+    await _send_event(ws, _key_input_start_event(settings))
+
+    try:
+        while True:
+            try:
+                item = await asyncio.wait_for(queue.get(), timeout=character_gap_seconds)
+            except asyncio.TimeoutError:
+                await _flush_key_symbol(ws, decoder)
+                continue
+
+            if item is None:
+                await _flush_key_symbol(ws, decoder)
+                return
+            if isinstance(item, BaseException):
+                reason = (
+                    "key-input-unavailable" if isinstance(item, ImportError) else "key-input-failed"
+                )
+                await _send_event(ws, {"type": "error", "reason": reason, "detail": str(item)})
+                return
+
+            element = key_element_from_note_event(item, settings)
+            if element is None:
+                continue
+
+            if not settings.trinkey_buzzer_enabled:
+                _play_key_sidetone(element, settings, audio_params)
+
+            try:
+                decoded = decoder.push(element)
+            except ValueError as exc:
+                await _send_event(
+                    ws,
+                    {"type": "error", "reason": "key-input-decode-failed", "detail": str(exc)},
+                )
+                decoder.reset()
+                continue
+            if decoded is not None:
+                await _send_event(ws, _sent_symbol_event(decoded))
+    finally:
+        stop_event.set()
+        await asyncio.to_thread(thread.join, 1.0)
+
+
+async def _flush_key_symbol(ws: WebSocketServerProtocol, decoder: KeyDecoder) -> None:
+    try:
+        decoded = decoder.tick(asyncio.get_running_loop().time())
+    except ValueError as exc:
+        await _send_event(
+            ws, {"type": "error", "reason": "key-input-decode-failed", "detail": str(exc)}
+        )
+        decoder.reset()
+        return
+    if decoded is not None:
+        await _send_event(ws, _sent_symbol_event(decoded))
+
+
+def _play_key_sidetone(
+    element: KeyElement,
+    settings: KeyerSettings,
+    audio_params: AudioParameters,
+) -> None:
+    samples = _key_sidetone_samples(element, settings, audio_params)
+    task = asyncio.create_task(asyncio.to_thread(playback.play, samples, audio_params))
+    task.add_done_callback(_log_background_task_exception)
+
+
+def _key_sidetone_samples(
+    element: KeyElement,
+    settings: KeyerSettings,
+    audio_params: AudioParameters,
+):
+    duration_seconds = settings.dit_ms / 1000
+    if element.kind == "dah":
+        duration_seconds *= 3
+    return synth.apply_envelope(synth.generate_tone(duration_seconds, audio_params), audio_params)
+
+
+def _log_background_task_exception(task: asyncio.Task[Any]) -> None:
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning("background task failed: %s", exc)
+
+
 def _audio_params_from_settings_message(message: dict[str, Any]) -> AudioParameters:
     character_wpm = _strict_positive_int(message.get("character_wpm"), "character_wpm")
     effective_wpm = _strict_positive_int(message.get("effective_wpm"), "effective_wpm")
@@ -821,6 +978,7 @@ async def handler(
     ws: WebSocketServerProtocol,
     config_path: Path = DEFAULT_CONFIG_PATH,
     anchors_dir: Path | None = None,
+    key_note_source: KeyNoteSource | None = None,
 ) -> None:
     """Top-level WS connection handler. Dispatches incoming JSON commands."""
     if anchors_dir is None:
@@ -832,6 +990,7 @@ async def handler(
     current_session_task: asyncio.Task[None] | None = None
     current_letter_task: asyncio.Task[None] | None = None
     current_test_message_task: asyncio.Task[None] | None = None
+    current_key_input_task: asyncio.Task[None] | None = None
 
     # Push current state on connect so the UI does not need to ask.
     claimed = load_claimed_symbols(config_path)
@@ -885,6 +1044,19 @@ async def handler(
                 await _get_audio_settings_action(ws, config_path)
             elif action == "set-audio-settings":
                 await _set_audio_settings_action(ws, message, config_path)
+            elif action == "start-key-input":
+                if current_key_input_task is not None and not current_key_input_task.done():
+                    current_key_input_task.cancel()
+                    try:
+                        await current_key_input_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+                current_key_input_task = asyncio.create_task(
+                    _run_key_input_action(ws, config_path, key_note_source)
+                )
+            elif action == "stop-key-input":
+                if current_key_input_task is not None and not current_key_input_task.done():
+                    current_key_input_task.cancel()
             elif action == "play-test-message":
                 if current_test_message_task is not None and not current_test_message_task.done():
                     current_test_message_task.cancel()
@@ -938,6 +1110,8 @@ async def handler(
             current_letter_task.cancel()
         if current_test_message_task is not None and not current_test_message_task.done():
             current_test_message_task.cancel()
+        if current_key_input_task is not None and not current_key_input_task.done():
+            current_key_input_task.cancel()
 
 
 async def serve_app(
@@ -946,6 +1120,7 @@ async def serve_app(
     web_root: Path | None = None,
     config_path: Path = DEFAULT_CONFIG_PATH,
     anchors_dir: Path | None = None,
+    key_note_source: KeyNoteSource | None = None,
 ) -> tuple[Any, int]:
     """Start the server and return ``(server, bound_port)``.
 
@@ -965,7 +1140,12 @@ async def serve_app(
     process_request = _build_static_handler(resolved_web_root)
 
     async def _connection(ws: WebSocketServerProtocol) -> None:
-        await handler(ws, config_path=config_path, anchors_dir=resolved_anchors_dir)
+        await handler(
+            ws,
+            config_path=config_path,
+            anchors_dir=resolved_anchors_dir,
+            key_note_source=key_note_source,
+        )
 
     server = await serve(
         _connection,

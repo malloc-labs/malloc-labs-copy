@@ -1,7 +1,7 @@
 """Entry point for ``python -m copy_653``.
 
 Starts the engine: HTTP + WebSocket on localhost, audio out via
-PortAudio. MIDI in is not yet wired (spec §8.1; see ``copy_653.midi``).
+PortAudio, and optional MIDI key input via ``copy_653.midi``.
 """
 
 from __future__ import annotations
