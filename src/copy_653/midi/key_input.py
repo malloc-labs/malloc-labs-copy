@@ -68,7 +68,8 @@ def iter_midi_note_events(
     """
     import mido
 
-    with mido.open_input(port_name) as inport:
+    resolved_port_name = resolve_midi_input_name(mido.get_input_names(), port_name)
+    with mido.open_input(resolved_port_name) as inport:
         while stop_event is None or not stop_event.is_set():
             emitted = False
             for message in inport.iter_pending():
@@ -78,3 +79,33 @@ def iter_midi_note_events(
                     yield event
             if not emitted:
                 time.sleep(poll_seconds)
+
+
+def resolve_midi_input_name(
+    input_names: list[str],
+    preferred_name: str | None,
+) -> str | None:
+    """Resolve a configured MIDI input name to a concrete Mido port name.
+
+    Mido expects the concrete CoreMIDI/ALSA port name. The config accepts
+    a stable substring such as ``TRRS Trinkey`` so the default can match
+    observed names like ``TRRS Trinkey M0``.
+    """
+    if preferred_name is None:
+        return None
+
+    preferred = preferred_name.strip()
+    if not preferred:
+        return None
+
+    for name in input_names:
+        if name == preferred:
+            return name
+
+    lowered = preferred.lower()
+    for name in input_names:
+        if lowered in name.lower():
+            return name
+
+    available = ", ".join(input_names) or "none"
+    raise ValueError(f"MIDI input matching {preferred!r} not found; available inputs: {available}")

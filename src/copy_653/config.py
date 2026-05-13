@@ -75,6 +75,7 @@ class KeyerSettings:
     """Settings for physical key input and local sidetone behaviour."""
 
     trinkey_buzzer_enabled: bool = False
+    input_name: str | None = "TRRS Trinkey"
     dit_note: int = 1
     dah_note: int = 2
     straight_note: int = 0
@@ -192,6 +193,11 @@ def load_keyer_settings(path: Path | None = None) -> KeyerSettings:
             "trinkey_buzzer_enabled",
             default=False,
         ),
+        input_name=_key_optional_string(
+            key_table.get("input_name"),
+            "input_name",
+            default="TRRS Trinkey",
+        ),
         dit_note=_key_midi_note(key_table.get("dit_note"), "dit_note", default=1),
         dah_note=_key_midi_note(key_table.get("dah_note"), "dah_note", default=2),
         straight_note=_key_midi_note(key_table.get("straight_note"), "straight_note", default=0),
@@ -210,6 +216,15 @@ def _key_bool(value: Any, field: str, *, default: bool) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"[midi.key].{field} must be a boolean, got {type(value).__name__}")
     return value
+
+
+def _key_optional_string(value: Any, field: str, *, default: str | None) -> str | None:
+    if value is None:
+        return default
+    if not isinstance(value, str):
+        raise ValueError(f"[midi.key].{field} must be a string")
+    stripped = value.strip()
+    return stripped or None
 
 
 def _key_positive_int(value: Any, field: str, *, default: int) -> int:
@@ -235,6 +250,7 @@ def _key_midi_note(value: Any, field: str, *, default: int) -> int:
 def save_keyer_settings(
     *,
     trinkey_buzzer_enabled: bool,
+    input_name: str | None = None,
     dit_note: int | None = None,
     dah_note: int | None = None,
     straight_note: int | None = None,
@@ -262,6 +278,7 @@ def save_keyer_settings(
             "trinkey_buzzer_enabled",
             default=current.trinkey_buzzer_enabled,
         ),
+        input_name=_key_optional_string(input_name, "input_name", default=current.input_name),
         dit_note=_key_midi_note(dit_note, "dit_note", default=current.dit_note),
         dah_note=_key_midi_note(dah_note, "dah_note", default=current.dah_note),
         straight_note=_key_midi_note(
@@ -278,6 +295,7 @@ def save_keyer_settings(
     )
 
     key_table["trinkey_buzzer_enabled"] = settings.trinkey_buzzer_enabled
+    key_table["input_name"] = settings.input_name
     key_table["dit_note"] = settings.dit_note
     key_table["dah_note"] = settings.dah_note
     key_table["straight_note"] = settings.straight_note

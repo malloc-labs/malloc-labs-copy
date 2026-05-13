@@ -237,6 +237,7 @@ def test_save_audio_timing_rejects_invalid_texture_values(tmp_path: Path):
 def test_load_keyer_settings_defaults_to_trinkey_buzzer_off(tmp_path: Path):
     assert load_keyer_settings(tmp_path / "missing.toml") == KeyerSettings(
         trinkey_buzzer_enabled=False,
+        input_name="TRRS Trinkey",
         dit_note=1,
         dah_note=2,
         straight_note=0,
@@ -250,6 +251,7 @@ def test_load_keyer_settings_reads_key_table(tmp_path: Path):
     config_file.write_text(textwrap.dedent("""
         [midi.key]
         trinkey_buzzer_enabled = true
+        input_name = "TRRS Trinkey M0"
         dit_note = 1
         dah_note = 2
         straight_note = 0
@@ -259,6 +261,7 @@ def test_load_keyer_settings_reads_key_table(tmp_path: Path):
 
     assert load_keyer_settings(config_file) == KeyerSettings(
         trinkey_buzzer_enabled=True,
+        input_name="TRRS Trinkey M0",
         dit_note=1,
         dah_note=2,
         straight_note=0,
@@ -271,6 +274,7 @@ def test_load_keyer_settings_reads_key_table(tmp_path: Path):
     ("toml", "message"),
     [
         ('trinkey_buzzer_enabled = "yes"', "trinkey_buzzer_enabled"),
+        ("input_name = false", "input_name"),
         ("dit_note = -1", "dit_note"),
         ("dah_note = 128", "dah_note"),
         ("straight_note = true", "straight_note"),
@@ -309,11 +313,13 @@ def test_save_keyer_settings_preserves_other_tables(tmp_path: Path):
 
     assert saved == KeyerSettings(
         trinkey_buzzer_enabled=True,
+        input_name="TRRS Trinkey",
         dit_ms=90,
         character_gap_dits=4,
     )
     assert load_keyer_settings(config_file) == KeyerSettings(
         trinkey_buzzer_enabled=True,
+        input_name="TRRS Trinkey",
         dit_ms=90,
         character_gap_dits=4,
     )

@@ -9,6 +9,7 @@ from copy_653.midi import (
     MidiNoteEvent,
     key_element_from_note_event,
     midi_message_to_note_event,
+    resolve_midi_input_name,
 )
 
 
@@ -70,3 +71,37 @@ def test_key_element_from_note_event_ignores_releases_and_other_notes():
         key_element_from_note_event(MidiNoteEvent(note=60, pressed=True, timestamp=1.0), settings)
         is None
     )
+
+
+def test_resolve_midi_input_name_accepts_exact_match():
+    assert (
+        resolve_midi_input_name(
+            ["SSL 2+ Mk II", "TRRS Trinkey M0"],
+            "TRRS Trinkey M0",
+        )
+        == "TRRS Trinkey M0"
+    )
+
+
+def test_resolve_midi_input_name_accepts_substring_match():
+    assert (
+        resolve_midi_input_name(
+            ["SSL 2+ Mk II", "TRRS Trinkey M0"],
+            "TRRS Trinkey",
+        )
+        == "TRRS Trinkey M0"
+    )
+
+
+def test_resolve_midi_input_name_returns_default_input_when_unconfigured():
+    assert resolve_midi_input_name(["TRRS Trinkey M0"], None) is None
+
+
+def test_resolve_midi_input_name_reports_available_inputs():
+    try:
+        resolve_midi_input_name(["SSL 2+ Mk II", "IAC Driver Bus 1"], "TRRS Trinkey")
+    except ValueError as exc:
+        assert "TRRS Trinkey" in str(exc)
+        assert "SSL 2+ Mk II" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
