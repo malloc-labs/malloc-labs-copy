@@ -26,9 +26,16 @@ python -m copy_653                  # start the engine on http://127.0.0.1:8653
 python -m copy_653 --port 9000      # bind a different port
 ```
 
+For USB MIDI key input, install the optional MIDI backend in the environment
+that runs Copy:
+
+```sh
+pip install -e ".[midi]"
+```
+
 The engine starts an HTTP + WebSocket server on `127.0.0.1:8653`. If that port is in use, the engine probes upward by up to 20 ports and prints the bound URL on stdout (per spec §1.5 — fail loudly, never silently). Press `Ctrl-C` to stop.
 
-Status: audio synthesis, Koch sequence generation, Word Detection, Letters playback, audio timing and signal texture settings, Settings-page test message playback/export, and locked post-session review are wired. MIDI input and persistent session records are still pending.
+Status: audio synthesis, Koch sequence generation, Word Detection, Letters playback, audio timing and signal texture settings, Settings-page test message playback/export, Key MIDI input display, and locked post-session review are wired. Persistent session records are still pending.
 
 ## Signal texture
 
@@ -58,6 +65,7 @@ After `python -m copy_653`, open the URL it prints (default `http://127.0.0.1:86
 - **Koch Method → Exercises**: claim/unclaim symbols, start or stop a random Koch listening session, then expand the locked review to see clock-time symbol entries with spoken Morse patterns.
 - **Koch Method → Word Detection**: listen for claimed symbols inside short words, including spoken focus prompts for K, M, and U where recordings are available.
 - **Koch Method → Letters**: play a single symbol's spoken anchor plus Morse sequence for reference.
+- **Key → Timing, spacing, and known symbols**: display the known-symbol sequence and decode formed Trinkey MIDI dit/dah notes into sent symbols.
 - **Settings**: adjust character speed, effective speed, and signal texture; play or export the fixed test message; the server persists saved values in the shared config.
 
 The WebSocket protocol is documented at the top of [`src/copy_653/server/app.py`](src/copy_653/server/app.py).

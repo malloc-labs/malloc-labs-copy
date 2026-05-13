@@ -18,7 +18,7 @@ import pytest
 from websockets.client import connect as ws_connect
 
 from copy_653 import __version__
-from copy_653.midi import DecodedSymbol
+from copy_653.midi import DecodedSymbol, MidiNoteEvent
 from copy_653.server import app
 
 # ---------- find_available_port -----------------------------------------
@@ -101,6 +101,25 @@ def _write_test_config(tmp_path: Path, claimed: list[str], duration: float = 5.0
 
             [session]
             duration_seconds = {duration}
+            """))
+    return config_path
+
+
+def _write_test_config_with_keyer(
+    tmp_path: Path,
+    *,
+    trinkey_buzzer_enabled: bool,
+) -> Path:
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    config_path.write_text(config_path.read_text() + textwrap.dedent(f"""
+
+            [midi.key]
+            trinkey_buzzer_enabled = {str(trinkey_buzzer_enabled).lower()}
+            dit_note = 1
+            dah_note = 2
+            straight_note = 0
+            dit_ms = 100
+            character_gap_dits = 3
             """))
     return config_path
 
@@ -428,6 +447,79 @@ async def test_unknown_action_emits_error(tmp_path, patched_playback):
             raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
             event = json.loads(raw)
             assert event == {"type": "error", "reason": "unknown-action"}
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_start_key_input_decodes_sent_symbol_and_plays_app_sidetone(
+    tmp_path,
+    patched_playback,
+):
+    config_path = _write_test_config_with_keyer(tmp_path, trinkey_buzzer_enabled=False)
+    web_root = _make_web_root(tmp_path)
+
+    def note_source(stop_event):
+        del stop_event
+        yield MidiNoteEvent(note=2, pressed=True, timestamp=1.0)
+        yield MidiNoteEvent(note=1, pressed=True, timestamp=1.4)
+        yield MidiNoteEvent(note=2, pressed=True, timestamp=1.6)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+        key_note_source=note_source,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)  # claimed-symbols push
+
+            await ws.send(json.dumps({"action": "start-key-input"}))
+            events = await _drain_until(ws, lambda e: e["type"] == "sent-symbol", timeout=2.0)
+
+        assert events[0]["type"] == "key-input-start"
+        assert events[-1]["symbol"] == "K"
+        assert events[-1]["pattern"] == "-.-"
+
+        for _ in range(20):
+            if len(patched_playback) == 3:
+                break
+            await asyncio.sleep(0.01)
+        assert len(patched_playback) == 3
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_start_key_input_skips_app_sidetone_when_trinkey_buzzer_enabled(
+    tmp_path,
+    patched_playback,
+):
+    config_path = _write_test_config_with_keyer(tmp_path, trinkey_buzzer_enabled=True)
+    web_root = _make_web_root(tmp_path)
+
+    def note_source(stop_event):
+        del stop_event
+        yield MidiNoteEvent(note=1, pressed=True, timestamp=1.0)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+        key_note_source=note_source,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)  # claimed-symbols push
+
+            await ws.send(json.dumps({"action": "start-key-input"}))
+            events = await _drain_until(ws, lambda e: e["type"] == "sent-symbol", timeout=2.0)
+
+        assert events[-1]["symbol"] == "E"
+        assert patched_playback == []
     finally:
         server.close()
         await server.wait_closed()
