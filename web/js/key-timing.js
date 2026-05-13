@@ -211,9 +211,9 @@ function updateInputDiagnostic() {
 
 function setMidiInputArmed(armed, reason) {
     midiInputArmed = armed;
+    resetFormedElementGuard();
     if (!armed) {
         sidetone.mute();
-        resetFormedElementGuard();
     }
     recordDiagnostic("midi-input-arm", { armed, reason });
     diagEventEl.textContent = armed ? "input armed" : `input disarmed / ${reason}`;
@@ -343,8 +343,36 @@ function canUseAppSidetone() {
 
 function updateAudioDiagnostic() {
     diagAudioEl.textContent = sidetone.stateLabel();
-    soundToggleEl.textContent = soundEnabled ? "mute" : "enable sound";
+    renderSoundToggleLabel();
     soundToggleEl.disabled = Boolean(keyConfig?.trinkey_buzzer_enabled);
+}
+
+function renderSoundToggleLabel() {
+    if (soundEnabled) {
+        soundToggleEl.replaceChildren(makeAccelLabel("m", "ute"));
+        soundToggleEl.title = "Mute sidetone (M)";
+        soundToggleEl.setAttribute("aria-keyshortcuts", "M");
+    } else {
+        soundToggleEl.replaceChildren(
+            document.createTextNode("enable "),
+            makeAccelLabel("s", "ound"),
+        );
+        soundToggleEl.title = "Enable sidetone (S)";
+        soundToggleEl.setAttribute("aria-keyshortcuts", "S");
+    }
+}
+
+function makeAccelLabel(accel, rest) {
+    const u = document.createElement("u");
+    u.textContent = accel;
+    const fragment = document.createDocumentFragment();
+    fragment.append(u, document.createTextNode(rest));
+    return fragment;
+}
+
+function toggleSidetone() {
+    if (soundToggleEl.disabled) return;
+    soundToggleEl.click();
 }
 
 function midiMessageToNoteEvent(message) {
@@ -360,7 +388,10 @@ function midiMessageToNoteEvent(message) {
 }
 
 function pageAcceptsMidiInput() {
-    return document.visibilityState === "visible" && document.hasFocus();
+    // Visibility, not focus: a brief click on another app window is not a
+    // reason to drop input. The visibilitychange handler covers genuine
+    // off-screen states (tab switched away, window minimised).
+    return document.visibilityState === "visible";
 }
 
 function focusLabel() {
@@ -423,16 +454,15 @@ function handleFormedBrowserMidiEvent(event) {
     }
 
     if (!pageAcceptsMidiInput()) {
-        appendRawDiagnosticRow(event, "ignored / background", kind);
+        appendRawDiagnosticRow(event, "ignored / page hidden", kind);
         recordDiagnostic("raw-midi", {
             kind,
             note: event.note,
             pressed: event.pressed,
-            action: "ignored / background",
+            action: "ignored / page hidden",
             mode: BROWSER_MIDI_INPUT_MODE,
         });
         sidetone.keyUp(event.note);
-        setMidiInputArmed(false, "background midi");
         return;
     }
 
@@ -780,13 +810,6 @@ function connect() {
 }
 
 buildSequenceRow();
-window.addEventListener("blur", () => {
-    recordDiagnostic("page-lifecycle", { event: "blur" });
-    setMidiInputArmed(false, "focus lost");
-});
-window.addEventListener("focus", () => {
-    recordDiagnostic("page-lifecycle", { event: "focus" });
-});
 document.addEventListener("visibilitychange", () => {
     recordDiagnostic("page-lifecycle", {
         event: "visibilitychange",
@@ -794,6 +817,8 @@ document.addEventListener("visibilitychange", () => {
     });
     if (document.visibilityState === "hidden") {
         setMidiInputArmed(false, "page hidden");
+    } else if (document.visibilityState === "visible" && !midiInputArmed) {
+        setMidiInputArmed(true, "page visible");
     }
 });
 keyInputToggleEl.addEventListener("click", () => {
@@ -824,5 +849,23 @@ soundToggleEl.addEventListener("click", async () => {
     }
     updateAudioDiagnostic();
 });
+
+window.addEventListener("keydown", (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    const target = event.target;
+    if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) return;
+    }
+    const key = event.key.toLowerCase();
+    if (soundEnabled && key === "m") {
+        event.preventDefault();
+        toggleSidetone();
+    } else if (!soundEnabled && key === "s") {
+        event.preventDefault();
+        toggleSidetone();
+    }
+});
+
 updateAudioDiagnostic();
 connect();
