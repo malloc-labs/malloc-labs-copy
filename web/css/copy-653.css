@@ -680,6 +680,12 @@
     opacity: 0.45;
 }
 
+.settings-field--check input {
+    width: auto;
+    justify-self: start;
+    margin: 0;
+}
+
 .settings-field p {
     grid-column: 1 / -1;
     color: var(--mr-muted);

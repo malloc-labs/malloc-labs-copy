@@ -422,6 +422,7 @@ async def test_get_audio_settings_returns_configured_timing(tmp_path, patched_pl
                 "tone_shape": 2,
                 "receiver_bed": 2,
                 "cadence_variation": 1,
+                "trinkey_buzzer_enabled": False,
             }
     finally:
         server.close()
@@ -451,6 +452,7 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
                         "tone_shape": 3,
                         "receiver_bed": 2,
                         "cadence_variation": 1,
+                        "trinkey_buzzer_enabled": True,
                     }
                 )
             )
@@ -464,9 +466,10 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
                 "tone_shape": 3,
                 "receiver_bed": 2,
                 "cadence_variation": 1,
+                "trinkey_buzzer_enabled": True,
             }
 
-        from copy_653.config import load_audio_parameters
+        from copy_653.config import load_audio_parameters, load_keyer_settings
 
         params = load_audio_parameters(config_path)
         assert params.character_speed_wpm == 20
@@ -474,6 +477,7 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
         assert params.envelope_ramp_seconds == 0.007
         assert params.receiver_bed == 2
         assert params.cadence_variation == 1
+        assert load_keyer_settings(config_path).trinkey_buzzer_enabled is True
     finally:
         server.close()
         await server.wait_closed()

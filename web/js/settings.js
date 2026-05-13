@@ -11,6 +11,7 @@ const effectiveInput = document.getElementById("effective-wpm");
 const toneShapeInput = document.getElementById("tone-shape");
 const receiverBedInput = document.getElementById("receiver-bed");
 const cadenceVariationInput = document.getElementById("cadence-variation");
+const trinkeyBuzzerInput = document.getElementById("trinkey-buzzer");
 const saveButton = document.getElementById("save-audio-settings");
 const playTestButton = document.getElementById("play-test-message");
 const saveTestButton = document.getElementById("save-test-message");
@@ -36,6 +37,7 @@ function setInputsEnabled(enabled) {
     toneShapeInput.disabled = !enabled;
     receiverBedInput.disabled = !enabled;
     cadenceVariationInput.disabled = !enabled;
+    trinkeyBuzzerInput.disabled = !enabled;
     playTestButton.disabled = !enabled;
     saveTestButton.disabled = !enabled;
 }
@@ -46,7 +48,15 @@ function currentSettings() {
     const toneShape = Number(toneShapeInput.value);
     const receiverBed = Number(receiverBedInput.value);
     const cadenceVariation = Number(cadenceVariationInput.value);
-    return { character, effective, toneShape, receiverBed, cadenceVariation };
+    const trinkeyBuzzerEnabled = trinkeyBuzzerInput.checked;
+    return {
+        character,
+        effective,
+        toneShape,
+        receiverBed,
+        cadenceVariation,
+        trinkeyBuzzerEnabled,
+    };
 }
 
 function updateSummaries() {
@@ -139,12 +149,14 @@ function renderAudioSettings(event) {
     toneShapeInput.value = event.tone_shape;
     receiverBedInput.value = event.receiver_bed;
     cadenceVariationInput.value = event.cadence_variation;
+    trinkeyBuzzerInput.checked = Boolean(event.trinkey_buzzer_enabled);
     savedSettings = {
         character: event.character_wpm,
         effective: event.effective_wpm,
         toneShape: event.tone_shape,
         receiverBed: event.receiver_bed,
         cadenceVariation: event.cadence_variation,
+        trinkeyBuzzerEnabled: Boolean(event.trinkey_buzzer_enabled),
     };
     updateSummaries();
     const prefix = isSaving ? "saved" : "ready";
@@ -249,7 +261,14 @@ form.addEventListener("submit", (event) => {
     }
     if (!isDirty()) return;
 
-    const { character, effective, toneShape, receiverBed, cadenceVariation } = currentSettings();
+    const {
+        character,
+        effective,
+        toneShape,
+        receiverBed,
+        cadenceVariation,
+        trinkeyBuzzerEnabled,
+    } = currentSettings();
     setInputsEnabled(false);
     isSaving = true;
     updateSaveState();
@@ -262,6 +281,7 @@ form.addEventListener("submit", (event) => {
             tone_shape: toneShape,
             receiver_bed: receiverBed,
             cadence_variation: cadenceVariation,
+            trinkey_buzzer_enabled: trinkeyBuzzerEnabled,
         })
     );
 });
@@ -331,5 +351,7 @@ function onSettingsInput() {
     receiverBedInput,
     cadenceVariationInput,
 ].forEach((input) => input.addEventListener("input", onSettingsInput));
+
+trinkeyBuzzerInput.addEventListener("change", onSettingsInput);
 
 connect();
