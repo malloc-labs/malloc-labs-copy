@@ -453,7 +453,7 @@ async def test_unknown_action_emits_error(tmp_path, patched_playback):
         await server.wait_closed()
 
 
-async def test_start_key_input_decodes_sent_symbol_and_plays_app_sidetone(
+async def test_start_key_input_decodes_sent_symbol_without_app_sidetone(
     tmp_path,
     patched_playback,
 ):
@@ -484,11 +484,7 @@ async def test_start_key_input_decodes_sent_symbol_and_plays_app_sidetone(
         assert events[-1]["symbol"] == "K"
         assert events[-1]["pattern"] == "-.-"
 
-        for _ in range(20):
-            if len(patched_playback) == 3:
-                break
-            await asyncio.sleep(0.01)
-        assert len(patched_playback) == 3
+        assert patched_playback == []
     finally:
         server.close()
         await server.wait_closed()

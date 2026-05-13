@@ -149,7 +149,6 @@ from copy_653.letters import (
 from copy_653.midi import (
     DecodedSymbol,
     KeyDecoder,
-    KeyElement,
     MidiNoteEvent,
     iter_midi_note_events,
     key_element_from_note_event,
@@ -751,7 +750,6 @@ async def _run_key_input_action(
     """Receive Trinkey MIDI note events, decode symbols, and push them to the page."""
     try:
         settings = load_keyer_settings(config_path)
-        audio_params = load_audio_parameters(config_path)
     except ValueError as exc:
         await _send_event(ws, {"type": "error", "reason": "invalid-config", "detail": str(exc)})
         return
@@ -812,9 +810,6 @@ async def _run_key_input_action(
             if element is None:
                 continue
 
-            if not settings.trinkey_buzzer_enabled:
-                _play_key_sidetone(element, settings, audio_params)
-
             try:
                 decoded = decoder.push(element)
             except ValueError as exc:
@@ -842,35 +837,6 @@ async def _flush_key_symbol(ws: WebSocketServerProtocol, decoder: KeyDecoder) ->
         return
     if decoded is not None:
         await _send_event(ws, _sent_symbol_event(decoded))
-
-
-def _play_key_sidetone(
-    element: KeyElement,
-    settings: KeyerSettings,
-    audio_params: AudioParameters,
-) -> None:
-    samples = _key_sidetone_samples(element, settings, audio_params)
-    task = asyncio.create_task(asyncio.to_thread(playback.play, samples, audio_params))
-    task.add_done_callback(_log_background_task_exception)
-
-
-def _key_sidetone_samples(
-    element: KeyElement,
-    settings: KeyerSettings,
-    audio_params: AudioParameters,
-):
-    duration_seconds = settings.dit_ms / 1000
-    if element.kind == "dah":
-        duration_seconds *= 3
-    return synth.apply_envelope(synth.generate_tone(duration_seconds, audio_params), audio_params)
-
-
-def _log_background_task_exception(task: asyncio.Task[Any]) -> None:
-    if task.cancelled():
-        return
-    exc = task.exception()
-    if exc is not None:
-        logger.warning("background task failed: %s", exc)
 
 
 def _audio_params_from_settings_message(message: dict[str, Any]) -> AudioParameters:
