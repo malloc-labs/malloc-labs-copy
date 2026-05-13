@@ -774,6 +774,7 @@ async def test_get_audio_settings_returns_configured_timing(tmp_path, patched_pl
                 "receiver_bed": 2,
                 "cadence_variation": 1,
                 "trinkey_buzzer_enabled": False,
+                "runaway_guard_enabled": True,
             }
     finally:
         server.close()
@@ -804,6 +805,7 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
                         "receiver_bed": 2,
                         "cadence_variation": 1,
                         "trinkey_buzzer_enabled": True,
+                        "runaway_guard_enabled": False,
                     }
                 )
             )
@@ -818,6 +820,7 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
                 "receiver_bed": 2,
                 "cadence_variation": 1,
                 "trinkey_buzzer_enabled": True,
+                "runaway_guard_enabled": False,
             }
 
         from copy_653.config import load_audio_parameters, load_keyer_settings
@@ -828,10 +831,13 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
         assert params.envelope_ramp_seconds == 0.007
         assert params.receiver_bed == 2
         assert params.cadence_variation == 1
-        assert load_keyer_settings(config_path).trinkey_buzzer_enabled is True
+        keyer = load_keyer_settings(config_path)
+        assert keyer.trinkey_buzzer_enabled is True
+        assert keyer.runaway_guard_enabled is False
         data = tomllib.loads(config_path.read_text())
         assert data["midi"]["key"] == {
             "trinkey_buzzer_enabled": True,
+            "runaway_guard_enabled": False,
             "input_name": "TRRS Trinkey",
             "dit_note": 1,
             "dah_note": 2,

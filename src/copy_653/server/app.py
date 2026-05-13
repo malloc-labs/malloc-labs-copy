@@ -368,6 +368,7 @@ def _key_input_start_payload(
         "dah_note": settings.dah_note,
         "straight_note": settings.straight_note,
         "trinkey_buzzer_enabled": settings.trinkey_buzzer_enabled,
+        "runaway_guard_enabled": settings.runaway_guard_enabled,
         "character_wpm": params.character_speed_wpm,
         "effective_wpm": params.effective_speed_wpm,
         "tone_frequency_hz": params.tone_frequency_hz,
@@ -395,6 +396,7 @@ def _audio_settings_event_from_params(
         "receiver_bed": params.receiver_bed,
         "cadence_variation": params.cadence_variation,
         "trinkey_buzzer_enabled": keyer_settings.trinkey_buzzer_enabled,
+        "runaway_guard_enabled": keyer_settings.runaway_guard_enabled,
     }
 
 
@@ -738,6 +740,10 @@ async def _set_audio_settings_action(
             message.get("trinkey_buzzer_enabled"),
             "trinkey_buzzer_enabled",
         )
+        runaway_guard_enabled = _optional_bool(
+            message.get("runaway_guard_enabled"),
+            "runaway_guard_enabled",
+        )
         params = save_audio_timing(
             character_speed_wpm=character_wpm,
             effective_speed_wpm=effective_wpm,
@@ -746,14 +752,23 @@ async def _set_audio_settings_action(
             cadence_variation=cadence_variation,
             path=config_path,
         )
-        keyer_settings = (
-            save_keyer_settings(
-                trinkey_buzzer_enabled=trinkey_buzzer_enabled,
+        if trinkey_buzzer_enabled is not None or runaway_guard_enabled is not None:
+            current_keyer = load_keyer_settings(config_path)
+            keyer_settings = save_keyer_settings(
+                trinkey_buzzer_enabled=(
+                    trinkey_buzzer_enabled
+                    if trinkey_buzzer_enabled is not None
+                    else current_keyer.trinkey_buzzer_enabled
+                ),
+                runaway_guard_enabled=(
+                    runaway_guard_enabled
+                    if runaway_guard_enabled is not None
+                    else current_keyer.runaway_guard_enabled
+                ),
                 path=config_path,
             )
-            if trinkey_buzzer_enabled is not None
-            else load_keyer_settings(config_path)
-        )
+        else:
+            keyer_settings = load_keyer_settings(config_path)
     except ValueError as exc:
         await _send_event(
             ws,
