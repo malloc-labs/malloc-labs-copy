@@ -94,6 +94,7 @@ class KeyerSettings:
     """
 
     trinkey_buzzer_enabled: bool = False
+    runaway_guard_enabled: bool = True
     input_name: str | None = "TRRS Trinkey"
     dit_note: int = 1
     dah_note: int = 2
@@ -256,6 +257,11 @@ def load_keyer_settings(path: Path | None = None) -> KeyerSettings:
             "trinkey_buzzer_enabled",
             default=False,
         ),
+        runaway_guard_enabled=_key_bool(
+            key_table.get("runaway_guard_enabled"),
+            "runaway_guard_enabled",
+            default=True,
+        ),
         input_name=_key_optional_string(
             key_table.get("input_name"),
             "input_name",
@@ -313,6 +319,7 @@ def _key_midi_note(value: Any, field: str, *, default: int) -> int:
 def save_keyer_settings(
     *,
     trinkey_buzzer_enabled: bool,
+    runaway_guard_enabled: bool | None = None,
     input_name: str | None = None,
     dit_note: int | None = None,
     dah_note: int | None = None,
@@ -339,6 +346,11 @@ def save_keyer_settings(
             "trinkey_buzzer_enabled",
             default=current.trinkey_buzzer_enabled,
         ),
+        runaway_guard_enabled=_key_bool(
+            runaway_guard_enabled,
+            "runaway_guard_enabled",
+            default=current.runaway_guard_enabled,
+        ),
         input_name=_key_optional_string(input_name, "input_name", default=current.input_name),
         dit_note=_key_midi_note(dit_note, "dit_note", default=current.dit_note),
         dah_note=_key_midi_note(dah_note, "dah_note", default=current.dah_note),
@@ -350,6 +362,7 @@ def save_keyer_settings(
     )
 
     key_table["trinkey_buzzer_enabled"] = settings.trinkey_buzzer_enabled
+    key_table["runaway_guard_enabled"] = settings.runaway_guard_enabled
     key_table["input_name"] = settings.input_name
     key_table["dit_note"] = settings.dit_note
     key_table["dah_note"] = settings.dah_note

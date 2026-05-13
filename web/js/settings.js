@@ -6,8 +6,6 @@
 
 import { getDeveloperModeEnabled, setDeveloperModeEnabled } from "./developer-mode.js";
 
-const RUNAWAY_GUARD_STORAGE_KEY = "copy-653:runaway-guard-enabled";
-
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const wsUrl = `${wsProtocol}//${location.host}/ws`;
 const form = document.getElementById("audio-settings-form");
@@ -31,23 +29,12 @@ developerModeInput.addEventListener("change", () => {
     setDeveloperModeEnabled(developerModeInput.checked);
 });
 
-function isRunawayGuardEnabled() {
-    try {
-        return window.localStorage?.getItem(RUNAWAY_GUARD_STORAGE_KEY) !== "false";
-    } catch (_) {
-        return true;
-    }
-}
-
-runawayGuardInput.checked = isRunawayGuardEnabled();
-runawayGuardInput.addEventListener("change", () => {
-    try {
-        window.localStorage?.setItem(
-            RUNAWAY_GUARD_STORAGE_KEY,
-            runawayGuardInput.checked ? "true" : "false",
-        );
-    } catch (_) { /* localStorage unavailable */ }
-});
+// Older builds stored the runaway-guard preference in localStorage. The
+// setting now lives in [midi.key] so the server is the source of truth;
+// purge the stale key so it can't drift from the saved value.
+try {
+    window.localStorage?.removeItem("copy-653:runaway-guard-enabled");
+} catch (_) { /* localStorage unavailable */ }
 
 let socket = null;
 let isSaving = false;
@@ -68,6 +55,7 @@ function setInputsEnabled(enabled) {
     receiverBedInput.disabled = !enabled;
     cadenceVariationInput.disabled = !enabled;
     trinkeyBuzzerInput.disabled = !enabled;
+    runawayGuardInput.disabled = !enabled;
     playTestButton.disabled = !enabled;
     saveTestButton.disabled = !enabled;
 }
@@ -79,6 +67,7 @@ function currentSettings() {
     const receiverBed = Number(receiverBedInput.value);
     const cadenceVariation = Number(cadenceVariationInput.value);
     const trinkeyBuzzerEnabled = trinkeyBuzzerInput.checked;
+    const runawayGuardEnabled = runawayGuardInput.checked;
     return {
         character,
         effective,
@@ -86,6 +75,7 @@ function currentSettings() {
         receiverBed,
         cadenceVariation,
         trinkeyBuzzerEnabled,
+        runawayGuardEnabled,
     };
 }
 
@@ -180,6 +170,7 @@ function renderAudioSettings(event) {
     receiverBedInput.value = event.receiver_bed;
     cadenceVariationInput.value = event.cadence_variation;
     trinkeyBuzzerInput.checked = Boolean(event.trinkey_buzzer_enabled);
+    runawayGuardInput.checked = Boolean(event.runaway_guard_enabled);
     savedSettings = {
         character: event.character_wpm,
         effective: event.effective_wpm,
@@ -187,6 +178,7 @@ function renderAudioSettings(event) {
         receiverBed: event.receiver_bed,
         cadenceVariation: event.cadence_variation,
         trinkeyBuzzerEnabled: Boolean(event.trinkey_buzzer_enabled),
+        runawayGuardEnabled: Boolean(event.runaway_guard_enabled),
     };
     updateSummaries();
     const prefix = isSaving ? "saved" : "ready";
@@ -298,6 +290,7 @@ form.addEventListener("submit", (event) => {
         receiverBed,
         cadenceVariation,
         trinkeyBuzzerEnabled,
+        runawayGuardEnabled,
     } = currentSettings();
     setInputsEnabled(false);
     isSaving = true;
@@ -312,6 +305,7 @@ form.addEventListener("submit", (event) => {
             receiver_bed: receiverBed,
             cadence_variation: cadenceVariation,
             trinkey_buzzer_enabled: trinkeyBuzzerEnabled,
+            runaway_guard_enabled: runawayGuardEnabled,
         })
     );
 });
@@ -383,5 +377,6 @@ function onSettingsInput() {
 ].forEach((input) => input.addEventListener("input", onSettingsInput));
 
 trinkeyBuzzerInput.addEventListener("change", onSettingsInput);
+runawayGuardInput.addEventListener("change", onSettingsInput);
 
 connect();

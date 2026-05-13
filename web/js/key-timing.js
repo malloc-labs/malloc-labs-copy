@@ -47,7 +47,7 @@ let activeSocket = null;
 let diagnosticEvents = [];
 let formedElementGuard = newFormedElementGuard();
 let midiInputArmed = true;
-let runawayGuardEnabled = loadRunawayGuardEnabled();
+let runawayGuardEnabled = true;
 
 // Canonical Koch order — mirrors KOCH_ORDER in patterns.py.
 const KOCH_ORDER = [
@@ -102,24 +102,13 @@ function resetFormedElementGuard() {
     formedElementGuard = newFormedElementGuard();
 }
 
-const RUNAWAY_GUARD_STORAGE_KEY = "copy-653:runaway-guard-enabled";
-
-function loadRunawayGuardEnabled() {
-    try {
-        const stored = window.localStorage?.getItem(RUNAWAY_GUARD_STORAGE_KEY);
-        if (stored === "false") return false;
-    } catch (_) { /* localStorage unavailable */ }
-    return true;
+function applyRunawayGuardSetting(enabled, reason) {
+    const next = enabled !== false;
+    if (next === runawayGuardEnabled) return;
+    runawayGuardEnabled = next;
+    if (!next) resetFormedElementGuard();
+    recordDiagnostic("runaway-guard-toggle", { enabled: next, reason });
 }
-
-window.addEventListener("storage", (event) => {
-    if (event.key !== RUNAWAY_GUARD_STORAGE_KEY) return;
-    const enabled = event.newValue !== "false";
-    if (enabled === runawayGuardEnabled) return;
-    runawayGuardEnabled = enabled;
-    if (!enabled) resetFormedElementGuard();
-    recordDiagnostic("runaway-guard-toggle", { enabled, reason: "settings change" });
-});
 
 function characterGapSeconds() {
     return (Number(keyConfig?.character_gap_ms) || DEFAULT_DIT_MS * 3) / 1000;
@@ -623,12 +612,14 @@ function renderSentSymbol(event) {
 function renderKeyInputStart(event) {
     keyConfig = event;
     resetFormedElementGuard();
+    applyRunawayGuardSetting(event.runaway_guard_enabled, "key-input-start");
     recordDiagnostic("key-input-start", {
         source: event.source,
         input_name: event.input_name,
         dit_note: event.dit_note,
         dah_note: event.dah_note,
         dit_ms_expected: event.dit_ms_expected,
+        runaway_guard_enabled: runawayGuardEnabled,
     });
     setStatus("connected", "key ready");
     statusEl.title = event.input_name ? `input: ${event.input_name}` : "";
@@ -763,6 +754,8 @@ function connect() {
             renderSentSymbol(event);
         } else if (event.type === "key-input-start") {
             renderKeyInputStart(event);
+        } else if (event.type === "audio-settings") {
+            applyRunawayGuardSetting(event.runaway_guard_enabled, "audio-settings");
         } else if (event.type === "key-event") {
             renderKeyEvent(event);
         } else if (event.type === "key-input-reset") {
