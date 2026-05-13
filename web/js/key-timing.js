@@ -68,15 +68,35 @@ function renderSentSymbol(event) {
     const item = document.createElement("li");
     const symbolEl = document.createElement("span");
     const patternEl = document.createElement("span");
+    if (event.leading_gap === "word") {
+        const gapEl = document.createElement("span");
+        gapEl.className = "key-sent-history__gap";
+        gapEl.textContent = "/";
+        item.appendChild(gapEl);
+    }
     symbolEl.className = "key-sent-history__symbol";
     patternEl.className = "key-sent-history__pattern";
     symbolEl.textContent = symbol;
     patternEl.textContent = event.pattern;
-    item.replaceChildren(symbolEl, patternEl);
-    sentHistoryEl.prepend(item);
+    item.append(symbolEl, patternEl);
+    sentHistoryEl.appendChild(item);
 
     while (sentHistoryEl.children.length > MAX_SENT_HISTORY) {
-        sentHistoryEl.lastElementChild.remove();
+        sentHistoryEl.firstElementChild.remove();
+    }
+}
+
+function renderError(event) {
+    const reason = event.reason || "error";
+    const detail = event.detail ? `: ${event.detail}` : "";
+    statusEl.title = `${reason}${detail}`;
+
+    if (reason === "key-input-unavailable" || reason === "key-input-failed") {
+        setStatus("connecting", "midi unavailable");
+    } else if (reason === "key-input-decode-failed") {
+        setStatus("connecting", "decode timing error");
+    } else {
+        setStatus("connecting", reason);
     }
 }
 
@@ -97,10 +117,9 @@ function connect() {
             renderSentSymbol(event);
         } else if (event.type === "key-input-start") {
             setStatus("connected", "key ready");
+            statusEl.title = event.input_name ? `input: ${event.input_name}` : "";
         } else if (event.type === "error") {
-            const midiError = event.reason === "key-input-unavailable" ||
-                event.reason === "key-input-failed";
-            setStatus("connecting", midiError ? "midi unavailable" : "error");
+            renderError(event);
         }
     });
 

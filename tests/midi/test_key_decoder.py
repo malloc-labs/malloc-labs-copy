@@ -8,9 +8,9 @@ from copy_653.midi import DecodedSymbol, KeyDecoder, KeyElement
 def test_decodes_k_after_character_gap():
     decoder = KeyDecoder(dit_seconds=0.1)
 
-    assert decoder.push(KeyElement("dah", 0.0)) is None
-    assert decoder.push(KeyElement("dit", 0.4)) is None
-    assert decoder.push(KeyElement("dah", 0.6)) is None
+    assert decoder.push(KeyElement("dah", 0.0, 0.3)) is None
+    assert decoder.push(KeyElement("dit", 0.4, 0.5)) is None
+    assert decoder.push(KeyElement("dah", 0.6, 0.9)) is None
 
     assert decoder.tick(1.2) == DecodedSymbol(
         pattern="-.-",
@@ -23,8 +23,8 @@ def test_decodes_k_after_character_gap():
 def test_next_element_after_character_gap_flushes_previous_symbol():
     decoder = KeyDecoder(dit_seconds=0.1)
 
-    assert decoder.push(KeyElement("dit", 0.0)) is None
-    decoded = decoder.push(KeyElement("dah", 0.5))
+    assert decoder.push(KeyElement("dit", 0.0, 0.1)) is None
+    decoded = decoder.push(KeyElement("dah", 0.5, 0.8))
 
     assert decoded == DecodedSymbol(
         pattern=".",
@@ -38,6 +38,7 @@ def test_next_element_after_character_gap_flushes_previous_symbol():
         symbol="T",
         started_at=0.5,
         ended_at=0.8,
+        leading_gap="character",
     )
 
 
@@ -45,7 +46,8 @@ def test_unknown_pattern_returns_no_symbol():
     decoder = KeyDecoder(dit_seconds=0.1)
 
     for index in range(6):
-        assert decoder.push(KeyElement("dit", index * 0.2)) is None
+        start = index * 0.2
+        assert decoder.push(KeyElement("dit", start, start + 0.1)) is None
 
     assert decoder.tick(1.5) == DecodedSymbol(
         pattern="......",
@@ -58,7 +60,7 @@ def test_unknown_pattern_returns_no_symbol():
 def test_tick_does_not_finalize_before_character_gap():
     decoder = KeyDecoder(dit_seconds=0.1)
 
-    decoder.push(KeyElement("dit", 0.0))
+    decoder.push(KeyElement("dit", 0.0, 0.1))
 
     assert decoder.tick(0.39) is None
     assert decoder.tick(0.4) == DecodedSymbol(
@@ -73,10 +75,44 @@ def test_tick_does_not_finalize_before_character_gap():
 def test_rejects_non_monotonic_elements():
     decoder = KeyDecoder(dit_seconds=0.1)
 
-    decoder.push(KeyElement("dah", 1.0))
+    decoder.push(KeyElement("dah", 1.0, 1.3))
 
     with pytest.raises(ValueError, match="monotonic"):
-        decoder.push(KeyElement("dit", 1.2))
+        decoder.push(KeyElement("dit", 1.2, 1.3))
+
+
+def test_records_word_gap_before_symbol():
+    decoder = KeyDecoder(
+        dit_seconds=0.1,
+        character_gap_seconds=0.3,
+        word_gap_seconds=0.7,
+    )
+
+    assert decoder.push(KeyElement("dah", 0.0, 0.3)) is None
+    assert decoder.push(KeyElement("dit", 0.4, 0.5)) is None
+    assert decoder.push(KeyElement("dah", 0.6, 0.9)) is None
+    assert decoder.push(KeyElement("dah", 1.7, 2.0)) == DecodedSymbol(
+        pattern="-.-",
+        symbol="K",
+        started_at=0.0,
+        ended_at=0.9,
+    )
+    assert decoder.push(KeyElement("dah", 2.1, 2.4)) is None
+
+    assert decoder.tick(2.7) == DecodedSymbol(
+        pattern="--",
+        symbol="M",
+        started_at=1.7,
+        ended_at=2.4,
+        leading_gap="word",
+    )
+
+
+def test_rejects_element_end_before_start():
+    decoder = KeyDecoder(dit_seconds=0.1)
+
+    with pytest.raises(ValueError, match="end timestamp"):
+        decoder.push(KeyElement("dit", 1.0, 0.9))
 
 
 def test_rejects_invalid_timing_configuration():
@@ -85,3 +121,9 @@ def test_rejects_invalid_timing_configuration():
 
     with pytest.raises(ValueError, match="character_gap_dits"):
         KeyDecoder(dit_seconds=0.1, character_gap_dits=0)
+
+    with pytest.raises(ValueError, match="character_gap_seconds"):
+        KeyDecoder(dit_seconds=0.1, character_gap_seconds=0)
+
+    with pytest.raises(ValueError, match="word_gap_seconds"):
+        KeyDecoder(dit_seconds=0.1, word_gap_seconds=0)

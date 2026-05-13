@@ -126,7 +126,7 @@ from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol, serve
 
 from copy_653 import __version__, sequence
-from copy_653.audio import patterns, playback, synth, texture
+from copy_653.audio import patterns, playback, synth, texture, timing
 from copy_653.audio.parameters import AudioParameters
 from copy_653.audio.wav import encode_pcm16_wav
 from copy_653.config import (
@@ -148,10 +148,10 @@ from copy_653.letters import (
 )
 from copy_653.midi import (
     DecodedSymbol,
+    KeyElementAssembler,
     KeyDecoder,
     MidiNoteEvent,
     iter_midi_note_events,
-    key_element_from_note_event,
 )
 from copy_653.server.test_message_audio import build_marconi_test_message
 from copy_653.server.word_detection_audio import build_word_detection_audio
@@ -325,6 +325,7 @@ def _sent_symbol_event(decoded: DecodedSymbol) -> dict[str, Any]:
         "pattern": decoded.pattern,
         "started_at": decoded.started_at,
         "ended_at": decoded.ended_at,
+        "leading_gap": decoded.leading_gap,
     }
 
 
@@ -750,14 +751,17 @@ async def _run_key_input_action(
     """Receive Trinkey MIDI note events, decode symbols, and push them to the page."""
     try:
         settings = load_keyer_settings(config_path)
+        audio_params = load_audio_parameters(config_path)
     except ValueError as exc:
         await _send_event(ws, {"type": "error", "reason": "invalid-config", "detail": str(exc)})
         return
 
     decoder = KeyDecoder(
-        dit_seconds=settings.dit_ms / 1000,
-        character_gap_dits=settings.character_gap_dits,
+        dit_seconds=timing.dit_seconds(audio_params.character_speed_wpm),
+        character_gap_seconds=timing.inter_character_seconds(audio_params),
+        word_gap_seconds=timing.inter_word_seconds(audio_params),
     )
+    assembler = KeyElementAssembler()
     source = note_source or (
         lambda stop: iter_midi_note_events(port_name=settings.input_name, stop_event=stop)
     )
@@ -784,7 +788,7 @@ async def _run_key_input_action(
 
     thread = threading.Thread(target=_read_midi, name="copy-653-key-midi", daemon=True)
     thread.start()
-    character_gap_seconds = settings.dit_ms / 1000 * settings.character_gap_dits
+    character_gap_seconds = timing.inter_character_seconds(audio_params)
 
     await _send_event(ws, _key_input_start_event(settings))
 
@@ -806,7 +810,7 @@ async def _run_key_input_action(
                 await _send_event(ws, {"type": "error", "reason": reason, "detail": str(item)})
                 return
 
-            element = key_element_from_note_event(item, settings)
+            element = assembler.push(item, settings)
             if element is None:
                 continue
 
