@@ -8,6 +8,7 @@ import io
 import json
 import socket
 import textwrap
+import tomllib
 import urllib.request
 import wave
 from pathlib import Path
@@ -478,6 +479,15 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
         assert params.receiver_bed == 2
         assert params.cadence_variation == 1
         assert load_keyer_settings(config_path).trinkey_buzzer_enabled is True
+        data = tomllib.loads(config_path.read_text())
+        assert data["midi"]["key"] == {
+            "trinkey_buzzer_enabled": True,
+            "dit_note": 1,
+            "dah_note": 2,
+            "straight_note": 0,
+            "dit_ms": 100,
+            "character_gap_dits": 3,
+        }
     finally:
         server.close()
         await server.wait_closed()
