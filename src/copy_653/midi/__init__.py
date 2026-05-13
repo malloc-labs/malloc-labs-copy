@@ -2,6 +2,7 @@
 
 from copy_653.midi.key_decoder import DecodedSymbol, KeyDecoder, KeyElement
 from copy_653.midi.key_input import (
+    KeyElementAssembler,
     MidiNoteEvent,
     iter_midi_note_events,
     key_element_from_note_event,
@@ -13,6 +14,7 @@ __all__ = [
     "DecodedSymbol",
     "KeyDecoder",
     "KeyElement",
+    "KeyElementAssembler",
     "MidiNoteEvent",
     "iter_midi_note_events",
     "key_element_from_note_event",

@@ -151,6 +151,7 @@ def test_sent_symbol_event_serializes_decoder_output():
         "pattern": "-.-",
         "started_at": 1.2,
         "ended_at": 1.9,
+        "leading_gap": "none",
     }
 
 
@@ -167,6 +168,7 @@ def test_sent_symbol_event_allows_unknown_pattern():
     assert event["type"] == "sent-symbol"
     assert event["symbol"] is None
     assert event["pattern"] == "......"
+    assert event["leading_gap"] == "none"
 
 
 async def _drain_until(ws, predicate, timeout=5.0):
@@ -463,8 +465,11 @@ async def test_start_key_input_decodes_sent_symbol_without_app_sidetone(
     def note_source(stop_event):
         del stop_event
         yield MidiNoteEvent(note=2, pressed=True, timestamp=1.0)
-        yield MidiNoteEvent(note=1, pressed=True, timestamp=1.4)
-        yield MidiNoteEvent(note=2, pressed=True, timestamp=1.6)
+        yield MidiNoteEvent(note=2, pressed=False, timestamp=1.144)
+        yield MidiNoteEvent(note=1, pressed=True, timestamp=1.192)
+        yield MidiNoteEvent(note=1, pressed=False, timestamp=1.24)
+        yield MidiNoteEvent(note=2, pressed=True, timestamp=1.288)
+        yield MidiNoteEvent(note=2, pressed=False, timestamp=1.432)
 
     server, port = await app.serve_app(
         port=_grab_free_port(),
@@ -483,6 +488,7 @@ async def test_start_key_input_decodes_sent_symbol_without_app_sidetone(
         assert events[0]["type"] == "key-input-start"
         assert events[-1]["symbol"] == "K"
         assert events[-1]["pattern"] == "-.-"
+        assert events[-1]["leading_gap"] == "none"
 
         assert patched_playback == []
     finally:
@@ -500,6 +506,7 @@ async def test_start_key_input_skips_app_sidetone_when_trinkey_buzzer_enabled(
     def note_source(stop_event):
         del stop_event
         yield MidiNoteEvent(note=1, pressed=True, timestamp=1.0)
+        yield MidiNoteEvent(note=1, pressed=False, timestamp=1.048)
 
     server, port = await app.serve_app(
         port=_grab_free_port(),
@@ -516,6 +523,57 @@ async def test_start_key_input_skips_app_sidetone_when_trinkey_buzzer_enabled(
             events = await _drain_until(ws, lambda e: e["type"] == "sent-symbol", timeout=2.0)
 
         assert events[-1]["symbol"] == "E"
+        assert patched_playback == []
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_start_key_input_marks_word_gap_between_symbols(
+    tmp_path,
+    patched_playback,
+):
+    config_path = _write_test_config_with_keyer(tmp_path, trinkey_buzzer_enabled=False)
+    web_root = _make_web_root(tmp_path)
+
+    def note_source(stop_event):
+        del stop_event
+        # K: -.- at the configured 25 WPM test character rhythm.
+        yield MidiNoteEvent(note=2, pressed=True, timestamp=1.0)
+        yield MidiNoteEvent(note=2, pressed=False, timestamp=1.144)
+        yield MidiNoteEvent(note=1, pressed=True, timestamp=1.192)
+        yield MidiNoteEvent(note=1, pressed=False, timestamp=1.24)
+        yield MidiNoteEvent(note=2, pressed=True, timestamp=1.288)
+        yield MidiNoteEvent(note=2, pressed=False, timestamp=1.432)
+        # Gap to M is longer than a 25 WPM word gap.
+        yield MidiNoteEvent(note=2, pressed=True, timestamp=1.9)
+        yield MidiNoteEvent(note=2, pressed=False, timestamp=2.044)
+        yield MidiNoteEvent(note=2, pressed=True, timestamp=2.092)
+        yield MidiNoteEvent(note=2, pressed=False, timestamp=2.236)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+        key_note_source=note_source,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)  # claimed-symbols push
+
+            await ws.send(json.dumps({"action": "start-key-input"}))
+            events = await _drain_until(
+                ws,
+                lambda e: e["type"] == "sent-symbol" and e["symbol"] == "M",
+                timeout=2.0,
+            )
+
+        sent = [event for event in events if event["type"] == "sent-symbol"]
+        assert [(event["symbol"], event["pattern"], event["leading_gap"]) for event in sent] == [
+            ("K", "-.-", "none"),
+            ("M", "--", "word"),
+        ]
         assert patched_playback == []
     finally:
         server.close()

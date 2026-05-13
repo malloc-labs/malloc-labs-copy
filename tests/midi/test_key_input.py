@@ -6,6 +6,8 @@ from types import SimpleNamespace
 
 from copy_653.config import KeyerSettings
 from copy_653.midi import (
+    KeyElement,
+    KeyElementAssembler,
     MidiNoteEvent,
     key_element_from_note_event,
     midi_message_to_note_event,
@@ -58,6 +60,13 @@ def test_key_element_from_note_event_maps_configured_dit_and_dah():
         ).kind
         == "dah"
     )
+    assert (
+        key_element_from_note_event(
+            MidiNoteEvent(note=2, pressed=True, timestamp=2.0),
+            settings,
+        ).ended_at
+        == 2.0
+    )
 
 
 def test_key_element_from_note_event_ignores_releases_and_other_notes():
@@ -71,6 +80,23 @@ def test_key_element_from_note_event_ignores_releases_and_other_notes():
         key_element_from_note_event(MidiNoteEvent(note=60, pressed=True, timestamp=1.0), settings)
         is None
     )
+
+
+def test_key_element_assembler_uses_note_on_and_note_off_times():
+    settings = KeyerSettings(dit_note=1, dah_note=2)
+    assembler = KeyElementAssembler()
+
+    assert assembler.push(MidiNoteEvent(note=2, pressed=True, timestamp=1.0), settings) is None
+    assert assembler.push(MidiNoteEvent(note=2, pressed=False, timestamp=1.18), settings) == (
+        KeyElement(kind="dah", started_at=1.0, ended_at=1.18)
+    )
+
+
+def test_key_element_assembler_ignores_release_without_press():
+    settings = KeyerSettings(dit_note=1, dah_note=2)
+    assembler = KeyElementAssembler()
+
+    assert assembler.push(MidiNoteEvent(note=1, pressed=False, timestamp=1.0), settings) is None
 
 
 def test_resolve_midi_input_name_accepts_exact_match():

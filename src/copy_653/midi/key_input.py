@@ -9,7 +9,7 @@ import time
 from typing import Any
 
 from copy_653.config import KeyerSettings
-from copy_653.midi.key_decoder import KeyElement
+from copy_653.midi.key_decoder import ElementKind, KeyElement
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,13 +44,48 @@ def key_element_from_note_event(
     event: MidiNoteEvent,
     settings: KeyerSettings,
 ) -> KeyElement | None:
-    """Map the configured Trinkey note numbers to dit/dah elements."""
+    """Map a note-on event to a zero-duration element.
+
+    Kept for compatibility with older tests and callers. Live input should
+    use :class:`KeyElementAssembler` so note-off timing is preserved.
+    """
     if not event.pressed:
         return None
     if event.note == settings.dit_note:
-        return KeyElement(kind="dit", timestamp=event.timestamp)
+        return KeyElement(kind="dit", started_at=event.timestamp, ended_at=event.timestamp)
     if event.note == settings.dah_note:
-        return KeyElement(kind="dah", timestamp=event.timestamp)
+        return KeyElement(kind="dah", started_at=event.timestamp, ended_at=event.timestamp)
+    return None
+
+
+class KeyElementAssembler:
+    """Build completed key elements from MIDI note-on/off pairs."""
+
+    def __init__(self) -> None:
+        self._active: dict[int, tuple[ElementKind, float]] = {}
+
+    def push(self, event: MidiNoteEvent, settings: KeyerSettings) -> KeyElement | None:
+        kind = _kind_for_note(event.note, settings)
+        if kind is None:
+            return None
+
+        if event.pressed:
+            self._active[event.note] = (kind, event.timestamp)
+            return None
+
+        active = self._active.pop(event.note, None)
+        if active is None:
+            return None
+
+        started_kind, started_at = active
+        return KeyElement(kind=started_kind, started_at=started_at, ended_at=event.timestamp)
+
+
+def _kind_for_note(note: int, settings: KeyerSettings) -> ElementKind | None:
+    if note == settings.dit_note:
+        return "dit"
+    if note == settings.dah_note:
+        return "dah"
     return None
 
 
