@@ -22,8 +22,9 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e .
 
-python -m copy_653                  # start the engine on configured/default host:port
-python -m copy_653 --port 9000      # override the configured port
+python -m copy_653                       # start the engine on configured/default host:port
+python -m copy_653 --port 9000           # override the configured port
+python -m copy_653 --port-search-span 50 # widen the bump-up search window
 ```
 
 For same-machine USB MIDI key input, install the optional MIDI backend in the
@@ -43,7 +44,7 @@ If that port is in use, the engine probes upward by up to 20 ports and prints
 the bound URL on stdout (per spec §1.5 — fail loudly, never silently). Press
 `Ctrl-C` to stop.
 
-Status: audio synthesis, Koch sequence generation, Word Detection, Letters playback, audio timing and signal texture settings, Settings-page test message playback/export, Key MIDI input display, and locked post-session review are wired. Persistent session records are still pending.
+Status: audio synthesis, Koch sequence generation, Word Detection, Symbol Exposure playback, audio timing and signal texture settings, Settings-page test message playback/export, Key MIDI input display, and locked post-session review are wired. Persistent session records are still pending.
 
 ## Signal texture
 
@@ -70,11 +71,11 @@ clean and textured versions can be inspected or compared with external tools.
 
 After `python -m copy_653`, open the URL it prints (default `http://127.0.0.1:8653`) in any modern browser. Current browser surfaces include:
 
+- **Guided Listening → Symbol Exposure**: play a single symbol's spoken anchor plus Morse sequence for reference.
 - **Koch Method → Exercises**: claim/unclaim symbols, start or stop a random Koch listening session, then expand the locked review to see clock-time symbol entries with spoken Morse patterns.
 - **Koch Method → Word Detection**: listen for claimed symbols inside short words, including spoken focus prompts for K, M, and U where recordings are available.
-- **Koch Method → Letters**: play a single symbol's spoken anchor plus Morse sequence for reference.
-- **Key → Timing, spacing, and known symbols**: display the known-symbol sequence and decode formed Trinkey MIDI dit/dah notes into sent symbols.
-- **Settings**: adjust character speed, effective speed, and signal texture; play or export the fixed test message; the server persists saved values in the shared config.
+- **Key → Timing, spacing, and known symbols**: display the known-symbol sequence and decode formed Trinkey MIDI dit/dah notes into sent symbols. Diagnostic readouts (raw MIDI log, decoder telemetry) are hidden until Developer Mode is enabled in Settings.
+- **Settings**: collapsible sections for Words Per Minute, Signal Texture, Key Input (Trinkey buzzer), Test Message, Runaway Guard (firmware-misbehaviour disarm), and Developer Mode. The server persists audio and key-input values to the shared config; Developer Mode and Runaway Guard are local to the browser via `localStorage`.
 
 The WebSocket protocol is documented at the top of [`src/copy_653/server/app.py`](src/copy_653/server/app.py).
 
@@ -107,6 +108,14 @@ them equal to disable Farnsworth spacing. Tone Shape is stored as
 `envelope_ramp_seconds` in config; the Settings page maps the 0-10 control to
 the ramp values shown above. Unknown keys are silently ignored (forward
 compatibility). Validation errors surface honestly per spec §1.5.
+
+The same file also holds three engine-managed or rarely-edited tables:
+`[symbols].claimed` (the learner's claimed set, written by the engine on
+claim-symbol), `[session].duration_seconds` (default 30s, used by listening
+sessions), and `[midi.key]` (note numbers and input-name substring for the
+TRRS Trinkey, plus the `trinkey_buzzer_enabled` flag the Settings page
+exposes). See [`src/copy_653/config.py`](src/copy_653/config.py) for the
+exhaustive field list.
 
 ## Tests
 
