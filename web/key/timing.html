@@ -22,6 +22,15 @@
             <p class="sequence-label">Sequence</p>
             <div class="sequence-row sequence-row--read-only" id="sequence-row" role="list"></div>
         </section>
+
+        <section class="key-sent" aria-label="Sent symbols">
+            <p class="sequence-label">Sent</p>
+            <div class="key-sent-current" aria-live="polite">
+                <span class="key-sent-symbol" id="sent-symbol">—</span>
+                <span class="key-sent-pattern" id="sent-pattern">—</span>
+            </div>
+            <ol class="key-sent-history" id="sent-history" aria-label="Recent sent symbols"></ol>
+        </section>
     </main>
     <script type="module" src="../js/key-timing.js"></script>
 </body>

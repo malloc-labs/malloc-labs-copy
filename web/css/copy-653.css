@@ -532,6 +532,54 @@
     opacity: 0.75;
 }
 
+.key-sent {
+    margin-top: var(--mr-space-5);
+    border-top: var(--mr-border-rule);
+    padding-top: var(--mr-space-4);
+}
+
+.key-sent-current {
+    display: flex;
+    align-items: baseline;
+    gap: var(--mr-space-4);
+    margin-bottom: var(--mr-space-4);
+}
+
+.key-sent-symbol {
+    font-family: var(--mr-font-mono);
+    font-size: 4rem;
+    line-height: 1;
+    color: var(--mr-text);
+}
+
+.key-sent-pattern {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    color: var(--mr-muted);
+}
+
+.key-sent-history {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--mr-space-2);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.key-sent-history li {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--mr-space-2);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+}
+
+.key-sent-history__symbol {
+    color: var(--mr-text);
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
    9. Timeline disclosure toggle
    ─────────────────────────────────────────────────────────────────────────────

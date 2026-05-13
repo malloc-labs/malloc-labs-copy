@@ -7,6 +7,11 @@ const wsUrl = `ws://${location.host}/ws`;
 
 const statusEl = document.querySelector(".status");
 const sequenceRow = document.getElementById("sequence-row");
+const sentSymbolEl = document.getElementById("sent-symbol");
+const sentPatternEl = document.getElementById("sent-pattern");
+const sentHistoryEl = document.getElementById("sent-history");
+
+const MAX_SENT_HISTORY = 8;
 
 // Canonical Koch order — mirrors KOCH_ORDER in patterns.py.
 const KOCH_ORDER = [
@@ -55,6 +60,26 @@ function renderSequence(state) {
     });
 }
 
+function renderSentSymbol(event) {
+    const symbol = event.symbol || "?";
+    sentSymbolEl.textContent = symbol;
+    sentPatternEl.textContent = event.pattern;
+
+    const item = document.createElement("li");
+    const symbolEl = document.createElement("span");
+    const patternEl = document.createElement("span");
+    symbolEl.className = "key-sent-history__symbol";
+    patternEl.className = "key-sent-history__pattern";
+    symbolEl.textContent = symbol;
+    patternEl.textContent = event.pattern;
+    item.replaceChildren(symbolEl, patternEl);
+    sentHistoryEl.prepend(item);
+
+    while (sentHistoryEl.children.length > MAX_SENT_HISTORY) {
+        sentHistoryEl.lastElementChild.remove();
+    }
+}
+
 function connect() {
     setStatus("connecting", "connecting...");
     const socket = new WebSocket(wsUrl);
@@ -67,6 +92,8 @@ function connect() {
         const event = JSON.parse(message.data);
         if (event.type === "claimed-symbols") {
             renderSequence(event);
+        } else if (event.type === "sent-symbol") {
+            renderSentSymbol(event);
         } else if (event.type === "error") {
             setStatus("connecting", "error");
         }

@@ -138,6 +138,7 @@ from copy_653.letters import (
     find_anchors_dir,
     play_letter_sequence,
 )
+from copy_653.midi import DecodedSymbol
 from copy_653.server.test_message_audio import build_marconi_test_message
 from copy_653.server.word_detection_audio import build_word_detection_audio
 
@@ -298,6 +299,17 @@ def _claimed_symbols_event(claimed: tuple[str, ...]) -> dict[str, Any]:
         "type": "claimed-symbols",
         "symbols": list(claimed),
         "suggested_next": patterns.next_koch_after(claimed),
+    }
+
+
+def _sent_symbol_event(decoded: DecodedSymbol) -> dict[str, Any]:
+    """Build the Key page event for a decoded sent symbol."""
+    return {
+        "type": "sent-symbol",
+        "symbol": decoded.symbol,
+        "pattern": decoded.pattern,
+        "started_at": decoded.started_at,
+        "ended_at": decoded.ended_at,
     }
 
 
