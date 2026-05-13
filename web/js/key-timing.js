@@ -13,7 +13,6 @@ const sentPatternEl = document.getElementById("sent-pattern");
 const sentHistoryEl = document.getElementById("sent-history");
 const soundToggleEl = document.getElementById("key-sound-toggle");
 const keyInputToggleEl = document.getElementById("key-input-toggle");
-const keyDeviceResetEl = document.getElementById("key-device-reset");
 const copyDiagnosticsEl = document.getElementById("copy-diagnostics");
 const diagInputEl = document.getElementById("diag-input");
 const diagAudioEl = document.getElementById("diag-audio");
@@ -35,7 +34,6 @@ const DEFAULT_RAMP_SECONDS = 0.005;
 const DEFAULT_DIT_MS = 100;
 const BROWSER_MIDI_INPUT_MODE = "formed-elements";
 const MAX_CONSECUTIVE_SAME_FORMED_ELEMENTS = 5;
-const TRINKEY_IAMBIC_A_MODE = 7;
 
 let keyConfig = null;
 let soundEnabled = false;
@@ -43,7 +41,6 @@ let pendingGeneratedOns = [];
 let pendingRawOns = [];
 let browserMidiAccess = null;
 let browserMidiInput = null;
-let browserMidiOutput = null;
 let activeSocket = null;
 let diagnosticEvents = [];
 let formedElementGuard = newFormedElementGuard();
@@ -180,7 +177,6 @@ function diagnosticText() {
         visibility: document.visibilityState,
         focused: document.hasFocus(),
         midi_input_armed: midiInputArmed,
-        midi_output_name: browserMidiOutput?.name || null,
         key_config: keyConfig,
         browser_midi_input_mode: BROWSER_MIDI_INPUT_MODE,
     };
@@ -438,7 +434,6 @@ function handleFormedBrowserMidiEvent(event) {
         });
         setMidiInputArmed(false, "runaway guard");
         resetCopyKeyInput("runaway guard");
-        sendTrinkeyRelease("runaway guard");
         if (!event.pressed) {
             sidetone.keyUp(event.note);
         }
@@ -477,19 +472,6 @@ function selectMidiInput(inputs) {
         || null;
 }
 
-function selectMidiOutput(outputs) {
-    const available = Array.from(outputs.values());
-    return available.find((output) => output.name?.toLowerCase().includes("trrs trinkey")) || null;
-}
-
-function updateDeviceResetButton() {
-    if (!keyDeviceResetEl) return;
-    keyDeviceResetEl.disabled = !browserMidiOutput;
-    keyDeviceResetEl.title = browserMidiOutput
-        ? "Release and reset the TRRS Trinkey keyer"
-        : "No TRRS Trinkey MIDI output available";
-}
-
 function resetCopyKeyInput(reason) {
     if (activeSocket?.readyState !== WebSocket.OPEN) {
         recordDiagnostic("copy-key-input-reset", { status: "not connected", reason });
@@ -497,46 +479,6 @@ function resetCopyKeyInput(reason) {
     }
     activeSocket.send(JSON.stringify({ action: "reset-key-input", reason }));
     recordDiagnostic("copy-key-input-reset", { status: "sent", reason });
-}
-
-function sendTrinkeyRelease(reason) {
-    if (!browserMidiOutput && browserMidiAccess) {
-        browserMidiOutput = selectMidiOutput(browserMidiAccess.outputs);
-        updateDeviceResetButton();
-    }
-    if (!browserMidiOutput) {
-        recordDiagnostic("trinkey-release", { status: "no output", reason });
-        return false;
-    }
-
-    const messages = [
-        [0x80, 0, 0],
-        [0x80, keyConfig?.dit_note ?? 1, 0],
-        [0x80, keyConfig?.dah_note ?? 2, 0],
-        [0xC0, TRINKEY_IAMBIC_A_MODE],
-        [0x80, 0, 0],
-        [0x80, keyConfig?.dit_note ?? 1, 0],
-        [0x80, keyConfig?.dah_note ?? 2, 0],
-    ];
-
-    try {
-        messages.forEach((message) => browserMidiOutput.send(message));
-        recordDiagnostic("trinkey-release", {
-            status: "sent",
-            reason,
-            output_name: browserMidiOutput.name || "browser MIDI output",
-            keyer_mode: TRINKEY_IAMBIC_A_MODE,
-            messages,
-        });
-        return true;
-    } catch (error) {
-        recordDiagnostic("trinkey-release", {
-            status: "failed",
-            reason,
-            error: error?.message || String(error),
-        });
-        return false;
-    }
 }
 
 async function startBrowserMidi(socket) {
@@ -554,10 +496,6 @@ async function startBrowserMidi(socket) {
                 sidetone.mute();
                 setMidiInputArmed(false, "midi input changed");
             }
-            if (event.port?.type === "output") {
-                browserMidiOutput = selectMidiOutput(access.outputs);
-                updateDeviceResetButton();
-            }
         });
         const input = selectMidiInput(access.inputs);
         if (!input) {
@@ -565,8 +503,6 @@ async function startBrowserMidi(socket) {
             socket.send(JSON.stringify({ action: "start-key-input" }));
             return;
         }
-        browserMidiOutput = selectMidiOutput(access.outputs);
-        updateDeviceResetButton();
 
         browserMidiInput = input;
         browserMidiInput.onmidimessage = (message) => {
@@ -846,16 +782,6 @@ document.addEventListener("visibilitychange", () => {
 keyInputToggleEl.addEventListener("click", () => {
     setMidiInputArmed(!midiInputArmed, "manual toggle");
 });
-keyDeviceResetEl.addEventListener("click", () => {
-    const previousText = keyDeviceResetEl.textContent;
-    setMidiInputArmed(false, "trinkey reset");
-    resetCopyKeyInput("manual trinkey reset");
-    keyDeviceResetEl.textContent = sendTrinkeyRelease("manual reset") ? "reset sent" : "no output";
-    window.setTimeout(() => {
-        keyDeviceResetEl.textContent = previousText;
-        updateDeviceResetButton();
-    }, 1200);
-});
 copyDiagnosticsEl.addEventListener("click", async () => {
     const previousText = copyDiagnosticsEl.textContent;
     const text = diagnosticText();
@@ -882,5 +808,4 @@ soundToggleEl.addEventListener("click", async () => {
     updateAudioDiagnostic();
 });
 updateAudioDiagnostic();
-updateDeviceResetButton();
 connect();

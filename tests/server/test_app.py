@@ -119,8 +119,6 @@ def _write_test_config_with_keyer(
             dit_note = 1
             dah_note = 2
             straight_note = 0
-            dit_ms = 100
-            character_gap_dits = 3
             """))
     return config_path
 
@@ -838,8 +836,6 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
             "dit_note": 1,
             "dah_note": 2,
             "straight_note": 0,
-            "dit_ms": 100,
-            "character_gap_dits": 3,
         }
     finally:
         server.close()

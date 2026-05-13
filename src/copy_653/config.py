@@ -85,15 +85,19 @@ class ServerSettings:
 
 @dataclass(frozen=True, slots=True)
 class KeyerSettings:
-    """Settings for physical key input and local sidetone behaviour."""
+    """Settings for physical key input and local sidetone behaviour.
+
+    Send-side timing (dit duration, keyer mode) is owned by the firmware on
+    the keyer device. Copy reads MIDI note events and decodes them; it does
+    not configure or reset the device. Decoder gap timing is derived from
+    ``[audio]`` parameters at the server.
+    """
 
     trinkey_buzzer_enabled: bool = False
     input_name: str | None = "TRRS Trinkey"
     dit_note: int = 1
     dah_note: int = 2
     straight_note: int = 0
-    dit_ms: int = 100
-    character_gap_dits: int = 3
 
 
 # ---------- server -----------------------------------------------------
@@ -260,12 +264,6 @@ def load_keyer_settings(path: Path | None = None) -> KeyerSettings:
         dit_note=_key_midi_note(key_table.get("dit_note"), "dit_note", default=1),
         dah_note=_key_midi_note(key_table.get("dah_note"), "dah_note", default=2),
         straight_note=_key_midi_note(key_table.get("straight_note"), "straight_note", default=0),
-        dit_ms=_key_positive_int(key_table.get("dit_ms"), "dit_ms", default=100),
-        character_gap_dits=_key_positive_int(
-            key_table.get("character_gap_dits"),
-            "character_gap_dits",
-            default=3,
-        ),
     )
 
 
@@ -319,8 +317,6 @@ def save_keyer_settings(
     dit_note: int | None = None,
     dah_note: int | None = None,
     straight_note: int | None = None,
-    dit_ms: int | None = None,
-    character_gap_dits: int | None = None,
     path: Path | None = None,
 ) -> KeyerSettings:
     """Persist physical key input settings, preserving other tables."""
@@ -351,12 +347,6 @@ def save_keyer_settings(
             "straight_note",
             default=current.straight_note,
         ),
-        dit_ms=_key_positive_int(dit_ms, "dit_ms", default=current.dit_ms),
-        character_gap_dits=_key_positive_int(
-            character_gap_dits,
-            "character_gap_dits",
-            default=current.character_gap_dits,
-        ),
     )
 
     key_table["trinkey_buzzer_enabled"] = settings.trinkey_buzzer_enabled
@@ -364,8 +354,6 @@ def save_keyer_settings(
     key_table["dit_note"] = settings.dit_note
     key_table["dah_note"] = settings.dah_note
     key_table["straight_note"] = settings.straight_note
-    key_table["dit_ms"] = settings.dit_ms
-    key_table["character_gap_dits"] = settings.character_gap_dits
 
     _write_toml_atomic(data, config_path)
     return settings
