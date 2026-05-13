@@ -235,21 +235,58 @@ def test_save_audio_timing_rejects_invalid_texture_values(tmp_path: Path):
 
 
 def test_load_keyer_settings_defaults_to_trinkey_buzzer_off(tmp_path: Path):
-    assert load_keyer_settings(tmp_path / "missing.toml") == KeyerSettings()
+    assert load_keyer_settings(tmp_path / "missing.toml") == KeyerSettings(
+        trinkey_buzzer_enabled=False,
+        dit_note=1,
+        dah_note=2,
+        straight_note=0,
+        dit_ms=100,
+        character_gap_dits=3,
+    )
 
 
-def test_load_keyer_settings_reads_trinkey_buzzer(tmp_path: Path):
+def test_load_keyer_settings_reads_key_table(tmp_path: Path):
     config_file = tmp_path / "config.toml"
-    config_file.write_text("[midi.key]\ntrinkey_buzzer_enabled = true\n")
+    config_file.write_text(textwrap.dedent("""
+        [midi.key]
+        trinkey_buzzer_enabled = true
+        dit_note = 1
+        dah_note = 2
+        straight_note = 0
+        dit_ms = 90
+        character_gap_dits = 4
+        """))
 
-    assert load_keyer_settings(config_file) == KeyerSettings(trinkey_buzzer_enabled=True)
+    assert load_keyer_settings(config_file) == KeyerSettings(
+        trinkey_buzzer_enabled=True,
+        dit_note=1,
+        dah_note=2,
+        straight_note=0,
+        dit_ms=90,
+        character_gap_dits=4,
+    )
 
 
-def test_load_keyer_settings_rejects_non_boolean_buzzer(tmp_path: Path):
+@pytest.mark.parametrize(
+    ("toml", "message"),
+    [
+        ('trinkey_buzzer_enabled = "yes"', "trinkey_buzzer_enabled"),
+        ("dit_note = -1", "dit_note"),
+        ("dah_note = 128", "dah_note"),
+        ("straight_note = true", "straight_note"),
+        ("dit_ms = 0", "dit_ms"),
+        ("character_gap_dits = false", "character_gap_dits"),
+    ],
+)
+def test_load_keyer_settings_rejects_invalid_values(
+    tmp_path: Path,
+    toml: str,
+    message: str,
+):
     config_file = tmp_path / "config.toml"
-    config_file.write_text('[midi.key]\ntrinkey_buzzer_enabled = "yes"\n')
+    config_file.write_text(f"[midi.key]\n{toml}\n")
 
-    with pytest.raises(ValueError, match="trinkey_buzzer_enabled"):
+    with pytest.raises(ValueError, match=message):
         load_keyer_settings(config_file)
 
 
@@ -263,10 +300,23 @@ def test_save_keyer_settings_preserves_other_tables(tmp_path: Path):
         claimed = ["K", "M"]
         """))
 
-    saved = save_keyer_settings(trinkey_buzzer_enabled=True, path=config_file)
+    saved = save_keyer_settings(
+        trinkey_buzzer_enabled=True,
+        dit_ms=90,
+        character_gap_dits=4,
+        path=config_file,
+    )
 
-    assert saved == KeyerSettings(trinkey_buzzer_enabled=True)
-    assert load_keyer_settings(config_file) == KeyerSettings(trinkey_buzzer_enabled=True)
+    assert saved == KeyerSettings(
+        trinkey_buzzer_enabled=True,
+        dit_ms=90,
+        character_gap_dits=4,
+    )
+    assert load_keyer_settings(config_file) == KeyerSettings(
+        trinkey_buzzer_enabled=True,
+        dit_ms=90,
+        character_gap_dits=4,
+    )
     assert load_audio_parameters(config_file).character_speed_wpm == 22
     assert load_claimed_symbols(config_file) == ("K", "M")
 

@@ -13,6 +13,8 @@ each in its own table:
 - ``[session]`` — runtime knobs for sessions. Currently just the dev
   default ``duration_seconds``; spec §4.2 will eventually add
   per-mode keys.
+- ``[midi.key]`` — physical key input defaults for the reference
+  TRRS Trinkey and Copy-owned sidetone.
 
 Per spec §6.1 / §6.3:
 
@@ -73,6 +75,11 @@ class KeyerSettings:
     """Settings for physical key input and local sidetone behaviour."""
 
     trinkey_buzzer_enabled: bool = False
+    dit_note: int = 1
+    dah_note: int = 2
+    straight_note: int = 0
+    dit_ms: int = 100
+    character_gap_dits: int = 3
 
 
 # ---------- audio ------------------------------------------------------
@@ -179,35 +186,106 @@ def load_keyer_settings(path: Path | None = None) -> KeyerSettings:
     if not isinstance(key_table, dict):
         return KeyerSettings()
 
-    raw_buzzer = key_table.get("trinkey_buzzer_enabled")
-    if raw_buzzer is None:
-        return KeyerSettings()
-    if not isinstance(raw_buzzer, bool):
-        raise ValueError(
-            "[midi.key].trinkey_buzzer_enabled must be a boolean, "
-            f"got {type(raw_buzzer).__name__}"
-        )
+    return KeyerSettings(
+        trinkey_buzzer_enabled=_key_bool(
+            key_table.get("trinkey_buzzer_enabled"),
+            "trinkey_buzzer_enabled",
+            default=False,
+        ),
+        dit_note=_key_midi_note(key_table.get("dit_note"), "dit_note", default=1),
+        dah_note=_key_midi_note(key_table.get("dah_note"), "dah_note", default=2),
+        straight_note=_key_midi_note(key_table.get("straight_note"), "straight_note", default=0),
+        dit_ms=_key_positive_int(key_table.get("dit_ms"), "dit_ms", default=100),
+        character_gap_dits=_key_positive_int(
+            key_table.get("character_gap_dits"),
+            "character_gap_dits",
+            default=3,
+        ),
+    )
 
-    return KeyerSettings(trinkey_buzzer_enabled=raw_buzzer)
+
+def _key_bool(value: Any, field: str, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if not isinstance(value, bool):
+        raise ValueError(f"[midi.key].{field} must be a boolean, got {type(value).__name__}")
+    return value
+
+
+def _key_positive_int(value: Any, field: str, *, default: int) -> int:
+    if value is None:
+        return default
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"[midi.key].{field} must be a positive integer")
+    if value <= 0:
+        raise ValueError(f"[midi.key].{field} must be a positive integer")
+    return value
+
+
+def _key_midi_note(value: Any, field: str, *, default: int) -> int:
+    if value is None:
+        return default
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"[midi.key].{field} must be a MIDI note from 0 to 127")
+    if not 0 <= value <= 127:
+        raise ValueError(f"[midi.key].{field} must be a MIDI note from 0 to 127")
+    return value
 
 
 def save_keyer_settings(
     *,
     trinkey_buzzer_enabled: bool,
+    dit_note: int | None = None,
+    dah_note: int | None = None,
+    straight_note: int | None = None,
+    dit_ms: int | None = None,
+    character_gap_dits: int | None = None,
     path: Path | None = None,
 ) -> KeyerSettings:
     """Persist physical key input settings, preserving other tables."""
-    if not isinstance(trinkey_buzzer_enabled, bool):
-        raise ValueError("trinkey_buzzer_enabled must be a boolean")
-
     config_path = path if path is not None else DEFAULT_CONFIG_PATH
     data = _read_toml(config_path) or {}
-    midi_table = data.setdefault("midi", {})
-    key_table = midi_table.setdefault("key", {})
-    key_table["trinkey_buzzer_enabled"] = trinkey_buzzer_enabled
+    current = load_keyer_settings(config_path)
+
+    midi_table = data.get("midi")
+    if not isinstance(midi_table, dict):
+        midi_table = {}
+        data["midi"] = midi_table
+    key_table = midi_table.get("key")
+    if not isinstance(key_table, dict):
+        key_table = {}
+        midi_table["key"] = key_table
+
+    settings = KeyerSettings(
+        trinkey_buzzer_enabled=_key_bool(
+            trinkey_buzzer_enabled,
+            "trinkey_buzzer_enabled",
+            default=current.trinkey_buzzer_enabled,
+        ),
+        dit_note=_key_midi_note(dit_note, "dit_note", default=current.dit_note),
+        dah_note=_key_midi_note(dah_note, "dah_note", default=current.dah_note),
+        straight_note=_key_midi_note(
+            straight_note,
+            "straight_note",
+            default=current.straight_note,
+        ),
+        dit_ms=_key_positive_int(dit_ms, "dit_ms", default=current.dit_ms),
+        character_gap_dits=_key_positive_int(
+            character_gap_dits,
+            "character_gap_dits",
+            default=current.character_gap_dits,
+        ),
+    )
+
+    key_table["trinkey_buzzer_enabled"] = settings.trinkey_buzzer_enabled
+    key_table["dit_note"] = settings.dit_note
+    key_table["dah_note"] = settings.dah_note
+    key_table["straight_note"] = settings.straight_note
+    key_table["dit_ms"] = settings.dit_ms
+    key_table["character_gap_dits"] = settings.character_gap_dits
 
     _write_toml_atomic(data, config_path)
-    return KeyerSettings(trinkey_buzzer_enabled=trinkey_buzzer_enabled)
+    return settings
 
 
 # ---------- claimed symbols --------------------------------------------
