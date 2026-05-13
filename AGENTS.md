@@ -8,8 +8,8 @@ This repository is the Copy component of the broader `/srv/work/malloc-labs` wor
 
 - `source /srv/work/malloc-labs/venvs/ml-copy-653/bin/activate`: use the shared project venv for local work.
 - `pip install -e ".[dev]"`: refresh the package plus pytest tooling when dependencies change.
-- `python -m copy_653`: start the local engine; it binds to `127.0.0.1:8653` or the next available port.
-- `python -m copy_653 --port 9000`: run the server on a specific port.
+- `python -m copy_653`: start the local engine; it binds from `[server]` config or defaults to `127.0.0.1:8653`.
+- `python -m copy_653 --port 9000`: override the configured server port.
 - `pytest`: run the full test suite.
 - `ruff check src tests` and `black --check src tests`: match CI lint and formatting checks.
 - `pre-commit run --all-files`: run all repository hooks, including Black, Ruff, markdownlint, YAML formatting, and gitleaks.

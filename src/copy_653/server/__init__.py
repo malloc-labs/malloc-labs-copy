@@ -1,6 +1,7 @@
 """HTTP / WebSocket control surface."""
 
 from copy_653.server.app import (
+    DEFAULT_HOST,
     DEFAULT_PORT,
     DEFAULT_PORT_SEARCH_SPAN,
     find_available_port,
@@ -10,6 +11,7 @@ from copy_653.server.app import (
 )
 
 __all__ = [
+    "DEFAULT_HOST",
     "DEFAULT_PORT",
     "DEFAULT_PORT_SEARCH_SPAN",
     "find_available_port",

@@ -131,11 +131,15 @@ from copy_653.audio.parameters import AudioParameters
 from copy_653.audio.wav import encode_pcm16_wav
 from copy_653.config import (
     DEFAULT_CONFIG_PATH,
+    DEFAULT_SERVER_HOST,
+    DEFAULT_SERVER_PORT,
+    DEFAULT_SERVER_PORT_SEARCH_SPAN,
     KeyerSettings,
     load_audio_parameters,
     load_claimed_symbols,
     load_keyer_settings,
     load_letters_config,
+    load_server_settings,
     load_session_duration,
     save_audio_timing,
     save_claimed_symbols,
@@ -148,16 +152,18 @@ from copy_653.letters import (
 )
 from copy_653.midi import (
     DecodedSymbol,
-    KeyElementAssembler,
     KeyDecoder,
+    KeyElement,
+    KeyElementAssembler,
     MidiNoteEvent,
     iter_midi_note_events,
 )
 from copy_653.server.test_message_audio import build_marconi_test_message
 from copy_653.server.word_detection_audio import build_word_detection_audio
 
-DEFAULT_PORT = 8653
-DEFAULT_PORT_SEARCH_SPAN = 20
+DEFAULT_HOST = DEFAULT_SERVER_HOST
+DEFAULT_PORT = DEFAULT_SERVER_PORT
+DEFAULT_PORT_SEARCH_SPAN = DEFAULT_SERVER_PORT_SEARCH_SPAN
 # Divisible by 3 so every non-final base64 chunk can be concatenated safely.
 WAV_EXPORT_CHUNK_SIZE = 245_760
 KeyNoteSource = Callable[[threading.Event], Iterator[MidiNoteEvent]]
@@ -184,13 +190,17 @@ def find_web_root() -> Path:
     )
 
 
-def find_available_port(start: int, span: int = DEFAULT_PORT_SEARCH_SPAN) -> int:
-    """Return the first free TCP port in ``[start, start + span)`` on 127.0.0.1.
+def find_available_port(
+    start: int,
+    span: int = DEFAULT_PORT_SEARCH_SPAN,
+    host: str = DEFAULT_HOST,
+) -> int:
+    """Return the first free TCP port in ``[start, start + span)`` on ``host``.
 
     Raises :class:`RuntimeError` if every candidate is occupied — per
     spec §1.5 we do not silently pick something the learner cannot
     predict. There is a small TOCTOU window between this probe and the
-    actual ``serve()`` bind; for localhost dev that is acceptable.
+    actual ``serve()`` bind; for local dev that is acceptable.
     """
     if span <= 0:
         raise ValueError(f"span must be positive, got {span}")
@@ -198,7 +208,7 @@ def find_available_port(start: int, span: int = DEFAULT_PORT_SEARCH_SPAN) -> int
     for port in range(start, start + span):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
-                s.bind(("127.0.0.1", port))
+                s.bind((host, port))
             except OSError:
                 continue
             return port
@@ -329,17 +339,45 @@ def _sent_symbol_event(decoded: DecodedSymbol) -> dict[str, Any]:
     }
 
 
-def _key_input_start_event(settings: KeyerSettings) -> dict[str, Any]:
+def _key_input_start_event(settings: KeyerSettings, params: AudioParameters) -> dict[str, Any]:
     """Build the Key page event announcing active MIDI input."""
+    return _key_input_start_payload(
+        settings,
+        params,
+        input_name=settings.input_name,
+        source="server",
+    )
+
+
+def _key_input_start_payload(
+    settings: KeyerSettings,
+    params: AudioParameters,
+    *,
+    input_name: str | None,
+    source: str,
+) -> dict[str, Any]:
+    """Build the Key page event announcing active key input."""
+    dit_seconds = timing.dit_seconds(params.character_speed_wpm)
+    character_gap_seconds = timing.inter_character_seconds(params)
+    word_gap_seconds = timing.inter_word_seconds(params)
     return {
         "type": "key-input-start",
-        "input_name": settings.input_name,
+        "source": source,
+        "input_name": input_name,
         "dit_note": settings.dit_note,
         "dah_note": settings.dah_note,
         "straight_note": settings.straight_note,
         "dit_ms": settings.dit_ms,
         "character_gap_dits": settings.character_gap_dits,
         "trinkey_buzzer_enabled": settings.trinkey_buzzer_enabled,
+        "character_wpm": params.character_speed_wpm,
+        "effective_wpm": params.effective_speed_wpm,
+        "tone_frequency_hz": params.tone_frequency_hz,
+        "amplitude": params.amplitude,
+        "envelope_ramp_ms": round(params.envelope_ramp_seconds * 1000, 3),
+        "dit_ms_expected": round(dit_seconds * 1000, 3),
+        "character_gap_ms": round(character_gap_seconds * 1000, 3),
+        "word_gap_ms": round(word_gap_seconds * 1000, 3),
     }
 
 
@@ -360,6 +398,71 @@ def _audio_settings_event_from_params(
         "cadence_variation": params.cadence_variation,
         "trinkey_buzzer_enabled": keyer_settings.trinkey_buzzer_enabled,
     }
+
+
+def _key_event_event(
+    event: MidiNoteEvent,
+    settings: KeyerSettings,
+    params: AudioParameters,
+    element: KeyElement | None = None,
+) -> dict[str, Any] | None:
+    """Build a live key press/release event for diagnostics and browser sidetone."""
+    if event.note == settings.dit_note:
+        kind = "dit"
+    elif event.note == settings.dah_note:
+        kind = "dah"
+    elif event.note == settings.straight_note:
+        kind = "straight"
+    else:
+        return None
+
+    payload: dict[str, Any] = {
+        "type": "key-event",
+        "kind": kind,
+        "note": event.note,
+        "pressed": event.pressed,
+        "timestamp": event.timestamp,
+        "tone_frequency_hz": params.tone_frequency_hz,
+        "amplitude": params.amplitude,
+        "envelope_ramp_ms": round(params.envelope_ramp_seconds * 1000, 3),
+        "trinkey_buzzer_enabled": settings.trinkey_buzzer_enabled,
+    }
+    if element is not None:
+        duration_seconds = element.ended_at - element.started_at
+        dit_seconds = timing.dit_seconds(params.character_speed_wpm)
+        payload["duration_ms"] = round(duration_seconds * 1000, 3)
+        payload["ratio_dits"] = round(duration_seconds / dit_seconds, 3)
+    return payload
+
+
+async def _push_key_note_event(
+    ws: WebSocketServerProtocol,
+    item: MidiNoteEvent,
+    *,
+    settings: KeyerSettings,
+    audio_params: AudioParameters,
+    assembler: KeyElementAssembler,
+    decoder: KeyDecoder,
+) -> None:
+    """Apply one note event to the key decoder and emit any resulting events."""
+    element = assembler.push(item, settings)
+    key_event = _key_event_event(item, settings, audio_params, element)
+    if key_event is not None:
+        await _send_event(ws, key_event)
+    if element is None:
+        return
+
+    try:
+        decoded = decoder.push(element)
+    except ValueError as exc:
+        await _send_event(
+            ws,
+            {"type": "error", "reason": "key-input-decode-failed", "detail": str(exc)},
+        )
+        decoder.reset()
+        return
+    if decoded is not None:
+        await _send_event(ws, _sent_symbol_event(decoded))
 
 
 async def _start_action(
@@ -790,7 +893,7 @@ async def _run_key_input_action(
     thread.start()
     character_gap_seconds = timing.inter_character_seconds(audio_params)
 
-    await _send_event(ws, _key_input_start_event(settings))
+    await _send_event(ws, _key_input_start_event(settings, audio_params))
 
     try:
         while True:
@@ -810,21 +913,14 @@ async def _run_key_input_action(
                 await _send_event(ws, {"type": "error", "reason": reason, "detail": str(item)})
                 return
 
-            element = assembler.push(item, settings)
-            if element is None:
-                continue
-
-            try:
-                decoded = decoder.push(element)
-            except ValueError as exc:
-                await _send_event(
-                    ws,
-                    {"type": "error", "reason": "key-input-decode-failed", "detail": str(exc)},
-                )
-                decoder.reset()
-                continue
-            if decoded is not None:
-                await _send_event(ws, _sent_symbol_event(decoded))
+            await _push_key_note_event(
+                ws,
+                item,
+                settings=settings,
+                audio_params=audio_params,
+                assembler=assembler,
+                decoder=decoder,
+            )
     finally:
         stop_event.set()
         await asyncio.to_thread(thread.join, 1.0)
@@ -906,6 +1002,23 @@ def _optional_bool(value: Any, field: str) -> bool | None:
     return value
 
 
+def _browser_midi_note_event(
+    message: dict[str, Any], *, fallback_timestamp: float
+) -> MidiNoteEvent:
+    note = message.get("note")
+    pressed = message.get("pressed")
+    timestamp = message.get("timestamp", fallback_timestamp)
+
+    if not isinstance(note, int) or isinstance(note, bool) or not 0 <= note <= 127:
+        raise ValueError("note must be a MIDI note from 0 to 127")
+    if not isinstance(pressed, bool):
+        raise ValueError("pressed must be a boolean")
+    if not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool):
+        raise ValueError("timestamp must be numeric")
+
+    return MidiNoteEvent(note=note, pressed=pressed, timestamp=float(timestamp))
+
+
 async def _run_letter_sequence(
     ws: WebSocketServerProtocol,
     symbol: str,
@@ -964,6 +1077,43 @@ async def handler(
     current_letter_task: asyncio.Task[None] | None = None
     current_test_message_task: asyncio.Task[None] | None = None
     current_key_input_task: asyncio.Task[None] | None = None
+    browser_key_settings: KeyerSettings | None = None
+    browser_key_audio_params: AudioParameters | None = None
+    browser_key_assembler: KeyElementAssembler | None = None
+    browser_key_decoder: KeyDecoder | None = None
+    browser_key_flush_task: asyncio.Task[None] | None = None
+
+    async def _cancel_browser_key_flush() -> None:
+        nonlocal browser_key_flush_task
+        if browser_key_flush_task is not None and not browser_key_flush_task.done():
+            browser_key_flush_task.cancel()
+            try:
+                await browser_key_flush_task
+            except asyncio.CancelledError:
+                pass
+        browser_key_flush_task = None
+
+    def _schedule_browser_key_flush() -> None:
+        nonlocal browser_key_flush_task
+        if browser_key_audio_params is None or browser_key_decoder is None:
+            return
+        if browser_key_flush_task is not None and not browser_key_flush_task.done():
+            browser_key_flush_task.cancel()
+
+        async def _flush_after_gap() -> None:
+            await asyncio.sleep(timing.inter_character_seconds(browser_key_audio_params))
+            if browser_key_decoder is not None:
+                await _flush_key_symbol(ws, browser_key_decoder)
+
+        browser_key_flush_task = asyncio.create_task(_flush_after_gap())
+
+    async def _reset_browser_key_input(reason: str) -> None:
+        nonlocal browser_key_assembler
+        await _cancel_browser_key_flush()
+        browser_key_assembler = KeyElementAssembler()
+        if browser_key_decoder is not None:
+            browser_key_decoder.reset()
+        await _send_event(ws, {"type": "key-input-reset", "reason": reason})
 
     # Push current state on connect so the UI does not need to ask.
     claimed = load_claimed_symbols(config_path)
@@ -1027,7 +1177,79 @@ async def handler(
                 current_key_input_task = asyncio.create_task(
                     _run_key_input_action(ws, config_path, key_note_source)
                 )
+            elif action == "start-browser-key-input":
+                if current_key_input_task is not None and not current_key_input_task.done():
+                    current_key_input_task.cancel()
+                    try:
+                        await current_key_input_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+                await _cancel_browser_key_flush()
+                try:
+                    browser_key_settings = load_keyer_settings(config_path)
+                    browser_key_audio_params = load_audio_parameters(config_path)
+                except ValueError as exc:
+                    await _send_event(
+                        ws,
+                        {"type": "error", "reason": "invalid-config", "detail": str(exc)},
+                    )
+                    continue
+                browser_key_assembler = KeyElementAssembler()
+                browser_key_decoder = KeyDecoder(
+                    dit_seconds=timing.dit_seconds(browser_key_audio_params.character_speed_wpm),
+                    character_gap_seconds=timing.inter_character_seconds(browser_key_audio_params),
+                    word_gap_seconds=timing.inter_word_seconds(browser_key_audio_params),
+                )
+                input_name = message.get("input_name")
+                if not isinstance(input_name, str) or not input_name.strip():
+                    input_name = "browser MIDI"
+                await _send_event(
+                    ws,
+                    _key_input_start_payload(
+                        browser_key_settings,
+                        browser_key_audio_params,
+                        input_name=input_name.strip(),
+                        source="browser",
+                    ),
+                )
+            elif action == "key-note-event":
+                if (
+                    browser_key_settings is None
+                    or browser_key_audio_params is None
+                    or browser_key_assembler is None
+                    or browser_key_decoder is None
+                ):
+                    await _send_event(ws, {"type": "error", "reason": "key-input-not-started"})
+                    continue
+                try:
+                    note_event = _browser_midi_note_event(
+                        message,
+                        fallback_timestamp=asyncio.get_running_loop().time(),
+                    )
+                except ValueError as exc:
+                    await _send_event(
+                        ws,
+                        {"type": "error", "reason": "invalid-key-event", "detail": str(exc)},
+                    )
+                    continue
+                await _push_key_note_event(
+                    ws,
+                    note_event,
+                    settings=browser_key_settings,
+                    audio_params=browser_key_audio_params,
+                    assembler=browser_key_assembler,
+                    decoder=browser_key_decoder,
+                )
+                _schedule_browser_key_flush()
+            elif action == "reset-key-input":
+                reason = message.get("reason")
+                await _reset_browser_key_input(reason if isinstance(reason, str) else "manual")
             elif action == "stop-key-input":
+                await _cancel_browser_key_flush()
+                browser_key_settings = None
+                browser_key_audio_params = None
+                browser_key_assembler = None
+                browser_key_decoder = None
                 if current_key_input_task is not None and not current_key_input_task.done():
                     current_key_input_task.cancel()
             elif action == "play-test-message":
@@ -1085,11 +1307,13 @@ async def handler(
             current_test_message_task.cancel()
         if current_key_input_task is not None and not current_key_input_task.done():
             current_key_input_task.cancel()
+        await _cancel_browser_key_flush()
 
 
 async def serve_app(
     port: int = DEFAULT_PORT,
     port_search_span: int = DEFAULT_PORT_SEARCH_SPAN,
+    host: str = DEFAULT_HOST,
     web_root: Path | None = None,
     config_path: Path = DEFAULT_CONFIG_PATH,
     anchors_dir: Path | None = None,
@@ -1106,7 +1330,7 @@ async def serve_app(
     ``anchors_dir`` is similarly plumbed so tests can use a fixture
     directory without depending on the committed NATO recordings.
     """
-    chosen_port = find_available_port(port, port_search_span)
+    chosen_port = find_available_port(port, port_search_span, host)
     resolved_web_root = web_root if web_root is not None else find_web_root()
     resolved_anchors_dir = anchors_dir if anchors_dir is not None else find_anchors_dir()
 
@@ -1122,17 +1346,33 @@ async def serve_app(
 
     server = await serve(
         _connection,
-        "127.0.0.1",
+        host,
         chosen_port,
         process_request=process_request,
     )
     return server, chosen_port
 
 
-async def run(port: int = DEFAULT_PORT, port_search_span: int = DEFAULT_PORT_SEARCH_SPAN) -> None:
+async def run(
+    port: int | None = None,
+    port_search_span: int | None = None,
+    host: str | None = None,
+    config_path: Path = DEFAULT_CONFIG_PATH,
+) -> None:
     """Run the server forever. Entry point for ``python -m copy_653``."""
-    server, bound_port = await serve_app(port=port, port_search_span=port_search_span)
-    if bound_port != port:
-        logger.info("requested port %d was in use; bound %d instead", port, bound_port)
-    print(f"Copy engine listening on http://127.0.0.1:{bound_port}")
+    server_settings = load_server_settings(config_path)
+    resolved_host = host if host is not None else server_settings.host
+    resolved_port = port if port is not None else server_settings.port
+    resolved_span = (
+        port_search_span if port_search_span is not None else server_settings.port_search_span
+    )
+    server, bound_port = await serve_app(
+        port=resolved_port,
+        port_search_span=resolved_span,
+        host=resolved_host,
+        config_path=config_path,
+    )
+    if bound_port != resolved_port:
+        logger.info("requested port %d was in use; bound %d instead", resolved_port, bound_port)
+    print(f"Copy engine listening on http://{resolved_host}:{bound_port}")
     await server.wait_closed()

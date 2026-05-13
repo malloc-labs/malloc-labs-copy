@@ -6,7 +6,8 @@
 
 import { PATTERNS, spokenMorsePattern } from "./morse-display.js";
 
-const wsUrl = `ws://${location.host}/ws`;
+const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
+const wsUrl = `${wsProtocol}//${location.host}/ws`;
 
 const statusEl    = document.querySelector(".status");
 const eventsEl    = document.getElementById("events");

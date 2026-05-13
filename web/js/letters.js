@@ -13,7 +13,8 @@
 
 import { PATTERNS, displayMorsePattern, spokenMorsePattern } from "./morse-display.js";
 
-const wsUrl = `ws://${location.host}/ws`;
+const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
+const wsUrl = `${wsProtocol}//${location.host}/ws`;
 const cells = document.querySelectorAll(".letter-cell");
 const toggleBtn = document.querySelector(".timeline-toggle");
 const truthBody = document.querySelector(".timeline-body");

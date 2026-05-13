@@ -4,7 +4,8 @@
 // environment. User-facing labels follow established Morse learning terms:
 // character speed = symbol cadence, effective speed = pressure after spacing.
 
-const wsUrl = `ws://${location.host}/ws`;
+const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
+const wsUrl = `${wsProtocol}//${location.host}/ws`;
 const form = document.getElementById("audio-settings-form");
 const characterInput = document.getElementById("character-wpm");
 const effectiveInput = document.getElementById("effective-wpm");

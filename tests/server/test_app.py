@@ -171,6 +171,40 @@ def test_sent_symbol_event_allows_unknown_pattern():
     assert event["leading_gap"] == "none"
 
 
+def test_key_event_event_reports_mapped_note_and_release_measurement():
+    event = app._key_event_event(
+        MidiNoteEvent(note=2, pressed=False, timestamp=1.2),
+        app.KeyerSettings(dit_note=1, dah_note=2),
+        app.AudioParameters(character_speed_wpm=20, effective_speed_wpm=10),
+        app.KeyElement(kind="dah", started_at=1.0, ended_at=1.18),
+    )
+
+    assert event == {
+        "type": "key-event",
+        "kind": "dah",
+        "note": 2,
+        "pressed": False,
+        "timestamp": 1.2,
+        "tone_frequency_hz": 600,
+        "amplitude": 0.3,
+        "envelope_ramp_ms": 5.0,
+        "trinkey_buzzer_enabled": False,
+        "duration_ms": 180.0,
+        "ratio_dits": 3.0,
+    }
+
+
+def test_key_event_event_ignores_unmapped_note():
+    assert (
+        app._key_event_event(
+            MidiNoteEvent(note=64, pressed=True, timestamp=1.0),
+            app.KeyerSettings(dit_note=1, dah_note=2),
+            app.AudioParameters(),
+        )
+        is None
+    )
+
+
 async def _drain_until(ws, predicate, timeout=5.0):
     """Collect events until ``predicate(event)`` returns True. Returns
     the full list of events received (including the matching one).
@@ -486,9 +520,145 @@ async def test_start_key_input_decodes_sent_symbol_without_app_sidetone(
             events = await _drain_until(ws, lambda e: e["type"] == "sent-symbol", timeout=2.0)
 
         assert events[0]["type"] == "key-input-start"
+        assert events[0]["character_wpm"] == 25
+        assert events[0]["effective_wpm"] == 25
+        assert events[0]["tone_frequency_hz"] == 600
+        assert events[0]["dit_ms_expected"] == 48.0
+        key_events = [event for event in events if event["type"] == "key-event"]
+        assert [(event["kind"], event["pressed"]) for event in key_events] == [
+            ("dah", True),
+            ("dah", False),
+            ("dit", True),
+            ("dit", False),
+            ("dah", True),
+            ("dah", False),
+        ]
+        assert key_events[1]["duration_ms"] == 144.0
+        assert key_events[1]["ratio_dits"] == 3.0
         assert events[-1]["symbol"] == "K"
         assert events[-1]["pattern"] == "-.-"
         assert events[-1]["leading_gap"] == "none"
+
+        assert patched_playback == []
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_browser_key_input_decodes_sent_symbol(
+    tmp_path,
+    patched_playback,
+):
+    config_path = _write_test_config_with_keyer(tmp_path, trinkey_buzzer_enabled=False)
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)  # claimed-symbols push
+
+            await ws.send(
+                json.dumps(
+                    {
+                        "action": "start-browser-key-input",
+                        "input_name": "TRRS Trinkey M0",
+                    }
+                )
+            )
+            raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            start_event = json.loads(raw)
+            assert start_event["type"] == "key-input-start"
+            assert start_event["source"] == "browser"
+            assert start_event["input_name"] == "TRRS Trinkey M0"
+
+            for event in [
+                {"note": 2, "pressed": True, "timestamp": 1.0},
+                {"note": 2, "pressed": False, "timestamp": 1.144},
+                {"note": 1, "pressed": True, "timestamp": 1.192},
+                {"note": 1, "pressed": False, "timestamp": 1.24},
+                {"note": 2, "pressed": True, "timestamp": 1.288},
+                {"note": 2, "pressed": False, "timestamp": 1.432},
+            ]:
+                await ws.send(json.dumps({"action": "key-note-event", **event}))
+
+            events = await _drain_until(ws, lambda e: e["type"] == "sent-symbol", timeout=2.0)
+
+        key_events = [event for event in events if event["type"] == "key-event"]
+        assert [(event["kind"], event["pressed"]) for event in key_events] == [
+            ("dah", True),
+            ("dah", False),
+            ("dit", True),
+            ("dit", False),
+            ("dah", True),
+            ("dah", False),
+        ]
+        assert events[-1]["symbol"] == "K"
+        assert events[-1]["pattern"] == "-.-"
+        assert patched_playback == []
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_browser_key_input_reset_discards_pending_symbol(
+    tmp_path,
+    patched_playback,
+):
+    config_path = _write_test_config_with_keyer(tmp_path, trinkey_buzzer_enabled=False)
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)  # claimed-symbols push
+
+            await ws.send(
+                json.dumps(
+                    {
+                        "action": "start-browser-key-input",
+                        "input_name": "TRRS Trinkey M0",
+                    }
+                )
+            )
+            raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            assert json.loads(raw)["type"] == "key-input-start"
+
+            await ws.send(
+                json.dumps(
+                    {"action": "key-note-event", "note": 1, "pressed": True, "timestamp": 1.0}
+                )
+            )
+            await ws.send(
+                json.dumps(
+                    {"action": "key-note-event", "note": 1, "pressed": False, "timestamp": 1.06}
+                )
+            )
+            await ws.send(json.dumps({"action": "reset-key-input", "reason": "runaway guard"}))
+
+            events = await _drain_until(
+                ws,
+                lambda e: e["type"] == "key-input-reset",
+                timeout=2.0,
+            )
+            assert [event["type"] for event in events] == [
+                "key-event",
+                "key-event",
+                "key-input-reset",
+            ]
+            assert events[-1]["reason"] == "runaway guard"
+
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(ws.recv(), timeout=1.0)
 
         assert patched_playback == []
     finally:
