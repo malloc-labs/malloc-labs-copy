@@ -19,7 +19,6 @@ const diagInputEl = document.getElementById("diag-input");
 const diagAudioEl = document.getElementById("diag-audio");
 const diagEventEl = document.getElementById("diag-event");
 const diagRawEl = document.getElementById("diag-raw");
-const diagKeyerEl = document.getElementById("diag-keyer");
 const diagElementEl = document.getElementById("diag-element");
 const diagGapEl = document.getElementById("diag-gap");
 const diagTimingEl = document.getElementById("diag-timing");
@@ -34,7 +33,6 @@ const DEFAULT_TONE_HZ = 600;
 const DEFAULT_AMPLITUDE = 0.3;
 const DEFAULT_RAMP_SECONDS = 0.005;
 const DEFAULT_DIT_MS = 100;
-const STUCK_PADDLE_MS = 2000;
 const BROWSER_MIDI_INPUT_MODE = "formed-elements";
 const MAX_CONSECUTIVE_SAME_FORMED_ELEMENTS = 5;
 const TRINKEY_IAMBIC_A_MODE = 7;
@@ -84,6 +82,12 @@ function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
 }
 
+function kindForNote(note) {
+    if (note === keyConfig?.dit_note) return "dit";
+    if (note === keyConfig?.dah_note) return "dah";
+    return null;
+}
+
 function newFormedElementGuard() {
     return {
         activeStarts: new Map(),
@@ -120,10 +124,10 @@ function shouldAcceptFormedEvent(event, kind) {
 
     formedElementGuard.activeStarts.delete(event.note);
 
-    // The firmware is currently sending already-formed Morse elements. A valid
-    // symbol in our current table never needs more than five identical elements
-    // in a row inside one character. If we see a sixth dit or dah before a
-    // character gap, that is a runaway MIDI stream, not intentional sending.
+    // The firmware emits already-formed Morse elements. A valid symbol never
+    // needs more than five identical elements in a row inside one character.
+    // A sixth consecutive same-kind element before a character gap is a
+    // runaway MIDI stream from the firmware, not intentional sending.
     const gap = formedElementGuard.lastEndedAt === null
         ? Number.POSITIVE_INFINITY
         : now - formedElementGuard.lastEndedAt;
@@ -160,7 +164,6 @@ function recordDiagnostic(type, details = {}) {
         t_ms: Math.round(performance.now()),
         type,
         focus: focusLabel(),
-        keyer: browserIambicKeyer?.snapshot?.() || null,
         ...details,
     });
 
@@ -180,7 +183,6 @@ function diagnosticText() {
         midi_output_name: browserMidiOutput?.name || null,
         key_config: keyConfig,
         browser_midi_input_mode: BROWSER_MIDI_INPUT_MODE,
-        keyer: browserIambicKeyer.snapshot(),
     };
     return [
         JSON.stringify({ type: "diagnostic-header", ...header }),
@@ -326,350 +328,6 @@ class KeySidetone {
 
 const sidetone = new KeySidetone();
 
-class BrowserIambicAKeyer {
-    constructor() {
-        this.socket = null;
-        this.physicalDown = new Set();
-        this.blockedUntilRelease = new Set();
-        this.state = "idle";
-        this.currentKind = null;
-        this.lastKind = null;
-        this.queuedKind = null;
-        this.markTimer = null;
-        this.gapTimer = null;
-        this.stuckTimer = null;
-    }
-
-    handlePhysicalEvent(event, socket) {
-        const kind = this.kindForNote(event.note);
-        if (!kind || !keyConfig) {
-            appendRawDiagnosticRow(event, "ignored / unmapped");
-            recordDiagnostic("raw-midi", {
-                note: event.note,
-                pressed: event.pressed,
-                action: "ignored / unmapped",
-            });
-            return;
-        }
-
-        if (!pageAcceptsMidiInput()) {
-            appendRawDiagnosticRow(event, "ignored / background");
-            recordDiagnostic("raw-midi", {
-                kind,
-                note: event.note,
-                pressed: event.pressed,
-                action: "ignored / background",
-            });
-            this.panic("background midi ignored / all paddles released");
-            return;
-        }
-
-        this.socket = socket;
-
-        // The Trinkey is reporting paddle contact state here, not completed
-        // Morse elements. A squeeze can therefore overlap note 1 and note 2.
-        // We keep that raw state separate from the formed elements emitted to
-        // the server so a held dah contact does not become one long dah.
-        if (event.pressed) {
-            if (this.blockedUntilRelease.has(kind)) {
-                appendRawDiagnosticRow(event, "ignored / release required", kind);
-                diagEventEl.textContent = `raw ${kind} down ignored / release required`;
-                recordDiagnostic("raw-midi", {
-                    kind,
-                    note: event.note,
-                    pressed: true,
-                    action: "ignored / release required",
-                });
-                return;
-            }
-            if (this.physicalDown.has(kind)) {
-                appendRawDiagnosticRow(event, "ignored / duplicate down", kind);
-                diagEventEl.textContent = `raw ${kind} duplicate down ignored / note ${event.note}`;
-                recordDiagnostic("raw-midi", {
-                    kind,
-                    note: event.note,
-                    pressed: true,
-                    action: "ignored / duplicate down",
-                });
-                return;
-            }
-
-            appendRawDiagnosticRow(event, "accepted", kind);
-            recordDiagnostic("raw-midi", {
-                kind,
-                note: event.note,
-                pressed: true,
-                action: "accepted",
-            });
-            pendingRawOns.push({ kind, note: event.note, timestamp: Number(event.timestamp) });
-            this.physicalDown.add(kind);
-            diagEventEl.textContent = `raw ${kind} down / note ${event.note}`;
-            this.scheduleStuckGuard();
-            this.updateKeyerDiagnostic();
-            this.press(kind);
-            return;
-        }
-
-        this.blockedUntilRelease.delete(kind);
-        if (!this.physicalDown.has(kind)) {
-            appendRawDiagnosticRow(event, "ignored / duplicate up", kind);
-            diagEventEl.textContent = `raw ${kind} duplicate up ignored / note ${event.note}`;
-            recordDiagnostic("raw-midi", {
-                kind,
-                note: event.note,
-                pressed: false,
-                action: "ignored / duplicate up",
-            });
-            return;
-        }
-
-        appendRawDiagnosticRow(event, "accepted", kind);
-        recordDiagnostic("raw-midi", {
-            kind,
-            note: event.note,
-            pressed: false,
-            action: "accepted",
-        });
-        this.physicalDown.delete(kind);
-        diagEventEl.textContent = `raw ${kind} up / note ${event.note}`;
-        this.scheduleStuckGuard();
-        this.updateKeyerDiagnostic();
-    }
-
-    press(kind) {
-        if (this.state === "idle") {
-            recordDiagnostic("keyer-decision", { action: "start", kind });
-            this.startElement(kind);
-            return;
-        }
-
-        // Iambic A is driven by paddle intent at element boundaries. If the
-        // opposite paddle is pressed while an element or its following one-dit
-        // gap is active, remember one opposite element. That handles normal
-        // squeeze timing without letting stale held contacts create a long mark.
-        const referenceKind = this.currentKind || this.lastKind;
-        if (referenceKind && kind !== referenceKind) {
-            this.queuedKind = kind;
-            recordDiagnostic("keyer-decision", {
-                action: "queue-opposite",
-                kind,
-                reference_kind: referenceKind,
-            });
-        }
-    }
-
-    kindForNote(note) {
-        if (note === keyConfig?.dit_note) return "dit";
-        if (note === keyConfig?.dah_note) return "dah";
-        return null;
-    }
-
-    noteForKind(kind) {
-        return kind === "dit" ? keyConfig?.dit_note : keyConfig?.dah_note;
-    }
-
-    ditMs() {
-        return Number(keyConfig?.dit_ms_expected) || DEFAULT_DIT_MS;
-    }
-
-    elementMs(kind) {
-        return kind === "dah" ? this.ditMs() * 3 : this.ditMs();
-    }
-
-    startElement(kind) {
-        const note = this.noteForKind(kind);
-        if (!Number.isFinite(note)) return;
-
-        this.clearMarkTimer();
-        this.clearGapTimer();
-        this.state = "mark";
-        this.currentKind = kind;
-        this.lastKind = kind;
-        this.updateKeyerDiagnostic();
-        this.emitFormedEvent(note, true);
-        this.markTimer = window.setTimeout(() => {
-            this.markTimer = null;
-            this.finishElement(kind, note);
-        }, this.elementMs(kind));
-    }
-
-    finishElement(kind, note) {
-        this.emitFormedEvent(note, false);
-        this.currentKind = null;
-        this.state = "gap";
-        this.updateKeyerDiagnostic();
-        this.gapTimer = window.setTimeout(() => {
-            this.gapTimer = null;
-            this.advanceAfterGap();
-        }, this.ditMs());
-    }
-
-    advanceAfterGap() {
-        const nextKind = this.nextKind();
-        if (nextKind) {
-            this.startElement(nextKind);
-            return;
-        }
-
-        this.state = "idle";
-        this.currentKind = null;
-        this.updateKeyerDiagnostic();
-    }
-
-    nextKind() {
-        if (this.queuedKind) {
-            const kind = this.queuedKind;
-            this.queuedKind = null;
-            return kind;
-        }
-
-        // Stop same-paddle free-running for now. We have observed raw MIDI
-        // "down" state arriving while the operator is not touching the key.
-        // If we repeat the same held paddle, one stale dit contact becomes an
-        // endless stream of dits. Continuing only to the opposite held paddle
-        // keeps iambic squeeze formation working: dah->dit->dah for K, or
-        // dit->dah->dit for R, while a lone stale dit/dah dies after one mark.
-        if (!this.lastKind) {
-            return null;
-        }
-        const alternateKind = this.lastKind === "dit" ? "dah" : "dit";
-        if (this.physicalDown.has(alternateKind)) {
-            recordDiagnostic("keyer-decision", {
-                action: "continue-alternate",
-                kind: alternateKind,
-                previous_kind: this.lastKind,
-            });
-            return alternateKind;
-        }
-        recordDiagnostic("keyer-decision", { action: "stop-after-gap" });
-        return null;
-    }
-
-    emitFormedEvent(note, pressed) {
-        if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
-
-        const event = {
-            note,
-            pressed,
-            timestamp: performance.now() / 1000,
-        };
-
-        // Sidetone follows the clean generated element, not the physical
-        // paddle contact. That is the key difference that prevents squeeze
-        // overlap from sounding like a stuck key.
-        if (pressed) {
-            sidetone.keyDown(note);
-        } else {
-            sidetone.keyUp(note);
-        }
-        updateAudioDiagnostic();
-        recordDiagnostic("generated-key-event", {
-            kind: this.kindForNote(note),
-            note,
-            pressed,
-        });
-        this.socket.send(JSON.stringify({ action: "key-note-event", ...event }));
-    }
-
-    panic(reason) {
-        // Browser MIDI can miss release edges when a tab loses focus, a device
-        // disconnects, or the page is backgrounded. In that situation we force
-        // all local state up and ignore those paddles until we see a real up
-        // edge, otherwise a stale "down" can repeat forever in the keyer.
-        for (const kind of this.physicalDown) {
-            this.blockedUntilRelease.add(kind);
-        }
-        recordDiagnostic("panic", { reason });
-        this.physicalDown.clear();
-        this.queuedKind = null;
-        this.clearMarkTimer();
-        this.clearGapTimer();
-        this.clearStuckTimer();
-
-        for (const kind of ["dit", "dah"]) {
-            const note = this.noteForKind(kind);
-            if (Number.isFinite(note)) {
-                sidetone.keyUp(note);
-                this.sendRelease(note);
-            }
-        }
-
-        this.state = "idle";
-        this.currentKind = null;
-        diagEventEl.textContent = reason;
-        this.updateKeyerDiagnostic();
-        updateAudioDiagnostic();
-    }
-
-    sendRelease(note) {
-        if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
-        this.socket.send(JSON.stringify({
-            action: "key-note-event",
-            note,
-            pressed: false,
-            timestamp: performance.now() / 1000,
-        }));
-    }
-
-    scheduleStuckGuard() {
-        this.clearStuckTimer();
-        if (this.physicalDown.size === 0) return;
-
-        this.stuckTimer = window.setTimeout(() => {
-            this.stuckTimer = null;
-            this.panic("stuck paddle released");
-        }, STUCK_PADDLE_MS);
-    }
-
-    clearMarkTimer() {
-        if (this.markTimer) {
-            window.clearTimeout(this.markTimer);
-            this.markTimer = null;
-        }
-    }
-
-    clearGapTimer() {
-        if (this.gapTimer) {
-            window.clearTimeout(this.gapTimer);
-            this.gapTimer = null;
-        }
-    }
-
-    clearStuckTimer() {
-        if (this.stuckTimer) {
-            window.clearTimeout(this.stuckTimer);
-            this.stuckTimer = null;
-        }
-    }
-
-    snapshot() {
-        return {
-            state: this.state,
-            current_kind: this.currentKind,
-            last_kind: this.lastKind,
-            queued_kind: this.queuedKind,
-            physical_down: [...this.physicalDown],
-            blocked_until_release: [...this.blockedUntilRelease],
-            has_mark_timer: Boolean(this.markTimer),
-            has_gap_timer: Boolean(this.gapTimer),
-            has_stuck_timer: Boolean(this.stuckTimer),
-        };
-    }
-
-    updateKeyerDiagnostic() {
-        const down = [...this.physicalDown].join("+") || "none";
-        const blocked = [...this.blockedUntilRelease].join("+") || "none";
-        diagKeyerEl.textContent = [
-            `state ${this.state}`,
-            `down ${down}`,
-            `queued ${this.queuedKind || "none"}`,
-            `blocked ${blocked}`,
-        ].join(" / ");
-    }
-}
-
-const browserIambicKeyer = new BrowserIambicAKeyer();
-
 function canUseAppSidetone() {
     return soundEnabled && !keyConfig?.trinkey_buzzer_enabled;
 }
@@ -703,7 +361,7 @@ function focusLabel() {
 }
 
 function appendRawDiagnosticRow(event, action, kind = null) {
-    const resolvedKind = kind || browserIambicKeyer.kindForNote(event.note) || "unknown";
+    const resolvedKind = kind || kindForNote(event.note) || "unknown";
     const state = event.pressed ? "down" : "up";
     diagRawEl.textContent = `${resolvedKind} ${state} / note ${event.note} / ${action}`;
 
@@ -727,7 +385,7 @@ function appendRawDiagnosticRow(event, action, kind = null) {
 }
 
 function handleFormedBrowserMidiEvent(event) {
-    const kind = browserIambicKeyer.kindForNote(event.note);
+    const kind = kindForNote(event.note);
     if (!kind || !keyConfig) {
         appendRawDiagnosticRow(event, "ignored / unmapped");
         recordDiagnostic("raw-midi", {
@@ -766,7 +424,6 @@ function handleFormedBrowserMidiEvent(event) {
         });
         sidetone.keyUp(event.note);
         setMidiInputArmed(false, "background midi");
-        browserIambicKeyer.panic("background formed midi ignored / all paddles released");
         return;
     }
 
@@ -789,12 +446,8 @@ function handleFormedBrowserMidiEvent(event) {
         return;
     }
 
-    // The pasted diagnostic log showed the TRRS Trinkey firmware is already
-    // emitting formed elements: dit note pairs are about 60 ms and dah pairs
-    // are about 180 ms. In that firmware mode we must not run a browser
-    // iambic keyer on top of it. We pass the formed note events through to
-    // sidetone and the server decoder, and keep raw diagnostics so any future
-    // spontaneous note stream is clearly attributable to Web MIDI/hardware.
+    // The Trinkey firmware emits already-formed elements (note-on + note-off
+    // per dit/dah). Pass them straight through to sidetone and server decoder.
     appendRawDiagnosticRow(event, "accepted / formed pass-through", kind);
     recordDiagnostic("raw-midi", {
         kind,
@@ -815,14 +468,6 @@ function handleFormedBrowserMidiEvent(event) {
     if (activeSocket?.readyState === WebSocket.OPEN) {
         activeSocket.send(JSON.stringify({ action: "key-note-event", ...event }));
     }
-}
-
-function renderLocalBrowserKeyEvent(event) {
-    if (BROWSER_MIDI_INPUT_MODE === "formed-elements") {
-        handleFormedBrowserMidiEvent(event);
-        return;
-    }
-    browserIambicKeyer.handlePhysicalEvent(event, activeSocket);
 }
 
 function selectMidiInput(inputs) {
@@ -906,7 +551,8 @@ async function startBrowserMidi(socket) {
         browserMidiAccess = access;
         access.addEventListener("statechange", (event) => {
             if (event.port?.type === "input" && event.port.state !== "connected") {
-                browserIambicKeyer.panic("midi input changed / all paddles released");
+                sidetone.mute();
+                setMidiInputArmed(false, "midi input changed");
             }
             if (event.port?.type === "output") {
                 browserMidiOutput = selectMidiOutput(access.outputs);
@@ -931,7 +577,7 @@ async function startBrowserMidi(socket) {
             });
             const event = midiMessageToNoteEvent(message);
             if (!event) return;
-            renderLocalBrowserKeyEvent(event);
+            handleFormedBrowserMidiEvent(event);
         };
 
         socket.send(JSON.stringify({
@@ -1168,7 +814,7 @@ function connect() {
 
     socket.addEventListener("close", () => {
         recordDiagnostic("websocket", { state: "close", url: wsUrl });
-        browserIambicKeyer.panic("connection closed");
+        sidetone.mute();
         if (browserMidiInput) {
             browserMidiInput.onmidimessage = null;
             browserMidiInput = null;
@@ -1184,7 +830,6 @@ buildSequenceRow();
 window.addEventListener("blur", () => {
     recordDiagnostic("page-lifecycle", { event: "blur" });
     setMidiInputArmed(false, "focus lost");
-    browserIambicKeyer.panic("focus lost / all paddles released");
 });
 window.addEventListener("focus", () => {
     recordDiagnostic("page-lifecycle", { event: "focus" });
@@ -1196,7 +841,6 @@ document.addEventListener("visibilitychange", () => {
     });
     if (document.visibilityState === "hidden") {
         setMidiInputArmed(false, "page hidden");
-        browserIambicKeyer.panic("page hidden / all paddles released");
     }
 });
 keyInputToggleEl.addEventListener("click", () => {
@@ -1205,7 +849,6 @@ keyInputToggleEl.addEventListener("click", () => {
 keyDeviceResetEl.addEventListener("click", () => {
     const previousText = keyDeviceResetEl.textContent;
     setMidiInputArmed(false, "trinkey reset");
-    browserIambicKeyer.panic("manual trinkey reset / all paddles released");
     resetCopyKeyInput("manual trinkey reset");
     keyDeviceResetEl.textContent = sendTrinkeyRelease("manual reset") ? "reset sent" : "no output";
     window.setTimeout(() => {
