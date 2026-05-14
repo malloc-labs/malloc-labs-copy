@@ -592,6 +592,66 @@
     margin-left: var(--mr-space-5);
 }
 
+/* Cadence Copy section — same leading-gap idiom as the sent history,
+   but per-exercise: each <li> is its own flex row of character spans
+   so the numbered exercise list stays readable while characters within
+   each sentence use sent-style intra-word / inter-word spacing. */
+.key-copy-target {
+    display: flex;
+    align-items: baseline;
+    gap: var(--mr-space-2);
+    margin-bottom: var(--mr-space-4);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+}
+
+.key-copy-target-label {
+    color: var(--mr-muted);
+}
+
+.key-copy-symbol {
+    color: var(--mr-text);
+}
+
+.key-copy-history {
+    margin: 0;
+    padding-left: var(--mr-space-5);
+}
+
+.key-copy-history__item {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    margin-bottom: var(--mr-space-2);
+}
+
+.key-copy-history__item[data-selected="true"] {
+    color: var(--mr-text);
+}
+
+.key-copy-history__item::marker {
+    color: var(--mr-muted);
+}
+
+.key-copy-history__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0;
+}
+
+.key-copy-history__symbol--leading-none {
+    margin-left: 0;
+}
+
+.key-copy-history__symbol--leading-character {
+    margin-left: 0.5ch;
+}
+
+.key-copy-history__symbol--leading-word {
+    margin-left: var(--mr-space-5);
+}
+
 .key-rhythm-review {
     --key-rhythm-green: color-mix(in srgb, var(--mr-anchor) 62%, var(--mr-muted));
     --key-rhythm-amber: color-mix(in srgb, var(--mr-warning) 58%, var(--mr-muted));
