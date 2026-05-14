@@ -29,15 +29,17 @@ export function setHHClearEnabled(enabled) {
 
 let lastSent = null;
 
-// Call on every sent-symbol event. If the toggle is on and the previous
-// sent symbol was also "H", invokes ``onTrigger`` and resets the tracker
-// so the next H starts a fresh pair.
-export function noteSentSymbol(symbol, onTrigger) {
+// Call on every sent-symbol event. ``leadingGap`` is the server's
+// classification of the silence preceding this symbol — "none" |
+// "character" | "word". The trigger only fires when the two H's belong
+// to the same word (character-gap); H followed by a word gap and then
+// H reads as "H H", not "HH", and is left alone.
+export function noteSentSymbol(symbol, leadingGap, onTrigger) {
     if (!getHHClearEnabled()) {
         lastSent = symbol;
         return;
     }
-    if (lastSent === "H" && symbol === "H") {
+    if (lastSent === "H" && symbol === "H" && leadingGap === "character") {
         lastSent = null;
         if (typeof onTrigger === "function") onTrigger();
         return;

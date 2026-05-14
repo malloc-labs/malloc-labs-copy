@@ -777,7 +777,7 @@ function renderSentSymbol(event) {
         lastSentEndedAt = endedAt;
     }
     renderRhythmReview();
-    noteSentSymbol(symbol, clearSentSymbols);
+    noteSentSymbol(symbol, event.leading_gap, clearSentSymbols);
 }
 
 function renderKeyInputStart(event) {
