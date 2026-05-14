@@ -33,7 +33,8 @@ Client → server, JSON over WS::
     {"action": "play-letter", "symbol": "K"}
     {"action": "get-audio-settings"}
     {"action": "set-audio-settings", "character_wpm": 20, "effective_wpm": 10,
-     "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1}
+     "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1,
+     "trinkey_buzzer_enabled": false, "hh_clear_enabled": false}
     {"action": "play-test-message", "character_wpm": 20, "effective_wpm": 10,
      "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1}
     {"action": "save-test-message", "character_wpm": 20, "effective_wpm": 10,
@@ -51,7 +52,8 @@ unsolicited on connect, and after every change::
     {"type": "claimed-symbols", "symbols": ["K", "M"], "suggested_next": "U"}
     {"type": "audio-settings", "character_wpm": 20, "effective_wpm": 10,
      "farnsworth_enabled": true, "tone_shape": 2, "receiver_bed": 2,
-     "cadence_variation": 1}
+     "cadence_variation": 1, "trinkey_buzzer_enabled": false,
+     "hh_clear_enabled": false}
 
 During a Koch Exercise session::
 
@@ -144,15 +146,18 @@ from copy_653.config import (
     DEFAULT_SERVER_HOST,
     DEFAULT_SERVER_PORT,
     DEFAULT_SERVER_PORT_SEARCH_SPAN,
+    DeveloperSettings,
     KeyerSettings,
     load_audio_parameters,
     load_claimed_symbols,
+    load_developer_settings,
     load_keyer_settings,
     load_letters_config,
     load_server_settings,
     load_session_duration,
     save_audio_timing,
     save_claimed_symbols,
+    save_developer_settings,
     save_keyer_settings,
 )
 from copy_653.letters import (
@@ -392,10 +397,13 @@ def _key_input_start_payload(
 def _audio_settings_event_from_params(
     params: AudioParameters,
     keyer_settings: KeyerSettings | None = None,
+    developer_settings: DeveloperSettings | None = None,
 ) -> dict[str, Any]:
     """Build the learner-facing audio timing event payload."""
     if keyer_settings is None:
         keyer_settings = KeyerSettings()
+    if developer_settings is None:
+        developer_settings = DeveloperSettings()
     return {
         "type": "audio-settings",
         "character_wpm": params.character_speed_wpm,
@@ -405,6 +413,7 @@ def _audio_settings_event_from_params(
         "receiver_bed": params.receiver_bed,
         "cadence_variation": params.cadence_variation,
         "trinkey_buzzer_enabled": keyer_settings.trinkey_buzzer_enabled,
+        "hh_clear_enabled": developer_settings.hh_clear_enabled,
     }
 
 
@@ -784,7 +793,11 @@ async def _get_audio_settings_action(
 ) -> None:
     params = load_audio_parameters(config_path)
     keyer_settings = load_keyer_settings(config_path)
-    await _send_event(ws, _audio_settings_event_from_params(params, keyer_settings))
+    developer_settings = load_developer_settings(config_path)
+    await _send_event(
+        ws,
+        _audio_settings_event_from_params(params, keyer_settings, developer_settings),
+    )
 
 
 async def _set_audio_settings_action(
@@ -817,6 +830,10 @@ async def _set_audio_settings_action(
             message.get("trinkey_buzzer_enabled"),
             "trinkey_buzzer_enabled",
         )
+        hh_clear_enabled = _optional_bool(
+            message.get("hh_clear_enabled"),
+            "hh_clear_enabled",
+        )
         params = save_audio_timing(
             character_speed_wpm=character_wpm,
             effective_speed_wpm=effective_wpm,
@@ -832,6 +849,13 @@ async def _set_audio_settings_action(
             )
         else:
             keyer_settings = load_keyer_settings(config_path)
+        if hh_clear_enabled is not None:
+            developer_settings = save_developer_settings(
+                hh_clear_enabled=hh_clear_enabled,
+                path=config_path,
+            )
+        else:
+            developer_settings = load_developer_settings(config_path)
     except ValueError as exc:
         await _send_event(
             ws,
@@ -843,7 +867,10 @@ async def _set_audio_settings_action(
         )
         return
 
-    await _send_event(ws, _audio_settings_event_from_params(params, keyer_settings))
+    await _send_event(
+        ws,
+        _audio_settings_event_from_params(params, keyer_settings, developer_settings),
+    )
 
 
 async def _play_test_message_action(

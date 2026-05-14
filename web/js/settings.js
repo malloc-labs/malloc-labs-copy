@@ -5,6 +5,7 @@
 // character speed = symbol cadence, effective speed = pressure after spacing.
 
 import { getDeveloperModeEnabled, setDeveloperModeEnabled } from "./developer-mode.js";
+import { setHHClearEnabled } from "./hh-clear.js";
 
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const wsUrl = `${wsProtocol}//${location.host}/ws`;
@@ -22,6 +23,7 @@ const statusEl = document.getElementById("settings-status");
 const characterSummary = document.getElementById("character-speed-summary");
 const effectiveSummary = document.getElementById("effective-speed-summary");
 const developerModeInput = document.getElementById("developer-mode");
+const hhClearInput = document.getElementById("hh-clear-enabled");
 
 developerModeInput.checked = getDeveloperModeEnabled();
 developerModeInput.addEventListener("change", () => {
@@ -47,6 +49,7 @@ function setInputsEnabled(enabled) {
     receiverBedInput.disabled = !enabled;
     cadenceVariationInput.disabled = !enabled;
     trinkeyBuzzerInput.disabled = !enabled;
+    hhClearInput.disabled = !enabled;
     playTestButton.disabled = !enabled;
     saveTestButton.disabled = !enabled;
 }
@@ -58,6 +61,7 @@ function currentSettings() {
     const receiverBed = Number(receiverBedInput.value);
     const cadenceVariation = Number(cadenceVariationInput.value);
     const trinkeyBuzzerEnabled = trinkeyBuzzerInput.checked;
+    const hhClearEnabled = hhClearInput.checked;
     return {
         character,
         effective,
@@ -65,6 +69,7 @@ function currentSettings() {
         receiverBed,
         cadenceVariation,
         trinkeyBuzzerEnabled,
+        hhClearEnabled,
     };
 }
 
@@ -159,6 +164,10 @@ function renderAudioSettings(event) {
     receiverBedInput.value = event.receiver_bed;
     cadenceVariationInput.value = event.cadence_variation;
     trinkeyBuzzerInput.checked = Boolean(event.trinkey_buzzer_enabled);
+    hhClearInput.checked = Boolean(event.hh_clear_enabled);
+    // Keep the localStorage cache that Key pages read in sync with the
+    // authoritative server state.
+    setHHClearEnabled(Boolean(event.hh_clear_enabled));
     savedSettings = {
         character: event.character_wpm,
         effective: event.effective_wpm,
@@ -166,6 +175,7 @@ function renderAudioSettings(event) {
         receiverBed: event.receiver_bed,
         cadenceVariation: event.cadence_variation,
         trinkeyBuzzerEnabled: Boolean(event.trinkey_buzzer_enabled),
+        hhClearEnabled: Boolean(event.hh_clear_enabled),
     };
     updateSummaries();
     const prefix = isSaving ? "saved" : "ready";
@@ -277,6 +287,7 @@ form.addEventListener("submit", (event) => {
         receiverBed,
         cadenceVariation,
         trinkeyBuzzerEnabled,
+        hhClearEnabled,
     } = currentSettings();
     setInputsEnabled(false);
     isSaving = true;
@@ -291,6 +302,7 @@ form.addEventListener("submit", (event) => {
             receiver_bed: receiverBed,
             cadence_variation: cadenceVariation,
             trinkey_buzzer_enabled: trinkeyBuzzerEnabled,
+            hh_clear_enabled: hhClearEnabled,
         })
     );
 });
@@ -362,5 +374,6 @@ function onSettingsInput() {
 ].forEach((input) => input.addEventListener("input", onSettingsInput));
 
 trinkeyBuzzerInput.addEventListener("change", onSettingsInput);
+hhClearInput.addEventListener("change", onSettingsInput);
 
 connect();
