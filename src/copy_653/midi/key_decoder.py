@@ -112,6 +112,19 @@ class KeyDecoder:
             return None
         return self._flush()
 
+    def flush_pending(self) -> DecodedSymbol | None:
+        """Flush the current symbol unconditionally if any marks are pending.
+
+        Callers must guarantee externally that ``character_gap_seconds`` has
+        elapsed since the last element — e.g. timer-driven flushes that
+        already waited the gap. This avoids the cross-clock comparison
+        ``tick`` performs, which is sensitive to small offsets between the
+        clock the elements were stamped in and ``time.monotonic()``.
+        """
+        if not self._marks:
+            return None
+        return self._flush()
+
     def reset(self) -> None:
         """Clear all decoder state including any prior element timestamp.
 

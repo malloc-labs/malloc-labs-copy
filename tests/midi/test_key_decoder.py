@@ -140,6 +140,39 @@ def test_records_word_gap_before_symbol():
     )
 
 
+def test_flush_pending_returns_none_with_no_marks():
+    decoder = KeyDecoder(dit_seconds=0.1)
+
+    assert decoder.flush_pending() is None
+
+
+def test_flush_pending_unconditionally_finalises_current_marks():
+    """Timer-driven flushes call flush_pending; they already waited the
+    character gap externally and must not be second-guessed by a cross-clock
+    comparison (e.g. browser perf.now → time.monotonic calibration bias)."""
+    decoder = KeyDecoder(dit_seconds=0.1)
+
+    assert decoder.push(KeyElement("dit", 0.0, 0.1)) is None
+    # No tick() time check — flush regardless of elapsed time. This guards
+    # against the case where the element's timestamp is in a slightly
+    # different clock domain than the caller's "now".
+    assert decoder.flush_pending() == DecodedSymbol(
+        pattern=".",
+        symbol="E",
+        started_at=0.0,
+        ended_at=0.1,
+    )
+    # Subsequent push detects the gap to the next element correctly.
+    assert decoder.push(KeyElement("dah", 5.0, 5.3)) is None
+    assert decoder.flush_pending() == DecodedSymbol(
+        pattern="-",
+        symbol="T",
+        started_at=5.0,
+        ended_at=5.3,
+        leading_gap="word",
+    )
+
+
 def test_rejects_element_end_before_start():
     decoder = KeyDecoder(dit_seconds=0.1)
 

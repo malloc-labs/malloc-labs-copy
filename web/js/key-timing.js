@@ -32,9 +32,7 @@ const MAX_DIAGNOSTIC_EVENTS = 240;
 const DEFAULT_TONE_HZ = 600;
 const DEFAULT_AMPLITUDE = 0.3;
 const DEFAULT_RAMP_SECONDS = 0.005;
-const DEFAULT_DIT_MS = 100;
 const BROWSER_MIDI_INPUT_MODE = "formed-elements";
-const MAX_CONSECUTIVE_SAME_FORMED_ELEMENTS = 5;
 
 let keyConfig = null;
 let soundEnabled = false;
@@ -44,9 +42,7 @@ let browserMidiAccess = null;
 let browserMidiInput = null;
 let activeSocket = null;
 let diagnosticEvents = [];
-let formedElementGuard = newFormedElementGuard();
 let midiInputArmed = true;
-let runawayGuardEnabled = true;
 
 // Canonical Koch order — mirrors KOCH_ORDER in patterns.py.
 const KOCH_ORDER = [
@@ -87,85 +83,6 @@ function kindForNote(note) {
     return null;
 }
 
-function newFormedElementGuard() {
-    return {
-        activeStarts: new Map(),
-        blockedUntil: 0,
-        lastKind: null,
-        lastEndedAt: null,
-        consecutiveSame: 0,
-    };
-}
-
-function resetFormedElementGuard() {
-    formedElementGuard = newFormedElementGuard();
-}
-
-function applyRunawayGuardSetting(enabled, reason) {
-    const next = enabled !== false;
-    if (next === runawayGuardEnabled) return;
-    runawayGuardEnabled = next;
-    if (!next) resetFormedElementGuard();
-    recordDiagnostic("runaway-guard-toggle", { enabled: next, reason });
-}
-
-function characterGapSeconds() {
-    return (Number(keyConfig?.character_gap_ms) || DEFAULT_DIT_MS * 3) / 1000;
-}
-
-function shouldAcceptFormedEvent(event, kind) {
-    if (!runawayGuardEnabled) return true;
-    const now = Number(event.timestamp);
-    if (Number.isFinite(formedElementGuard.blockedUntil)) {
-        if (now < formedElementGuard.blockedUntil) {
-            return false;
-        }
-        if (formedElementGuard.blockedUntil > 0) {
-            resetFormedElementGuard();
-        }
-    }
-
-    if (event.pressed) {
-        formedElementGuard.activeStarts.set(event.note, now);
-        return true;
-    }
-
-    formedElementGuard.activeStarts.delete(event.note);
-
-    // The firmware emits already-formed Morse elements. A valid symbol never
-    // needs more than five identical elements in a row inside one character.
-    // A sixth consecutive same-kind element before a character gap is a
-    // runaway MIDI stream from the firmware, not intentional sending.
-    const gap = formedElementGuard.lastEndedAt === null
-        ? Number.POSITIVE_INFINITY
-        : now - formedElementGuard.lastEndedAt;
-    if (gap >= characterGapSeconds()) {
-        formedElementGuard.consecutiveSame = 1;
-    } else if (formedElementGuard.lastKind === kind) {
-        formedElementGuard.consecutiveSame += 1;
-    } else {
-        formedElementGuard.consecutiveSame = 1;
-    }
-
-    formedElementGuard.lastKind = kind;
-    formedElementGuard.lastEndedAt = now;
-
-    if (formedElementGuard.consecutiveSame > MAX_CONSECUTIVE_SAME_FORMED_ELEMENTS) {
-        formedElementGuard.blockedUntil = now + characterGapSeconds();
-        sidetone.mute();
-        recordDiagnostic("formed-runaway-guard", {
-            kind,
-            note: event.note,
-            consecutive_same: formedElementGuard.consecutiveSame,
-            blocked_until: formedElementGuard.blockedUntil,
-        });
-        diagEventEl.textContent = `runaway ${kind} stream blocked`;
-        return false;
-    }
-
-    return true;
-}
-
 function recordDiagnostic(type, details = {}) {
     diagnosticEvents.push({
         at: new Date().toISOString(),
@@ -188,7 +105,6 @@ function diagnosticText() {
         visibility: document.visibilityState,
         focused: document.hasFocus(),
         midi_input_armed: midiInputArmed,
-        runaway_guard_enabled: runawayGuardEnabled,
         key_config: keyConfig,
         browser_midi_input_mode: BROWSER_MIDI_INPUT_MODE,
     };
@@ -210,12 +126,11 @@ function updateInputDiagnostic() {
 
 function setMidiInputArmed(armed, reason) {
     midiInputArmed = armed;
-    resetFormedElementGuard();
     if (!armed) {
         sidetone.mute();
     }
     recordDiagnostic("midi-input-arm", { armed, reason });
-    diagEventEl.textContent = armed ? "input armed" : `input disarmed / ${reason}`;
+    queueDiagEvent(armed ? "input armed" : `input disarmed / ${reason}`);
     updateInputDiagnostic();
     updateAudioDiagnostic();
 }
@@ -379,10 +294,13 @@ function midiMessageToNoteEvent(message) {
     const command = status & 0xf0;
     if (command !== 0x80 && command !== 0x90) return null;
 
+    // message.timeStamp is the CoreMIDI/Web MIDI arrival time in the same
+    // domain as performance.now() — using it directly preserves hardware
+    // timing through any JS dispatch jitter.
     return {
         note,
         pressed: command === 0x90 && velocity !== 0,
-        timestamp: performance.now() / 1000,
+        timestamp: message.timeStamp / 1000,
     };
 }
 
@@ -399,28 +317,85 @@ function focusLabel() {
     return `${visibility} / ${focus}`;
 }
 
-function appendRawDiagnosticRow(event, action, kind = null) {
-    const resolvedKind = kind || kindForNote(event.note) || "unknown";
-    const state = event.pressed ? "down" : "up";
-    diagRawEl.textContent = `${resolvedKind} ${state} / note ${event.note} / ${action}`;
+// rAF-batched diagnostic rendering. The MIDI handler runs on the same thread
+// as DOM mutations; doing per-event row inserts and textContent writes there
+// produces timing jitter that compounds with itself. Queue work synchronously
+// and flush in one animation frame so the main thread stays available for
+// the next MIDI message.
+const pendingRawDiagnosticRows = [];
+let pendingDiagRawText = null;
+let pendingDiagEventText = null;
+let pendingDiagElementText = null;
+let diagnosticRenderScheduled = false;
 
-    const row = document.createElement("tr");
-    const timestampCell = document.createElement("td");
-    const eventCell = document.createElement("td");
-    const actionCell = document.createElement("td");
-    const focusCell = document.createElement("td");
+function scheduleDiagnosticRender() {
+    if (diagnosticRenderScheduled) return;
+    diagnosticRenderScheduled = true;
+    requestAnimationFrame(flushDiagnosticRender);
+}
 
-    timestampCell.textContent = formatTimestamp();
-    eventCell.textContent = `${resolvedKind} ${state} / note ${event.note}`;
-    actionCell.textContent = action;
-    focusCell.textContent = focusLabel();
+function flushDiagnosticRender() {
+    diagnosticRenderScheduled = false;
 
-    row.append(timestampCell, eventCell, actionCell, focusCell);
-    diagRawLogEl.prepend(row);
+    if (pendingDiagRawText !== null) {
+        diagRawEl.textContent = pendingDiagRawText;
+        pendingDiagRawText = null;
+    }
+    if (pendingDiagEventText !== null) {
+        diagEventEl.textContent = pendingDiagEventText;
+        pendingDiagEventText = null;
+    }
+    if (pendingDiagElementText !== null) {
+        diagElementEl.textContent = pendingDiagElementText;
+        pendingDiagElementText = null;
+    }
 
+    if (pendingRawDiagnosticRows.length === 0) return;
+
+    const fragment = document.createDocumentFragment();
+    // Newest entry first; queue is in arrival order, so iterate reversed.
+    for (let i = pendingRawDiagnosticRows.length - 1; i >= 0; i -= 1) {
+        const entry = pendingRawDiagnosticRows[i];
+        const row = document.createElement("tr");
+        const timestampCell = document.createElement("td");
+        const eventCell = document.createElement("td");
+        const actionCell = document.createElement("td");
+        const focusCell = document.createElement("td");
+        timestampCell.textContent = entry.timestamp;
+        eventCell.textContent = entry.event;
+        actionCell.textContent = entry.action;
+        focusCell.textContent = entry.focus;
+        row.append(timestampCell, eventCell, actionCell, focusCell);
+        fragment.appendChild(row);
+    }
+    pendingRawDiagnosticRows.length = 0;
+    diagRawLogEl.prepend(fragment);
     while (diagRawLogEl.children.length > MAX_RAW_DIAGNOSTIC_ROWS) {
         diagRawLogEl.lastElementChild.remove();
     }
+}
+
+function queueDiagEvent(text) {
+    pendingDiagEventText = text;
+    scheduleDiagnosticRender();
+}
+
+function queueDiagElement(text) {
+    pendingDiagElementText = text;
+    scheduleDiagnosticRender();
+}
+
+function appendRawDiagnosticRow(event, action, kind = null) {
+    const resolvedKind = kind || kindForNote(event.note) || "unknown";
+    const state = event.pressed ? "down" : "up";
+    pendingDiagRawText = `${resolvedKind} ${state} / note ${event.note} / ${action}`;
+    pendingRawDiagnosticRows.push({
+        timestamp: formatTimestamp(),
+        event: `${resolvedKind} ${state} / note ${event.note}`,
+        action,
+        focus: focusLabel(),
+    });
+    scheduleDiagnosticRender();
 }
 
 function handleFormedBrowserMidiEvent(event) {
@@ -465,24 +440,6 @@ function handleFormedBrowserMidiEvent(event) {
         return;
     }
 
-    if (!shouldAcceptFormedEvent(event, kind)) {
-        appendRawDiagnosticRow(event, "ignored / runaway guard", kind);
-        recordDiagnostic("raw-midi", {
-            kind,
-            note: event.note,
-            pressed: event.pressed,
-            action: "ignored / runaway guard",
-            mode: BROWSER_MIDI_INPUT_MODE,
-        });
-        setMidiInputArmed(false, "runaway guard");
-        resetCopyKeyInput("runaway guard");
-        if (!event.pressed) {
-            sidetone.keyUp(event.note);
-        }
-        updateAudioDiagnostic();
-        return;
-    }
-
     // The Trinkey firmware emits already-formed elements (note-on + note-off
     // per dit/dah). Pass them straight through to sidetone and server decoder.
     appendRawDiagnosticRow(event, "accepted / formed pass-through", kind);
@@ -493,7 +450,7 @@ function handleFormedBrowserMidiEvent(event) {
         action: "accepted / formed pass-through",
         mode: BROWSER_MIDI_INPUT_MODE,
     });
-    diagEventEl.textContent = `formed ${kind} ${event.pressed ? "down" : "up"} / note ${event.note}`;
+    queueDiagEvent(`formed ${kind} ${event.pressed ? "down" : "up"} / note ${event.note}`);
 
     if (event.pressed) {
         pendingRawOns.push({ kind, note: event.note, timestamp: Number(event.timestamp) });
@@ -512,15 +469,6 @@ function selectMidiInput(inputs) {
     return available.find((input) => input.name?.toLowerCase().includes("trrs trinkey"))
         || available[0]
         || null;
-}
-
-function resetCopyKeyInput(reason) {
-    if (activeSocket?.readyState !== WebSocket.OPEN) {
-        recordDiagnostic("copy-key-input-reset", { status: "not connected", reason });
-        return;
-    }
-    activeSocket.send(JSON.stringify({ action: "reset-key-input", reason }));
-    recordDiagnostic("copy-key-input-reset", { status: "sent", reason });
 }
 
 async function startBrowserMidi(socket) {
@@ -558,9 +506,13 @@ async function startBrowserMidi(socket) {
             handleFormedBrowserMidiEvent(event);
         };
 
+        // Send the current performance.now() so the server can calibrate
+        // browser timestamps into its time.monotonic() domain. Without this
+        // the decoder's flush-time arithmetic would mix clock epochs.
         socket.send(JSON.stringify({
             action: "start-browser-key-input",
             input_name: input.name || "browser MIDI",
+            perf_now: performance.now() / 1000,
         }));
     } catch (error) {
         diagInputEl.textContent = "browser MIDI blocked";
@@ -638,15 +590,12 @@ function renderSentSymbol(event) {
 
 function renderKeyInputStart(event) {
     keyConfig = event;
-    resetFormedElementGuard();
-    applyRunawayGuardSetting(event.runaway_guard_enabled, "key-input-start");
     recordDiagnostic("key-input-start", {
         source: event.source,
         input_name: event.input_name,
         dit_note: event.dit_note,
         dah_note: event.dah_note,
         dit_ms_expected: event.dit_ms_expected,
-        runaway_guard_enabled: runawayGuardEnabled,
     });
     setStatus("connected", "key ready");
     statusEl.title = event.input_name ? `input: ${event.input_name}` : "";
@@ -704,7 +653,7 @@ function appendDiagnosticRow(event) {
 
 function renderKeyEvent(event) {
     const state = event.pressed ? "down" : "up";
-    diagEventEl.textContent = `${event.kind} ${state} / note ${event.note}`;
+    queueDiagEvent(`${event.kind} ${state} / note ${event.note}`);
     recordDiagnostic("server-key-event", {
         kind: event.kind,
         note: event.note,
@@ -722,11 +671,11 @@ function renderKeyEvent(event) {
         });
     } else {
         if (Number.isFinite(event.duration_ms)) {
-            diagElementEl.textContent = [
+            queueDiagElement([
                 event.kind,
                 formatMs(event.duration_ms),
                 formatRatio(event.ratio_dits),
-            ].join(" / ");
+            ].join(" / "));
         }
     }
     if (keyConfig?.source !== "browser") {
@@ -742,8 +691,7 @@ function renderKeyEvent(event) {
 function renderKeyInputReset(event) {
     pendingGeneratedOns = [];
     pendingRawOns = [];
-    resetFormedElementGuard();
-    diagEventEl.textContent = `input reset / ${event.reason || "manual"}`;
+    queueDiagEvent(`input reset / ${event.reason || "manual"}`);
     recordDiagnostic("key-input-reset", { reason: event.reason || null });
 }
 
@@ -781,8 +729,6 @@ function connect() {
             renderSentSymbol(event);
         } else if (event.type === "key-input-start") {
             renderKeyInputStart(event);
-        } else if (event.type === "audio-settings") {
-            applyRunawayGuardSetting(event.runaway_guard_enabled, "audio-settings");
         } else if (event.type === "key-event") {
             renderKeyEvent(event);
         } else if (event.type === "key-input-reset") {

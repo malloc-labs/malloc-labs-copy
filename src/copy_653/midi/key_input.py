@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+import queue
 import threading
 import time
 from typing import Any
@@ -92,11 +93,15 @@ def _kind_for_note(note: int, settings: KeyerSettings) -> ElementKind | None:
 def iter_midi_note_events(
     *,
     port_name: str | None = None,
-    poll_seconds: float = 0.005,
     clock: Callable[[], float] = time.monotonic,
     stop_event: threading.Event | None = None,
 ) -> Iterator[MidiNoteEvent]:
     """Yield note events from a Mido input port until ``stop_event`` is set.
+
+    Uses Mido's callback mode so each message is timestamped on the reader
+    thread within microseconds of arriving from rtmidi, not at the next
+    consumer poll wake-up. Stamping at arrival preserves CoreMIDI's
+    high-precision timing through to the decoder.
 
     ``mido`` and its backend are imported lazily so the rest of Copy can
     run without MIDI dependencies until key input is actually requested.
@@ -104,16 +109,23 @@ def iter_midi_note_events(
     import mido
 
     resolved_port_name = resolve_midi_input_name(mido.get_input_names(), port_name)
-    with mido.open_input(resolved_port_name) as inport:
+    events: queue.Queue[MidiNoteEvent] = queue.Queue()
+
+    def _on_message(message: Any) -> None:
+        # Fires on mido's reader thread. Keep the work minimal: stamp,
+        # convert, enqueue. Anything heavier here would re-introduce the
+        # arrival-time jitter callback mode is meant to eliminate.
+        note_event = midi_message_to_note_event(message, timestamp=clock())
+        if note_event is not None:
+            events.put_nowait(note_event)
+
+    with mido.open_input(resolved_port_name, callback=_on_message):
         while stop_event is None or not stop_event.is_set():
-            emitted = False
-            for message in inport.iter_pending():
-                event = midi_message_to_note_event(message, timestamp=clock())
-                if event is not None:
-                    emitted = True
-                    yield event
-            if not emitted:
-                time.sleep(poll_seconds)
+            try:
+                # Short timeout so stop_event is checked promptly on shutdown.
+                yield events.get(timeout=0.1)
+            except queue.Empty:
+                continue
 
 
 def resolve_midi_input_name(
