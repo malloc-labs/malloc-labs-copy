@@ -25,7 +25,6 @@ from typing import Iterable
 
 from copy_653.audio import patterns
 
-
 DEFAULT_EXERCISE_COUNT = 5
 DEFAULT_MIN_WORDS = 1
 DEFAULT_MAX_WORDS = 3
@@ -119,9 +118,7 @@ def generate_copy_exercises(
     if min_words < 1:
         raise ValueError(f"min_words must be >= 1, got {min_words}")
     if max_words < min_words:
-        raise ValueError(
-            f"max_words must be >= min_words, got min={min_words} max={max_words}"
-        )
+        raise ValueError(f"max_words must be >= min_words, got min={min_words} max={max_words}")
     if min_word_length < 1:
         raise ValueError(f"min_word_length must be >= 1, got {min_word_length}")
     if max_word_length < min_word_length:
