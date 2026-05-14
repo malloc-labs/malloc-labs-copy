@@ -619,7 +619,7 @@
     display: flex;
     flex-wrap: wrap;
     width: 100%;
-    gap: var(--mr-space-1) 0;
+    gap: 0;
     list-style: none;
     margin: 0;
     padding: 0;
@@ -627,12 +627,15 @@
 
 .key-rhythm-review__symbols li {
     --key-rhythm-gap-scale: 1;
+    --key-rhythm-marker-width: clamp(0.55ch, calc(var(--key-rhythm-gap-scale) * 1.35ch), 3.2ch);
+    position: relative;
     display: inline-flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--mr-space-1);
+    align-items: baseline;
+    justify-content: center;
+    width: 1ch;
+    padding-bottom: 0.45rem;
     font-family: var(--mr-font-mono);
-    font-size: var(--mr-size-mono);
+    font-size: var(--mr-size-small);
     color: var(--mr-text);
 }
 
@@ -641,12 +644,16 @@
 }
 
 .key-rhythm-review__marker {
+    position: absolute;
+    right: 100%;
+    bottom: 0.08rem;
     display: block;
-    width: clamp(0.75ch, calc(var(--key-rhythm-gap-scale) * 2.6ch), 4.6ch);
-    height: 0.16rem;
+    width: var(--key-rhythm-marker-width);
+    height: 0.14rem;
     border-radius: 999px;
     background: var(--mr-muted);
     opacity: 0.32;
+    pointer-events: none;
 }
 
 .key-rhythm-review__item--leading-none {
