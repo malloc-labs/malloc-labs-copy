@@ -12,6 +12,11 @@ const statusEl = document.querySelector(".status");
 const sequenceRow = document.getElementById("sequence-row");
 const sentSymbolEl = document.getElementById("sent-symbol");
 const sentHistoryEl = document.getElementById("sent-history");
+const rhythmReviewToggleEl = document.getElementById("key-rhythm-review-toggle");
+const rhythmReviewArrowEl = document.getElementById("key-rhythm-review-arrow");
+const rhythmReviewMetaEl = document.getElementById("key-rhythm-review-meta");
+const rhythmReviewBodyEl = document.getElementById("key-rhythm-review-body");
+const rhythmReviewSymbolsEl = document.getElementById("key-rhythm-review-symbols");
 const soundToggleEl = document.getElementById("key-sound-toggle");
 const clearSentEl = document.getElementById("key-clear-sent");
 const keyInputToggleEl = document.getElementById("key-input-toggle");
@@ -44,6 +49,8 @@ let browserMidiInput = null;
 let activeSocket = null;
 let diagnosticEvents = [];
 let midiInputArmed = true;
+let sentReviewEvents = [];
+let lastSentEndedAt = null;
 
 // Canonical Koch order — mirrors KOCH_ORDER in patterns.py.
 const KOCH_ORDER = [
@@ -296,9 +303,74 @@ function renderClearSentLabel() {
     clearSentEl.setAttribute("aria-keyshortcuts", "C");
 }
 
+function classifyRhythmGap(event) {
+    const leading = event.leading_gap || "none";
+    if (leading === "none") return "none";
+
+    const wordGapMs = Number(keyConfig?.word_gap_ms);
+    const gapMs = Number(event.leading_gap_ms);
+    if (!Number.isFinite(wordGapMs) || wordGapMs <= 0 || !Number.isFinite(gapMs)) {
+        return leading === "word" ? "broken" : "flow";
+    }
+
+    if (gapMs < wordGapMs * 0.75) return "flow";
+    if (gapMs < wordGapMs * 1.25) return "stretched";
+    return "broken";
+}
+
+function rhythmGapLabel(event) {
+    const quality = classifyRhythmGap(event);
+    if (quality === "none") return "first symbol";
+    const gapText = formatMs(Number(event.leading_gap_ms));
+    if (quality === "flow") return `${gapText} gap: flow`;
+    if (quality === "stretched") return `${gapText} gap: stretched`;
+    return `${gapText} gap: broken`;
+}
+
+function renderRhythmReview() {
+    rhythmReviewSymbolsEl.replaceChildren();
+    rhythmReviewMetaEl.textContent = sentReviewEvents.length === 0
+        ? "no symbols"
+        : `${sentReviewEvents.length} symbols`;
+
+    const fragment = document.createDocumentFragment();
+    sentReviewEvents.forEach((event) => {
+        const symbol = event.symbol || "?";
+        const leading = event.leading_gap || "none";
+        const quality = classifyRhythmGap(event);
+        const item = document.createElement("li");
+        item.classList.add(
+            `key-rhythm-review__item--leading-${leading}`,
+            `key-rhythm-review__item--gap-${quality}`,
+        );
+        item.title = rhythmGapLabel(event);
+
+        const symbolEl = document.createElement("span");
+        symbolEl.className = "key-rhythm-review__symbol";
+        symbolEl.textContent = symbol;
+
+        const markerEl = document.createElement("span");
+        markerEl.className = "key-rhythm-review__marker";
+        markerEl.setAttribute("aria-hidden", "true");
+
+        item.append(symbolEl, markerEl);
+        fragment.appendChild(item);
+    });
+    rhythmReviewSymbolsEl.appendChild(fragment);
+}
+
+function setRhythmReviewExpanded(expanded) {
+    rhythmReviewToggleEl.setAttribute("aria-expanded", String(expanded));
+    rhythmReviewArrowEl.textContent = expanded ? "▼" : "▶";
+    rhythmReviewBodyEl.hidden = !expanded;
+}
+
 function clearSentSymbols() {
     sentSymbolEl.textContent = "—";
     sentHistoryEl.replaceChildren();
+    sentReviewEvents = [];
+    lastSentEndedAt = null;
+    renderRhythmReview();
     diagGapEl.textContent = "none";
     recordDiagnostic("sent-symbols-clear");
 }
@@ -571,12 +643,20 @@ function renderSequence(state) {
 
 function renderSentSymbol(event) {
     const symbol = event.symbol || "?";
+    const startedAt = Number(event.started_at);
+    const endedAt = Number(event.ended_at);
+    const leadingGapMs = Number.isFinite(startedAt) && Number.isFinite(lastSentEndedAt)
+        ? Math.max(0, (startedAt - lastSentEndedAt) * 1000)
+        : null;
+    const reviewEvent = { ...event, symbol, leading_gap_ms: leadingGapMs };
+
     sentSymbolEl.textContent = symbol;
     diagGapEl.textContent = event.leading_gap || "none";
     recordDiagnostic("sent-symbol", {
         symbol,
         pattern: event.pattern,
         leading_gap: event.leading_gap || "none",
+        leading_gap_ms: leadingGapMs,
         started_at: event.started_at,
         ended_at: event.ended_at,
     });
@@ -594,6 +674,15 @@ function renderSentSymbol(event) {
     while (sentHistoryEl.children.length > MAX_SENT_HISTORY) {
         sentHistoryEl.firstElementChild.remove();
     }
+
+    sentReviewEvents.push(reviewEvent);
+    while (sentReviewEvents.length > MAX_SENT_HISTORY) {
+        sentReviewEvents.shift();
+    }
+    if (Number.isFinite(endedAt)) {
+        lastSentEndedAt = endedAt;
+    }
+    renderRhythmReview();
 }
 
 function renderKeyInputStart(event) {
@@ -801,6 +890,10 @@ soundToggleEl.addEventListener("click", async () => {
     updateAudioDiagnostic();
 });
 clearSentEl.addEventListener("click", clearSentSymbols);
+rhythmReviewToggleEl.addEventListener("click", () => {
+    const expanded = rhythmReviewToggleEl.getAttribute("aria-expanded") === "true";
+    setRhythmReviewExpanded(!expanded);
+});
 
 window.addEventListener("keydown", (event) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
@@ -822,5 +915,6 @@ window.addEventListener("keydown", (event) => {
     }
 });
 renderClearSentLabel();
+renderRhythmReview();
 updateAudioDiagnostic();
 connect();

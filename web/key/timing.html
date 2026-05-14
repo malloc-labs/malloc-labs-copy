@@ -36,6 +36,22 @@
             <ol class="key-sent-history" id="sent-history" aria-label="Recent sent symbols"></ol>
         </section>
 
+        <section class="key-rhythm-review" aria-label="Rhythm review">
+            <button type="button" class="timeline-toggle key-rhythm-review__toggle" id="key-rhythm-review-toggle" aria-expanded="false" aria-controls="key-rhythm-review-body">
+                <span class="timeline-arrow" id="key-rhythm-review-arrow" aria-hidden="true">▶</span>
+                <span>review rhythm</span>
+                <span class="timeline-meta" id="key-rhythm-review-meta">no symbols</span>
+            </button>
+            <div class="timeline-body key-rhythm-review__body" id="key-rhythm-review-body" hidden>
+                <ol class="key-rhythm-review__symbols" id="key-rhythm-review-symbols" aria-label="Decoded symbols with rhythm continuity markers"></ol>
+                <div class="key-rhythm-review__legend" aria-label="Rhythm continuity legend">
+                    <span><i class="key-rhythm-review__swatch key-rhythm-review__swatch--flow"></i>flow</span>
+                    <span><i class="key-rhythm-review__swatch key-rhythm-review__swatch--stretched"></i>stretched</span>
+                    <span><i class="key-rhythm-review__swatch key-rhythm-review__swatch--broken"></i>broken</span>
+                </div>
+            </div>
+        </section>
+
         <section class="key-diagnostics developer-only" aria-label="Key diagnostics">
             <div class="key-diagnostics__header">
                 <p class="sequence-label">Diagnostics</p>
