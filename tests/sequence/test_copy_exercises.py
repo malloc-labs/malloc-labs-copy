@@ -6,7 +6,6 @@ import pytest
 
 from copy_653 import sequence
 
-
 KMU = ("K", "M", "U")
 
 
@@ -62,9 +61,7 @@ def test_different_seeds_produce_different_exercises():
 def test_seed_is_concrete_when_omitted():
     result = sequence.generate_copy_exercises(claimed_set=KMU, exercise_count=3)
     assert isinstance(result.seed, int)
-    replay = sequence.generate_copy_exercises(
-        claimed_set=KMU, exercise_count=3, seed=result.seed
-    )
+    replay = sequence.generate_copy_exercises(claimed_set=KMU, exercise_count=3, seed=result.seed)
     assert replay.exercises == result.exercises
 
 
@@ -99,9 +96,7 @@ def test_invalid_word_count_bounds_raise():
 
 def test_invalid_word_length_bounds_raise():
     with pytest.raises(ValueError, match="min_word_length"):
-        sequence.generate_copy_exercises(
-            claimed_set=KMU, exercise_count=5, min_word_length=0
-        )
+        sequence.generate_copy_exercises(claimed_set=KMU, exercise_count=5, min_word_length=0)
     with pytest.raises(ValueError, match="max_word_length"):
         sequence.generate_copy_exercises(
             claimed_set=KMU,
