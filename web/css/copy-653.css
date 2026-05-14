@@ -639,6 +639,29 @@
     opacity: 0.65;
 }
 
+.key-page-actions .key-sound-toggle {
+    border-color: transparent;
+    color: var(--mr-muted);
+    opacity: 0.35;
+    transition: color 0.1s ease, opacity 0.1s ease, border-color 0.1s ease;
+}
+
+.key-page-actions .key-sound-toggle:hover,
+.key-page-actions .key-sound-toggle:focus-visible {
+    color: var(--mr-text);
+    opacity: 0.75;
+}
+
+.key-page-actions .key-sound-toggle:focus-visible {
+    outline: 1px solid var(--mr-border);
+    outline-offset: 2px;
+}
+
+.key-page-actions .key-sound-toggle:disabled {
+    color: var(--mr-muted);
+    opacity: 0.35;
+}
+
 .key-diagnostics-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));

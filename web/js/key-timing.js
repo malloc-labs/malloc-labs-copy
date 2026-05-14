@@ -13,6 +13,7 @@ const sequenceRow = document.getElementById("sequence-row");
 const sentSymbolEl = document.getElementById("sent-symbol");
 const sentHistoryEl = document.getElementById("sent-history");
 const soundToggleEl = document.getElementById("key-sound-toggle");
+const clearSentEl = document.getElementById("key-clear-sent");
 const keyInputToggleEl = document.getElementById("key-input-toggle");
 const copyDiagnosticsEl = document.getElementById("copy-diagnostics");
 const diagInputEl = document.getElementById("diag-input");
@@ -287,6 +288,19 @@ function makeAccelLabel(accel, rest) {
 function toggleSidetone() {
     if (soundToggleEl.disabled) return;
     soundToggleEl.click();
+}
+
+function renderClearSentLabel() {
+    clearSentEl.replaceChildren(makeAccelLabel("c", "lear"));
+    clearSentEl.title = "Clear sent symbols (C)";
+    clearSentEl.setAttribute("aria-keyshortcuts", "C");
+}
+
+function clearSentSymbols() {
+    sentSymbolEl.textContent = "—";
+    sentHistoryEl.replaceChildren();
+    diagGapEl.textContent = "none";
+    recordDiagnostic("sent-symbols-clear");
 }
 
 function midiMessageToNoteEvent(message) {
@@ -792,6 +806,7 @@ soundToggleEl.addEventListener("click", async () => {
     }
     updateAudioDiagnostic();
 });
+clearSentEl.addEventListener("click", clearSentSymbols);
 
 window.addEventListener("keydown", (event) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
@@ -807,8 +822,11 @@ window.addEventListener("keydown", (event) => {
     } else if (!soundEnabled && key === "s") {
         event.preventDefault();
         toggleSidetone();
+    } else if (key === "c") {
+        event.preventDefault();
+        clearSentSymbols();
     }
 });
-
+renderClearSentLabel();
 updateAudioDiagnostic();
 connect();
