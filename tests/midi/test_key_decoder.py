@@ -81,6 +81,38 @@ def test_rejects_non_monotonic_elements():
         decoder.push(KeyElement("dit", 1.2, 1.3))
 
 
+def test_records_word_gap_across_tick_finalised_symbols():
+    """Regression: a pause spanning a tick-induced flush must still classify
+    the next symbol's leading gap, not silently collapse to ``"none"``."""
+    decoder = KeyDecoder(
+        dit_seconds=0.1,
+        character_gap_seconds=0.3,
+        word_gap_seconds=0.7,
+    )
+
+    # Send "E" — single dit at t=0.
+    assert decoder.push(KeyElement("dit", 0.0, 0.1)) is None
+    # Tick during silence finalises the E (>= character_gap_seconds).
+    assert decoder.tick(0.5) == DecodedSymbol(
+        pattern=".",
+        symbol="E",
+        started_at=0.0,
+        ended_at=0.1,
+    )
+
+    # Long pause — 5 s passes before next paddle. The pre-fix decoder lost
+    # _last_element_end on the tick flush, so this dah came back as
+    # leading_gap="none". Now the gap is computed against the prior E's end.
+    assert decoder.push(KeyElement("dah", 5.0, 5.3)) is None
+    assert decoder.tick(5.7) == DecodedSymbol(
+        pattern="-",
+        symbol="T",
+        started_at=5.0,
+        ended_at=5.3,
+        leading_gap="word",
+    )
+
+
 def test_records_word_gap_before_symbol():
     decoder = KeyDecoder(
         dit_seconds=0.1,

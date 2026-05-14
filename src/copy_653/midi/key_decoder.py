@@ -83,8 +83,14 @@ class KeyDecoder:
             gap_seconds = element.started_at - self._last_element_end
             if gap_seconds < 0:
                 raise ValueError("key element timestamps must be monotonic")
-            if self._marks and gap_seconds + _TIMING_EPSILON_SECONDS >= self._character_gap_seconds:
-                decoded = self._flush()
+            if gap_seconds + _TIMING_EPSILON_SECONDS >= self._character_gap_seconds:
+                # _marks may be empty here if the previous symbol was finalised
+                # by tick() during the silence between paddles. We still need to
+                # record the gap type so the next symbol gets the right leading
+                # classification ("word" after a long pause, "character" after a
+                # shorter one).
+                if self._marks:
+                    decoded = self._flush()
                 self._leading_gap = "word" if gap_seconds >= self._word_gap_seconds else "character"
 
         if self._started_at is None:
@@ -107,11 +113,15 @@ class KeyDecoder:
         return self._flush()
 
     def reset(self) -> None:
-        """Clear any partially entered symbol."""
-        self._marks = []
-        self._started_at = None
+        """Clear all decoder state including any prior element timestamp.
+
+        This is the public, full-reset entry point — used when the input is
+        explicitly restarted. After-flush state shedding lives in
+        :meth:`_clear_current_symbol`, which preserves ``_last_element_end``
+        so the next ``push`` can still classify the inter-symbol gap.
+        """
+        self._clear_current_symbol()
         self._last_element_end = None
-        self._leading_gap = "none"
 
     def _flush(self) -> DecodedSymbol:
         pattern = "".join(self._marks)
@@ -124,5 +134,14 @@ class KeyDecoder:
             ended_at=self._last_element_end,
             leading_gap=self._leading_gap,
         )
-        self.reset()
+        # Keep _last_element_end so a subsequent push() can compute the gap
+        # from this flushed symbol to the next element. Without that, a pause
+        # spanning a tick-induced flush is invisible to leading_gap detection
+        # and every post-pause symbol arrives as leading_gap="none".
+        self._clear_current_symbol()
         return decoded
+
+    def _clear_current_symbol(self) -> None:
+        self._marks = []
+        self._started_at = None
+        self._leading_gap = "none"

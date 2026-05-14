@@ -67,6 +67,26 @@ def inter_element_seconds(character_speed_wpm: int) -> float:
     return dit_seconds(character_speed_wpm)
 
 
+def send_inter_character_seconds(character_speed_wpm: int) -> float:
+    """Standard 3-dit character gap at the given speed.
+
+    Used by the send decoder. A learner keying at ``character_speed_wpm``
+    produces natural CW gaps — Farnsworth stretching only affects how
+    Copy *plays* signals to the learner, not how the firmware emits the
+    learner's own sending.
+    """
+    return 3 * dit_seconds(character_speed_wpm)
+
+
+def send_inter_word_seconds(character_speed_wpm: int) -> float:
+    """Standard 7-dit word gap at the given speed.
+
+    See :func:`send_inter_character_seconds` for why Farnsworth does not
+    apply on the send path.
+    """
+    return 7 * dit_seconds(character_speed_wpm)
+
+
 def inter_character_seconds(params: AudioParameters) -> float:
     """Silence between characters, respecting Farnsworth spacing.
 

@@ -358,8 +358,8 @@ def _key_input_start_payload(
 ) -> dict[str, Any]:
     """Build the Key page event announcing active key input."""
     dit_seconds = timing.dit_seconds(params.character_speed_wpm)
-    character_gap_seconds = timing.inter_character_seconds(params)
-    word_gap_seconds = timing.inter_word_seconds(params)
+    character_gap_seconds = timing.send_inter_character_seconds(params.character_speed_wpm)
+    word_gap_seconds = timing.send_inter_word_seconds(params.character_speed_wpm)
     return {
         "type": "key-input-start",
         "source": source,
@@ -874,8 +874,8 @@ async def _run_key_input_action(
 
     decoder = KeyDecoder(
         dit_seconds=timing.dit_seconds(audio_params.character_speed_wpm),
-        character_gap_seconds=timing.inter_character_seconds(audio_params),
-        word_gap_seconds=timing.inter_word_seconds(audio_params),
+        character_gap_seconds=timing.send_inter_character_seconds(audio_params.character_speed_wpm),
+        word_gap_seconds=timing.send_inter_word_seconds(audio_params.character_speed_wpm),
     )
     assembler = KeyElementAssembler()
     source = note_source or (
@@ -904,7 +904,7 @@ async def _run_key_input_action(
 
     thread = threading.Thread(target=_read_midi, name="copy-653-key-midi", daemon=True)
     thread.start()
-    character_gap_seconds = timing.inter_character_seconds(audio_params)
+    character_gap_seconds = timing.send_inter_character_seconds(audio_params.character_speed_wpm)
 
     await _send_event(ws, _key_input_start_event(settings, audio_params))
 
@@ -1114,7 +1114,9 @@ async def handler(
             browser_key_flush_task.cancel()
 
         async def _flush_after_gap() -> None:
-            await asyncio.sleep(timing.inter_character_seconds(browser_key_audio_params))
+            await asyncio.sleep(
+                timing.send_inter_character_seconds(browser_key_audio_params.character_speed_wpm)
+            )
             if browser_key_decoder is not None:
                 await _flush_key_symbol(ws, browser_key_decoder)
 
@@ -1210,8 +1212,12 @@ async def handler(
                 browser_key_assembler = KeyElementAssembler()
                 browser_key_decoder = KeyDecoder(
                     dit_seconds=timing.dit_seconds(browser_key_audio_params.character_speed_wpm),
-                    character_gap_seconds=timing.inter_character_seconds(browser_key_audio_params),
-                    word_gap_seconds=timing.inter_word_seconds(browser_key_audio_params),
+                    character_gap_seconds=timing.send_inter_character_seconds(
+                        browser_key_audio_params.character_speed_wpm
+                    ),
+                    word_gap_seconds=timing.send_inter_word_seconds(
+                        browser_key_audio_params.character_speed_wpm
+                    ),
                 )
                 input_name = message.get("input_name")
                 if not isinstance(input_name, str) or not input_name.strip():
