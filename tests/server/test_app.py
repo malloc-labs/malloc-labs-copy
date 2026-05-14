@@ -774,6 +774,7 @@ async def test_get_audio_settings_returns_configured_timing(tmp_path, patched_pl
                 "receiver_bed": 2,
                 "cadence_variation": 1,
                 "trinkey_buzzer_enabled": False,
+                "hh_clear_enabled": False,
             }
     finally:
         server.close()
@@ -804,6 +805,7 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
                         "receiver_bed": 2,
                         "cadence_variation": 1,
                         "trinkey_buzzer_enabled": True,
+                        "hh_clear_enabled": True,
                     }
                 )
             )
@@ -818,9 +820,14 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
                 "receiver_bed": 2,
                 "cadence_variation": 1,
                 "trinkey_buzzer_enabled": True,
+                "hh_clear_enabled": True,
             }
 
-        from copy_653.config import load_audio_parameters, load_keyer_settings
+        from copy_653.config import (
+            load_audio_parameters,
+            load_developer_settings,
+            load_keyer_settings,
+        )
 
         params = load_audio_parameters(config_path)
         assert params.character_speed_wpm == 20
@@ -830,6 +837,8 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
         assert params.cadence_variation == 1
         keyer = load_keyer_settings(config_path)
         assert keyer.trinkey_buzzer_enabled is True
+        developer = load_developer_settings(config_path)
+        assert developer.hh_clear_enabled is True
         data = tomllib.loads(config_path.read_text())
         assert data["midi"]["key"] == {
             "trinkey_buzzer_enabled": True,
@@ -838,6 +847,7 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
             "dah_note": 2,
             "straight_note": 0,
         }
+        assert data["developer"] == {"hh_clear_enabled": True}
     finally:
         server.close()
         await server.wait_closed()

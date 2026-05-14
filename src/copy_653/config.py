@@ -16,6 +16,7 @@ each in its own table:
 - ``[server]`` — HTTP/WebSocket bind settings for hosted service use.
 - ``[midi.key]`` — physical key input defaults for the reference
   TRRS Trinkey and Copy-owned sidetone.
+- ``[developer]`` — dev-only behaviour toggles (e.g. HH-clear).
 
 Per spec §6.1 / §6.3:
 
@@ -98,6 +99,13 @@ class KeyerSettings:
     dit_note: int = 1
     dah_note: int = 2
     straight_note: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class DeveloperSettings:
+    """Dev-only behaviour toggles surfaced in Settings → Developer."""
+
+    hh_clear_enabled: bool = False
 
 
 # ---------- server -----------------------------------------------------
@@ -354,6 +362,69 @@ def save_keyer_settings(
     key_table["dit_note"] = settings.dit_note
     key_table["dah_note"] = settings.dah_note
     key_table["straight_note"] = settings.straight_note
+
+    _write_toml_atomic(data, config_path)
+    return settings
+
+
+# ---------- developer ---------------------------------------------------
+
+
+def load_developer_settings(path: Path | None = None) -> DeveloperSettings:
+    """Load dev-only toggles from ``[developer]``.
+
+    Missing settings default to all toggles off — these are opt-in
+    behaviours.
+    """
+    data = _read_toml(path)
+    if data is None:
+        return DeveloperSettings()
+
+    developer_table = data.get("developer", {})
+    if not isinstance(developer_table, dict):
+        return DeveloperSettings()
+
+    return DeveloperSettings(
+        hh_clear_enabled=_developer_bool(
+            developer_table.get("hh_clear_enabled"),
+            "hh_clear_enabled",
+            default=False,
+        ),
+    )
+
+
+def _developer_bool(value: Any, field: str, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if not isinstance(value, bool):
+        raise ValueError(f"[developer].{field} must be a boolean, got {type(value).__name__}")
+    return value
+
+
+def save_developer_settings(
+    *,
+    hh_clear_enabled: bool,
+    path: Path | None = None,
+) -> DeveloperSettings:
+    """Persist dev-only toggles, preserving other tables."""
+    config_path = path if path is not None else DEFAULT_CONFIG_PATH
+    data = _read_toml(config_path) or {}
+    current = load_developer_settings(config_path)
+
+    developer_table = data.get("developer")
+    if not isinstance(developer_table, dict):
+        developer_table = {}
+        data["developer"] = developer_table
+
+    settings = DeveloperSettings(
+        hh_clear_enabled=_developer_bool(
+            hh_clear_enabled,
+            "hh_clear_enabled",
+            default=current.hh_clear_enabled,
+        ),
+    )
+
+    developer_table["hh_clear_enabled"] = settings.hh_clear_enabled
 
     _write_toml_atomic(data, config_path)
     return settings

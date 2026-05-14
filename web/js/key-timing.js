@@ -4,6 +4,7 @@
 // claimed-symbols event used by Koch Exercises; this page only renders it.
 
 import "./developer-mode.js";
+import { noteSentSymbol, resetHHClearTracker } from "./hh-clear.js";
 
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const wsUrl = `${wsProtocol}//${location.host}/ws`;
@@ -392,6 +393,7 @@ function clearSentSymbols() {
     lastSentEndedAt = null;
     renderRhythmReview();
     diagGapEl.textContent = "none";
+    resetHHClearTracker();
     recordDiagnostic("sent-symbols-clear");
 }
 
@@ -669,6 +671,12 @@ function requestCopyExercises() {
 
 let selectedCopyIndex = 0;
 
+// TODO(cadence): if the HH-clear dev toggle is on (Settings → Developer),
+// keying "HH" clears the Sent area. The random exercises the engine emits
+// can still contain "HH" — once H joins the claimed set, keying such an
+// exercise as displayed would inadvertently clear the learner's work.
+// Either filter incoming exercises here, or pass the toggle state up so the
+// generator suppresses HH at source. See web/js/hh-clear.js.
 function renderCopyExercises(event) {
     if (!copyHistoryEl || !copySymbolEl) return;
     const exercises = Array.isArray(event.exercises) ? event.exercises : [];
@@ -769,6 +777,7 @@ function renderSentSymbol(event) {
         lastSentEndedAt = endedAt;
     }
     renderRhythmReview();
+    noteSentSymbol(symbol, clearSentSymbols);
 }
 
 function renderKeyInputStart(event) {
