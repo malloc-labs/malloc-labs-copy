@@ -555,6 +555,7 @@
 .key-sent-history {
     display: flex;
     flex-wrap: wrap;
+    width: 100%;
     /* Per-item margins encode the leading gap; the container does not
        add its own uniform spacing so within-word characters can touch. */
     gap: 0;
@@ -576,11 +577,6 @@
     color: var(--mr-text);
 }
 
-.key-sent-history__gap {
-    color: var(--mr-muted);
-    margin-right: var(--mr-space-2);
-}
-
 /* No space before the first symbol. */
 .key-sent-history__item--leading-none {
     margin-left: 0;
@@ -591,7 +587,7 @@
     margin-left: 0.5ch;
 }
 
-/* Word break — wide gap so a new word reads as separate. */
+/* Word break — wide gap so a new word reads as separate without a visible separator. */
 .key-sent-history__item--leading-word {
     margin-left: var(--mr-space-5);
 }

@@ -26,7 +26,7 @@ const diagTimingEl = document.getElementById("diag-timing");
 const diagLogEl = document.getElementById("diag-log");
 const diagRawLogEl = document.getElementById("diag-raw-log");
 
-const MAX_SENT_HISTORY = 8;
+const MAX_SENT_HISTORY = 48;
 const MAX_DIAGNOSTIC_ROWS = 24;
 const MAX_RAW_DIAGNOSTIC_ROWS = 32;
 const MAX_DIAGNOSTIC_EVENTS = 240;
@@ -585,12 +585,6 @@ function renderSentSymbol(event) {
     const item = document.createElement("li");
     const leading = event.leading_gap || "none";
     item.classList.add(`key-sent-history__item--leading-${leading}`);
-    if (leading === "word") {
-        const gapEl = document.createElement("span");
-        gapEl.className = "key-sent-history__gap";
-        gapEl.textContent = "/";
-        item.appendChild(gapEl);
-    }
     const symbolEl = document.createElement("span");
     symbolEl.className = "key-sent-history__symbol";
     symbolEl.textContent = symbol;
