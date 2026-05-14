@@ -310,40 +310,55 @@ function classifyRhythmGap(event) {
     const wordGapMs = Number(keyConfig?.word_gap_ms);
     const gapMs = Number(event.leading_gap_ms);
     if (!Number.isFinite(wordGapMs) || wordGapMs <= 0 || !Number.isFinite(gapMs)) {
-        return leading === "word" ? "broken" : "flow";
+        return leading === "word" ? "amber" : "green";
     }
 
-    if (gapMs < wordGapMs * 0.75) return "flow";
-    if (gapMs < wordGapMs * 1.25) return "stretched";
-    return "broken";
+    if (gapMs < wordGapMs * 0.8) return "green";
+    if (gapMs < wordGapMs * 1.3) return "amber";
+    return "red";
 }
 
 function rhythmGapLabel(event) {
-    const quality = classifyRhythmGap(event);
-    if (quality === "none") return "first symbol";
-    const gapText = formatMs(Number(event.leading_gap_ms));
-    if (quality === "flow") return `${gapText} gap: flow`;
-    if (quality === "stretched") return `${gapText} gap: stretched`;
-    return `${gapText} gap: broken`;
+    const zone = classifyRhythmGap(event);
+    if (zone === "none") return "first symbol";
+    const gapMs = Number(event.leading_gap_ms);
+    const wordGapMs = Number(keyConfig?.word_gap_ms);
+    const gapText = formatMs(gapMs);
+    const reference = Number.isFinite(wordGapMs) && wordGapMs > 0
+        ? ` / word gap ${formatMs(wordGapMs)}`
+        : "";
+    if (zone === "green") return `${gapText}${reference}: green zone`;
+    if (zone === "amber") return `${gapText}${reference}: amber boundary`;
+    return `${gapText}${reference}: red separation`;
+}
+
+function rhythmGapScale(event) {
+    const wordGapMs = Number(keyConfig?.word_gap_ms);
+    const gapMs = Number(event.leading_gap_ms);
+    if (!Number.isFinite(wordGapMs) || wordGapMs <= 0 || !Number.isFinite(gapMs)) {
+        return 1;
+    }
+    return clamp(gapMs / wordGapMs, 0.35, 1.75);
 }
 
 function renderRhythmReview() {
     rhythmReviewSymbolsEl.replaceChildren();
     rhythmReviewMetaEl.textContent = sentReviewEvents.length === 0
         ? "no symbols"
-        : `${sentReviewEvents.length} symbols`;
+        : `${sentReviewEvents.length} symbols / timing zones`;
 
     const fragment = document.createDocumentFragment();
     sentReviewEvents.forEach((event) => {
         const symbol = event.symbol || "?";
         const leading = event.leading_gap || "none";
-        const quality = classifyRhythmGap(event);
+        const zone = classifyRhythmGap(event);
         const item = document.createElement("li");
         item.classList.add(
             `key-rhythm-review__item--leading-${leading}`,
-            `key-rhythm-review__item--gap-${quality}`,
+            `key-rhythm-review__item--zone-${zone}`,
         );
         item.title = rhythmGapLabel(event);
+        item.style.setProperty("--key-rhythm-gap-scale", rhythmGapScale(event).toFixed(2));
 
         const symbolEl = document.createElement("span");
         symbolEl.className = "key-rhythm-review__symbol";
