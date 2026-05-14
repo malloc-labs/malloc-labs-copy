@@ -41,8 +41,9 @@ Client → server, JSON over WS::
     {"action": "start-key-input"}
     {"action": "stop-key-input"}
     {"action": "request-copy-exercises"}
-    {"action": "request-copy-exercises", "exercise_count": 12,
-     "min_length": 1, "max_length": 5}
+    {"action": "request-copy-exercises", "exercise_count": 5,
+     "min_words": 4, "max_words": 7,
+     "min_word_length": 1, "max_word_length": 4}
 
 Server → client, JSON over WS, one frame per event. Pushed
 unsolicited on connect, and after every change::
@@ -727,11 +728,19 @@ async def _request_copy_exercises_action(
     and the lexicon swap stays a single-module change.
     """
     try:
-        exercise_count = _optional_positive_int(
-            message.get("exercise_count"), "exercise_count"
-        )
-        min_length = _optional_positive_int(message.get("min_length"), "min_length")
-        max_length = _optional_positive_int(message.get("max_length"), "max_length")
+        overrides = {
+            "exercise_count": _optional_positive_int(
+                message.get("exercise_count"), "exercise_count"
+            ),
+            "min_words": _optional_positive_int(message.get("min_words"), "min_words"),
+            "max_words": _optional_positive_int(message.get("max_words"), "max_words"),
+            "min_word_length": _optional_positive_int(
+                message.get("min_word_length"), "min_word_length"
+            ),
+            "max_word_length": _optional_positive_int(
+                message.get("max_word_length"), "max_word_length"
+            ),
+        }
     except ValueError as exc:
         await _send_event(
             ws,
@@ -745,12 +754,9 @@ async def _request_copy_exercises_action(
         return
 
     kwargs: dict[str, Any] = {"claimed_set": claimed}
-    if exercise_count is not None:
-        kwargs["exercise_count"] = exercise_count
-    if min_length is not None:
-        kwargs["min_length"] = min_length
-    if max_length is not None:
-        kwargs["max_length"] = max_length
+    for name, value in overrides.items():
+        if value is not None:
+            kwargs[name] = value
 
     try:
         result = sequence.generate_copy_exercises(**kwargs)

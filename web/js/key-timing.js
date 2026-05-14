@@ -667,27 +667,64 @@ function requestCopyExercises() {
     activeSocket.send(JSON.stringify({ action: "request-copy-exercises" }));
 }
 
+let selectedCopyIndex = 0;
+
 function renderCopyExercises(event) {
     if (!copyHistoryEl || !copySymbolEl) return;
     const exercises = Array.isArray(event.exercises) ? event.exercises : [];
     copyHistoryEl.replaceChildren();
+    selectedCopyIndex = 0;
     if (exercises.length === 0) {
         copySymbolEl.textContent = "—";
         return;
     }
-    copySymbolEl.textContent = exercises[0];
-    exercises.forEach((exercise) => {
+    exercises.forEach((exercise, idx) => {
         const item = document.createElement("li");
-        item.className = "key-copy-item";
-        item.textContent = exercise;
+        item.className = "key-copy-history__item";
+        item.dataset.exercise = exercise;
+        if (idx === selectedCopyIndex) item.dataset.selected = "true";
+        const row = document.createElement("div");
+        row.className = "key-copy-history__row";
+        const words = exercise.split(" ");
+        words.forEach((word, wordIdx) => {
+            for (let i = 0; i < word.length; i++) {
+                const leading =
+                    wordIdx === 0 && i === 0
+                        ? "none"
+                        : i === 0
+                        ? "word"
+                        : "character";
+                const charEl = document.createElement("span");
+                charEl.className =
+                    `key-copy-history__symbol key-copy-history__symbol--leading-${leading}`;
+                charEl.textContent = word[i];
+                row.appendChild(charEl);
+            }
+        });
+        item.appendChild(row);
         copyHistoryEl.appendChild(item);
     });
+    copySymbolEl.textContent = exercises[selectedCopyIndex];
+}
+
+function selectCopyExercise(idx) {
+    if (!copyHistoryEl || !copySymbolEl) return false;
+    const items = copyHistoryEl.querySelectorAll(".key-copy-history__item");
+    if (idx < 0 || idx >= items.length) return false;
+    selectedCopyIndex = idx;
+    items.forEach((item, i) => {
+        if (i === idx) item.dataset.selected = "true";
+        else delete item.dataset.selected;
+    });
+    copySymbolEl.textContent = items[idx].dataset.exercise || "";
+    return true;
 }
 
 function clearCopyExercises() {
     if (!copyHistoryEl || !copySymbolEl) return;
     copySymbolEl.textContent = "—";
     copyHistoryEl.replaceChildren();
+    selectedCopyIndex = 0;
 }
 
 function renderSentSymbol(event) {
@@ -971,6 +1008,10 @@ window.addEventListener("keydown", (event) => {
     } else if (key === "c") {
         event.preventDefault();
         clearSentSymbols();
+    } else if (/^[1-9]$/.test(key)) {
+        if (selectCopyExercise(parseInt(key, 10) - 1)) {
+            event.preventDefault();
+        }
     }
 });
 renderClearSentLabel();
