@@ -30,6 +30,9 @@ const diagGapEl = document.getElementById("diag-gap");
 const diagTimingEl = document.getElementById("diag-timing");
 const diagLogEl = document.getElementById("diag-log");
 const diagRawLogEl = document.getElementById("diag-raw-log");
+// Copy section is Cadence-only; absent on the Freeplay page.
+const copySymbolEl = document.getElementById("copy-symbol");
+const copyHistoryEl = document.getElementById("copy-history");
 
 const MAX_SENT_HISTORY = 48;
 const MAX_DIAGNOSTIC_ROWS = 24;
@@ -342,6 +345,7 @@ function rhythmGapScale(event) {
 }
 
 function renderRhythmReview() {
+    if (!rhythmReviewSymbolsEl || !rhythmReviewMetaEl) return;
     rhythmReviewSymbolsEl.replaceChildren();
     rhythmReviewMetaEl.textContent = sentReviewEvents.length === 0
         ? "no symbols"
@@ -375,6 +379,7 @@ function renderRhythmReview() {
 }
 
 function setRhythmReviewExpanded(expanded) {
+    if (!rhythmReviewToggleEl || !rhythmReviewArrowEl || !rhythmReviewBodyEl) return;
     rhythmReviewToggleEl.setAttribute("aria-expanded", String(expanded));
     rhythmReviewArrowEl.textContent = expanded ? "▼" : "▶";
     rhythmReviewBodyEl.hidden = !expanded;
@@ -656,6 +661,35 @@ function renderSequence(state) {
     });
 }
 
+function requestCopyExercises() {
+    if (!copyHistoryEl) return;
+    if (!activeSocket || activeSocket.readyState !== WebSocket.OPEN) return;
+    activeSocket.send(JSON.stringify({ action: "request-copy-exercises" }));
+}
+
+function renderCopyExercises(event) {
+    if (!copyHistoryEl || !copySymbolEl) return;
+    const exercises = Array.isArray(event.exercises) ? event.exercises : [];
+    copyHistoryEl.replaceChildren();
+    if (exercises.length === 0) {
+        copySymbolEl.textContent = "—";
+        return;
+    }
+    copySymbolEl.textContent = exercises[0];
+    exercises.forEach((exercise) => {
+        const item = document.createElement("li");
+        item.className = "key-copy-item";
+        item.textContent = exercise;
+        copyHistoryEl.appendChild(item);
+    });
+}
+
+function clearCopyExercises() {
+    if (!copyHistoryEl || !copySymbolEl) return;
+    copySymbolEl.textContent = "—";
+    copyHistoryEl.replaceChildren();
+}
+
 function renderSentSymbol(event) {
     const symbol = event.symbol || "?";
     const startedAt = Number(event.started_at);
@@ -813,6 +847,10 @@ function renderError(event) {
     recordDiagnostic("server-error", { reason, detail: event.detail || null });
     statusEl.title = `${reason}${detail}`;
 
+    if (reason === "no-claimed-symbols") {
+        clearCopyExercises();
+    }
+
     if (reason === "key-input-unavailable" || reason === "key-input-failed") {
         setStatus("connecting", "midi unavailable");
     } else if (reason === "key-input-decode-failed") {
@@ -837,6 +875,10 @@ function connect() {
         const event = JSON.parse(message.data);
         if (event.type === "claimed-symbols") {
             renderSequence(event);
+            // Cadence page only — refresh exercises when the claimed set changes.
+            requestCopyExercises();
+        } else if (event.type === "copy-exercises") {
+            renderCopyExercises(event);
         } else if (event.type === "sent-symbol") {
             renderSentSymbol(event);
         } else if (event.type === "key-input-start") {
@@ -905,10 +947,12 @@ soundToggleEl.addEventListener("click", async () => {
     updateAudioDiagnostic();
 });
 clearSentEl.addEventListener("click", clearSentSymbols);
-rhythmReviewToggleEl.addEventListener("click", () => {
-    const expanded = rhythmReviewToggleEl.getAttribute("aria-expanded") === "true";
-    setRhythmReviewExpanded(!expanded);
-});
+if (rhythmReviewToggleEl) {
+    rhythmReviewToggleEl.addEventListener("click", () => {
+        const expanded = rhythmReviewToggleEl.getAttribute("aria-expanded") === "true";
+        setRhythmReviewExpanded(!expanded);
+    });
+}
 
 window.addEventListener("keydown", (event) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
