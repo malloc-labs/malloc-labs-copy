@@ -40,6 +40,9 @@ Client → server, JSON over WS::
      "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1}
     {"action": "start-key-input"}
     {"action": "stop-key-input"}
+    {"action": "request-copy-exercises"}
+    {"action": "request-copy-exercises", "exercise_count": 12,
+     "min_length": 1, "max_length": 5}
 
 Server → client, JSON over WS, one frame per event. Pushed
 unsolicited on connect, and after every change::
@@ -79,6 +82,11 @@ During Key timing input::
 
     {"type": "key-input-start", "dit_note": 1, "dah_note": 2, ...}
     {"type": "sent-symbol", "symbol": "K", "pattern": "-.-", "started_at": 1.0, "ended_at": 1.9}
+
+On copy-exercise request (Cadence page)::
+
+    {"type": "copy-exercises", "exercises": ["K", "MK", "KMU"],
+     "seed": 12345, "claimed_set": ["K", "M", "U"]}
 
 ``stop`` cancels an in-flight session. The engine cancels the audio
 task and sends ``session-end`` before closing the session. If no
@@ -707,6 +715,63 @@ async def _unclaim_symbol_action(
     await _send_event(ws, _claimed_symbols_event(claimed))
 
 
+async def _request_copy_exercises_action(
+    ws: WebSocketServerProtocol,
+    message: dict[str, Any],
+    config_path: Path,
+) -> None:
+    """Generate short copy exercises from the claimed set and push them.
+
+    Used by the Cadence page's Copy section. Display-only on the
+    client today; the engine owns generation so the seed is recorded
+    and the lexicon swap stays a single-module change.
+    """
+    try:
+        exercise_count = _optional_positive_int(
+            message.get("exercise_count"), "exercise_count"
+        )
+        min_length = _optional_positive_int(message.get("min_length"), "min_length")
+        max_length = _optional_positive_int(message.get("max_length"), "max_length")
+    except ValueError as exc:
+        await _send_event(
+            ws,
+            {"type": "error", "reason": "invalid-copy-exercises-request", "detail": str(exc)},
+        )
+        return
+
+    claimed = load_claimed_symbols(config_path)
+    if not claimed:
+        await _send_event(ws, {"type": "error", "reason": "no-claimed-symbols"})
+        return
+
+    kwargs: dict[str, Any] = {"claimed_set": claimed}
+    if exercise_count is not None:
+        kwargs["exercise_count"] = exercise_count
+    if min_length is not None:
+        kwargs["min_length"] = min_length
+    if max_length is not None:
+        kwargs["max_length"] = max_length
+
+    try:
+        result = sequence.generate_copy_exercises(**kwargs)
+    except ValueError as exc:
+        await _send_event(
+            ws,
+            {"type": "error", "reason": "invalid-copy-exercises-request", "detail": str(exc)},
+        )
+        return
+
+    await _send_event(
+        ws,
+        {
+            "type": "copy-exercises",
+            "exercises": list(result.exercises),
+            "seed": result.seed,
+            "claimed_set": list(result.claimed_set),
+        },
+    )
+
+
 async def _get_audio_settings_action(
     ws: WebSocketServerProtocol,
     config_path: Path,
@@ -1012,6 +1077,16 @@ def _optional_bounded_int(value: Any, field: str, minimum: int, maximum: int) ->
     return value
 
 
+def _optional_positive_int(value: Any, field: str) -> int | None:
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{field} must be a positive integer")
+    if value <= 0:
+        raise ValueError(f"{field} must be a positive integer")
+    return value
+
+
 def _optional_bool(value: Any, field: str) -> bool | None:
     if value is None:
         return None
@@ -1202,6 +1277,8 @@ async def handler(
                 await _claim_symbol_action(ws, message.get("symbol", ""), config_path)
             elif action == "unclaim-symbol":
                 await _unclaim_symbol_action(ws, message.get("symbol", ""), config_path)
+            elif action == "request-copy-exercises":
+                await _request_copy_exercises_action(ws, message, config_path)
             elif action == "get-audio-settings":
                 await _get_audio_settings_action(ws, config_path)
             elif action == "set-audio-settings":
