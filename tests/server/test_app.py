@@ -641,7 +641,7 @@ async def test_browser_key_input_reset_discards_pending_symbol(
                     {"action": "key-note-event", "note": 1, "pressed": False, "timestamp": 1.06}
                 )
             )
-            await ws.send(json.dumps({"action": "reset-key-input", "reason": "runaway guard"}))
+            await ws.send(json.dumps({"action": "reset-key-input", "reason": "manual"}))
 
             events = await _drain_until(
                 ws,
@@ -653,7 +653,7 @@ async def test_browser_key_input_reset_discards_pending_symbol(
                 "key-event",
                 "key-input-reset",
             ]
-            assert events[-1]["reason"] == "runaway guard"
+            assert events[-1]["reason"] == "manual"
 
             with pytest.raises(asyncio.TimeoutError):
                 await asyncio.wait_for(ws.recv(), timeout=1.0)
@@ -774,7 +774,6 @@ async def test_get_audio_settings_returns_configured_timing(tmp_path, patched_pl
                 "receiver_bed": 2,
                 "cadence_variation": 1,
                 "trinkey_buzzer_enabled": False,
-                "runaway_guard_enabled": True,
             }
     finally:
         server.close()
@@ -805,7 +804,6 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
                         "receiver_bed": 2,
                         "cadence_variation": 1,
                         "trinkey_buzzer_enabled": True,
-                        "runaway_guard_enabled": False,
                     }
                 )
             )
@@ -820,7 +818,6 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
                 "receiver_bed": 2,
                 "cadence_variation": 1,
                 "trinkey_buzzer_enabled": True,
-                "runaway_guard_enabled": False,
             }
 
         from copy_653.config import load_audio_parameters, load_keyer_settings
@@ -833,11 +830,9 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
         assert params.cadence_variation == 1
         keyer = load_keyer_settings(config_path)
         assert keyer.trinkey_buzzer_enabled is True
-        assert keyer.runaway_guard_enabled is False
         data = tomllib.loads(config_path.read_text())
         assert data["midi"]["key"] == {
             "trinkey_buzzer_enabled": True,
-            "runaway_guard_enabled": False,
             "input_name": "TRRS Trinkey",
             "dit_note": 1,
             "dah_note": 2,

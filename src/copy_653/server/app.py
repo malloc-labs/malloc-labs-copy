@@ -116,6 +116,7 @@ import logging
 import mimetypes
 import socket
 import threading
+import time
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any, Callable, Iterator
@@ -368,7 +369,6 @@ def _key_input_start_payload(
         "dah_note": settings.dah_note,
         "straight_note": settings.straight_note,
         "trinkey_buzzer_enabled": settings.trinkey_buzzer_enabled,
-        "runaway_guard_enabled": settings.runaway_guard_enabled,
         "character_wpm": params.character_speed_wpm,
         "effective_wpm": params.effective_speed_wpm,
         "tone_frequency_hz": params.tone_frequency_hz,
@@ -396,7 +396,6 @@ def _audio_settings_event_from_params(
         "receiver_bed": params.receiver_bed,
         "cadence_variation": params.cadence_variation,
         "trinkey_buzzer_enabled": keyer_settings.trinkey_buzzer_enabled,
-        "runaway_guard_enabled": keyer_settings.runaway_guard_enabled,
     }
 
 
@@ -443,14 +442,20 @@ async def _push_key_note_event(
     audio_params: AudioParameters,
     assembler: KeyElementAssembler,
     decoder: KeyDecoder,
-) -> None:
-    """Apply one note event to the key decoder and emit any resulting events."""
+) -> bool:
+    """Apply one note event to the key decoder and emit any resulting events.
+
+    Returns ``True`` if this event completed a key element (a note-off that
+    closed an active note-on). Callers use the return value to gate the
+    character-gap flush timer so it never fires mid-stroke between a
+    note-on and its matching note-off.
+    """
     element = assembler.push(item, settings)
     key_event = _key_event_event(item, settings, audio_params, element)
     if key_event is not None:
         await _send_event(ws, key_event)
     if element is None:
-        return
+        return False
 
     try:
         decoded = decoder.push(element)
@@ -460,9 +465,10 @@ async def _push_key_note_event(
             {"type": "error", "reason": "key-input-decode-failed", "detail": str(exc)},
         )
         decoder.reset()
-        return
+        return True
     if decoded is not None:
         await _send_event(ws, _sent_symbol_event(decoded))
+    return True
 
 
 async def _start_action(
@@ -740,10 +746,6 @@ async def _set_audio_settings_action(
             message.get("trinkey_buzzer_enabled"),
             "trinkey_buzzer_enabled",
         )
-        runaway_guard_enabled = _optional_bool(
-            message.get("runaway_guard_enabled"),
-            "runaway_guard_enabled",
-        )
         params = save_audio_timing(
             character_speed_wpm=character_wpm,
             effective_speed_wpm=effective_wpm,
@@ -752,19 +754,9 @@ async def _set_audio_settings_action(
             cadence_variation=cadence_variation,
             path=config_path,
         )
-        if trinkey_buzzer_enabled is not None or runaway_guard_enabled is not None:
-            current_keyer = load_keyer_settings(config_path)
+        if trinkey_buzzer_enabled is not None:
             keyer_settings = save_keyer_settings(
-                trinkey_buzzer_enabled=(
-                    trinkey_buzzer_enabled
-                    if trinkey_buzzer_enabled is not None
-                    else current_keyer.trinkey_buzzer_enabled
-                ),
-                runaway_guard_enabled=(
-                    runaway_guard_enabled
-                    if runaway_guard_enabled is not None
-                    else current_keyer.runaway_guard_enabled
-                ),
+                trinkey_buzzer_enabled=trinkey_buzzer_enabled,
                 path=config_path,
             )
         else:
@@ -908,13 +900,25 @@ async def _run_key_input_action(
 
     await _send_event(ws, _key_input_start_event(settings, audio_params))
 
+    # Deadline (loop.time) for the next character-gap flush. ``None`` means no
+    # element is awaiting flush (we're either idle or mid-stroke between a
+    # note-on and its note-off). Rearming this on every event would race the
+    # next note-off and split a single character into two symbols.
+    flush_deadline: float | None = None
+    loop = asyncio.get_running_loop()
+
     try:
         while True:
-            try:
-                item = await asyncio.wait_for(queue.get(), timeout=character_gap_seconds)
-            except asyncio.TimeoutError:
-                await _flush_key_symbol(ws, decoder)
-                continue
+            if flush_deadline is None:
+                item = await queue.get()
+            else:
+                timeout = max(0.0, flush_deadline - loop.time())
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=timeout)
+                except asyncio.TimeoutError:
+                    await _flush_key_symbol(ws, decoder)
+                    flush_deadline = None
+                    continue
 
             if item is None:
                 await _flush_key_symbol(ws, decoder)
@@ -926,7 +930,7 @@ async def _run_key_input_action(
                 await _send_event(ws, {"type": "error", "reason": reason, "detail": str(item)})
                 return
 
-            await _push_key_note_event(
+            formed_element = await _push_key_note_event(
                 ws,
                 item,
                 settings=settings,
@@ -934,20 +938,21 @@ async def _run_key_input_action(
                 assembler=assembler,
                 decoder=decoder,
             )
+            if formed_element:
+                flush_deadline = loop.time() + character_gap_seconds
+            else:
+                # Note-on: element in progress. Disarm the flush so it can't
+                # fire between this note-on and its matching note-off.
+                flush_deadline = None
     finally:
         stop_event.set()
         await asyncio.to_thread(thread.join, 1.0)
 
 
 async def _flush_key_symbol(ws: WebSocketServerProtocol, decoder: KeyDecoder) -> None:
-    try:
-        decoded = decoder.tick(asyncio.get_running_loop().time())
-    except ValueError as exc:
-        await _send_event(
-            ws, {"type": "error", "reason": "key-input-decode-failed", "detail": str(exc)}
-        )
-        decoder.reset()
-        return
+    """Force a flush of any pending marks; the caller has already waited
+    the character gap externally (timer task or wait_for timeout)."""
+    decoded = decoder.flush_pending()
     if decoded is not None:
         await _send_event(ws, _sent_symbol_event(decoded))
 
@@ -1016,8 +1021,19 @@ def _optional_bool(value: Any, field: str) -> bool | None:
 
 
 def _browser_midi_note_event(
-    message: dict[str, Any], *, fallback_timestamp: float
+    message: dict[str, Any],
+    *,
+    fallback_timestamp: float,
+    clock_offset: float | None = None,
 ) -> MidiNoteEvent:
+    """Build a ``MidiNoteEvent`` from a browser ``key-note-event`` message.
+
+    ``clock_offset`` shifts the incoming timestamp (browser ``performance.now()``
+    domain) into the server's ``time.monotonic()`` domain so element
+    timestamps and timer-driven flushes live in one clock. The offset is
+    captured once per browser key-input session in
+    ``start-browser-key-input`` and applied to every subsequent event.
+    """
     note = message.get("note")
     pressed = message.get("pressed")
     timestamp = message.get("timestamp", fallback_timestamp)
@@ -1029,7 +1045,11 @@ def _browser_midi_note_event(
     if not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool):
         raise ValueError("timestamp must be numeric")
 
-    return MidiNoteEvent(note=note, pressed=pressed, timestamp=float(timestamp))
+    monotonic_timestamp = float(timestamp)
+    if clock_offset is not None and "timestamp" in message:
+        monotonic_timestamp += clock_offset
+
+    return MidiNoteEvent(note=note, pressed=pressed, timestamp=monotonic_timestamp)
 
 
 async def _run_letter_sequence(
@@ -1095,6 +1115,10 @@ async def handler(
     browser_key_assembler: KeyElementAssembler | None = None
     browser_key_decoder: KeyDecoder | None = None
     browser_key_flush_task: asyncio.Task[None] | None = None
+    # Offset from browser performance.now() (seconds) to server time.monotonic()
+    # (seconds), captured once per browser key-input session so element
+    # timestamps and timer-driven flushes share one clock domain.
+    browser_key_clock_offset: float | None = None
 
     async def _cancel_browser_key_flush() -> None:
         nonlocal browser_key_flush_task
@@ -1219,6 +1243,13 @@ async def handler(
                         browser_key_audio_params.character_speed_wpm
                     ),
                 )
+                # Calibrate browser performance.now() → server time.monotonic()
+                # so event timestamps and tick() flush times share one clock.
+                perf_now = message.get("perf_now")
+                if isinstance(perf_now, (int, float)) and not isinstance(perf_now, bool):
+                    browser_key_clock_offset = time.monotonic() - float(perf_now)
+                else:
+                    browser_key_clock_offset = None
                 input_name = message.get("input_name")
                 if not isinstance(input_name, str) or not input_name.strip():
                     input_name = "browser MIDI"
@@ -1244,6 +1275,7 @@ async def handler(
                     note_event = _browser_midi_note_event(
                         message,
                         fallback_timestamp=asyncio.get_running_loop().time(),
+                        clock_offset=browser_key_clock_offset,
                     )
                 except ValueError as exc:
                     await _send_event(
@@ -1251,7 +1283,7 @@ async def handler(
                         {"type": "error", "reason": "invalid-key-event", "detail": str(exc)},
                     )
                     continue
-                await _push_key_note_event(
+                formed_element = await _push_key_note_event(
                     ws,
                     note_event,
                     settings=browser_key_settings,
@@ -1259,7 +1291,14 @@ async def handler(
                     assembler=browser_key_assembler,
                     decoder=browser_key_decoder,
                 )
-                _schedule_browser_key_flush()
+                # Only arm the character-gap flush after a completed element
+                # (note-off). On note-on we're mid-stroke; rearming the timer
+                # there races the next note-off and prematurely flushes the
+                # in-progress character. Cancel any pending flush instead.
+                if formed_element:
+                    _schedule_browser_key_flush()
+                else:
+                    await _cancel_browser_key_flush()
             elif action == "reset-key-input":
                 reason = message.get("reason")
                 await _reset_browser_key_input(reason if isinstance(reason, str) else "manual")
@@ -1269,6 +1308,7 @@ async def handler(
                 browser_key_audio_params = None
                 browser_key_assembler = None
                 browser_key_decoder = None
+                browser_key_clock_offset = None
                 if current_key_input_task is not None and not current_key_input_task.done():
                     current_key_input_task.cancel()
             elif action == "play-test-message":
