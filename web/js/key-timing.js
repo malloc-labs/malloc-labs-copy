@@ -11,7 +11,6 @@ const wsUrl = `${wsProtocol}//${location.host}/ws`;
 const statusEl = document.querySelector(".status");
 const sequenceRow = document.getElementById("sequence-row");
 const sentSymbolEl = document.getElementById("sent-symbol");
-const sentPatternEl = document.getElementById("sent-pattern");
 const sentHistoryEl = document.getElementById("sent-history");
 const soundToggleEl = document.getElementById("key-sound-toggle");
 const keyInputToggleEl = document.getElementById("key-input-toggle");
@@ -607,7 +606,6 @@ function renderSequence(state) {
 function renderSentSymbol(event) {
     const symbol = event.symbol || "?";
     sentSymbolEl.textContent = symbol;
-    sentPatternEl.textContent = event.pattern;
     diagGapEl.textContent = event.leading_gap || "none";
     recordDiagnostic("sent-symbol", {
         symbol,
@@ -619,19 +617,18 @@ function renderSentSymbol(event) {
     appendDiagnosticRow(event);
 
     const item = document.createElement("li");
-    const symbolEl = document.createElement("span");
-    const patternEl = document.createElement("span");
-    if (event.leading_gap === "word") {
+    const leading = event.leading_gap || "none";
+    item.classList.add(`key-sent-history__item--leading-${leading}`);
+    if (leading === "word") {
         const gapEl = document.createElement("span");
         gapEl.className = "key-sent-history__gap";
         gapEl.textContent = "/";
         item.appendChild(gapEl);
     }
+    const symbolEl = document.createElement("span");
     symbolEl.className = "key-sent-history__symbol";
-    patternEl.className = "key-sent-history__pattern";
     symbolEl.textContent = symbol;
-    patternEl.textContent = event.pattern;
-    item.append(symbolEl, patternEl);
+    item.append(symbolEl);
     sentHistoryEl.appendChild(item);
 
     while (sentHistoryEl.children.length > MAX_SENT_HISTORY) {
