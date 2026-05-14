@@ -874,9 +874,7 @@ async def _run_key_input_action(
 
     decoder = KeyDecoder(
         dit_seconds=timing.dit_seconds(audio_params.character_speed_wpm),
-        character_gap_seconds=timing.send_inter_character_seconds(
-            audio_params.character_speed_wpm
-        ),
+        character_gap_seconds=timing.send_inter_character_seconds(audio_params.character_speed_wpm),
         word_gap_seconds=timing.send_inter_word_seconds(audio_params.character_speed_wpm),
     )
     assembler = KeyElementAssembler()
