@@ -16,11 +16,13 @@ from copy_653.config import (
     load_claimed_symbols,
     load_keyer_settings,
     load_letters_config,
+    load_save_directory,
     load_server_settings,
     load_session_duration,
     save_audio_timing,
     save_claimed_symbols,
     save_keyer_settings,
+    save_save_directory,
 )
 from copy_653.letters.sequence import LettersConfig
 
@@ -496,6 +498,81 @@ def test_load_session_duration_rejects_non_number(tmp_path: Path):
     config_file.write_text('[session]\nduration_seconds = "thirty"\n')
     with pytest.raises(ValueError, match="must be a number"):
         load_session_duration(config_file)
+
+
+# ---------- save directory --------------------------------------------
+
+
+def test_load_save_directory_defaults_to_config_parent_when_file_missing(tmp_path: Path):
+    nonexistent = tmp_path / "no_config.toml"
+    assert load_save_directory(nonexistent) == tmp_path
+
+
+def test_load_save_directory_defaults_to_config_parent_when_table_missing(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text("[audio]\ncharacter_speed_wpm = 22\n")
+    assert load_save_directory(config_file) == tmp_path
+
+
+def test_load_save_directory_reads_value(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    target = tmp_path / "records"
+    config_file.write_text(f'[storage]\nsave_directory = "{target}"\n')
+    assert load_save_directory(config_file) == target
+
+
+def test_load_save_directory_expands_tilde(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[storage]\nsave_directory = "~/copy-records"\n')
+    expected = Path("~/copy-records").expanduser()
+    assert load_save_directory(config_file) == expected
+
+
+def test_load_save_directory_rejects_empty(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[storage]\nsave_directory = ""\n')
+    with pytest.raises(ValueError, match="must not be empty"):
+        load_save_directory(config_file)
+
+
+def test_load_save_directory_rejects_non_string(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text("[storage]\nsave_directory = 42\n")
+    with pytest.raises(ValueError, match="must be a string"):
+        load_save_directory(config_file)
+
+
+def test_save_save_directory_round_trips(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    target = tmp_path / "records"
+    save_save_directory(target, path=config_file)
+    assert load_save_directory(config_file) == target
+
+
+def test_save_save_directory_preserves_other_tables(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(textwrap.dedent("""
+            [audio]
+            character_speed_wpm = 22
+            effective_speed_wpm = 12
+
+            [symbols]
+            claimed = ["K", "M"]
+            """))
+
+    save_save_directory(tmp_path / "records", path=config_file)
+
+    parsed = tomllib.loads(config_file.read_text())
+    assert parsed["audio"]["character_speed_wpm"] == 22
+    assert parsed["audio"]["effective_speed_wpm"] == 12
+    assert parsed["symbols"]["claimed"] == ["K", "M"]
+    assert parsed["storage"]["save_directory"] == str(tmp_path / "records")
+
+
+def test_save_save_directory_rejects_empty(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    with pytest.raises(ValueError, match="must not be empty"):
+        save_save_directory("   ", path=config_file)
 
 
 # ---------- letters ----------------------------------------------------

@@ -16,6 +16,7 @@ const toneShapeInput = document.getElementById("tone-shape");
 const receiverBedInput = document.getElementById("receiver-bed");
 const cadenceVariationInput = document.getElementById("cadence-variation");
 const trinkeyBuzzerInput = document.getElementById("trinkey-buzzer");
+const saveDirectoryInput = document.getElementById("save-directory");
 const saveButton = document.getElementById("save-audio-settings");
 const playTestButton = document.getElementById("play-test-message");
 const saveTestButton = document.getElementById("save-test-message");
@@ -49,6 +50,7 @@ function setInputsEnabled(enabled) {
     receiverBedInput.disabled = !enabled;
     cadenceVariationInput.disabled = !enabled;
     trinkeyBuzzerInput.disabled = !enabled;
+    saveDirectoryInput.disabled = !enabled;
     hhClearInput.disabled = !enabled;
     playTestButton.disabled = !enabled;
     saveTestButton.disabled = !enabled;
@@ -62,6 +64,7 @@ function currentSettings() {
     const cadenceVariation = Number(cadenceVariationInput.value);
     const trinkeyBuzzerEnabled = trinkeyBuzzerInput.checked;
     const hhClearEnabled = hhClearInput.checked;
+    const saveDirectory = saveDirectoryInput.value.trim();
     return {
         character,
         effective,
@@ -70,6 +73,7 @@ function currentSettings() {
         cadenceVariation,
         trinkeyBuzzerEnabled,
         hhClearEnabled,
+        saveDirectory,
     };
 }
 
@@ -82,7 +86,8 @@ function updateSummaries() {
 }
 
 function validateSettings() {
-    const { character, effective, toneShape, receiverBed, cadenceVariation } = currentSettings();
+    const { character, effective, toneShape, receiverBed, cadenceVariation, saveDirectory } =
+        currentSettings();
     if (!Number.isInteger(character) || character <= 0) {
         return "Character speed must be a positive whole number.";
     }
@@ -100,6 +105,9 @@ function validateSettings() {
     }
     if (!Number.isInteger(cadenceVariation) || cadenceVariation < 0 || cadenceVariation > 5) {
         return "Cadence Variation must be between 0 and 5.";
+    }
+    if (!saveDirectory) {
+        return "Save Directory must not be empty.";
     }
     return "";
 }
@@ -165,6 +173,7 @@ function renderAudioSettings(event) {
     cadenceVariationInput.value = event.cadence_variation;
     trinkeyBuzzerInput.checked = Boolean(event.trinkey_buzzer_enabled);
     hhClearInput.checked = Boolean(event.hh_clear_enabled);
+    saveDirectoryInput.value = event.save_directory || "";
     // Keep the localStorage cache that Key pages read in sync with the
     // authoritative server state.
     setHHClearEnabled(Boolean(event.hh_clear_enabled));
@@ -176,6 +185,7 @@ function renderAudioSettings(event) {
         cadenceVariation: event.cadence_variation,
         trinkeyBuzzerEnabled: Boolean(event.trinkey_buzzer_enabled),
         hhClearEnabled: Boolean(event.hh_clear_enabled),
+        saveDirectory: event.save_directory || "",
     };
     updateSummaries();
     const prefix = isSaving ? "saved" : "ready";
@@ -288,6 +298,7 @@ form.addEventListener("submit", (event) => {
         cadenceVariation,
         trinkeyBuzzerEnabled,
         hhClearEnabled,
+        saveDirectory,
     } = currentSettings();
     setInputsEnabled(false);
     isSaving = true;
@@ -303,6 +314,7 @@ form.addEventListener("submit", (event) => {
             cadence_variation: cadenceVariation,
             trinkey_buzzer_enabled: trinkeyBuzzerEnabled,
             hh_clear_enabled: hhClearEnabled,
+            save_directory: saveDirectory,
         })
     );
 });
@@ -371,6 +383,7 @@ function onSettingsInput() {
     toneShapeInput,
     receiverBedInput,
     cadenceVariationInput,
+    saveDirectoryInput,
 ].forEach((input) => input.addEventListener("input", onSettingsInput));
 
 trinkeyBuzzerInput.addEventListener("change", onSettingsInput);

@@ -302,6 +302,74 @@ async def test_start_action_runs_a_session(tmp_path, patched_playback):
         await server.wait_closed()
 
 
+async def test_start_action_writes_koch_record_to_save_directory(tmp_path, patched_playback):
+    config_path = _write_test_config(tmp_path, ["K", "M"], duration=1.5)
+    save_dir = tmp_path / "records"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+            await ws.send(json.dumps({"action": "start"}))
+            events = await _drain_until(ws, lambda e: e["type"] == "session-end", timeout=10.0)
+
+        record_dir = save_dir / "koch-exercise"
+        files = list(record_dir.glob("koch-exercise-*.json"))
+        assert len(files) == 1
+
+        record = json.loads(files[0].read_text())
+        assert record["mode"] == "koch-exercise"
+        assert record["schema_version"] == "1.0"
+        assert record["duration_seconds"] == 1.5
+        assert record["claimed_set"] == ["K", "M"]
+        symbol_events = [e for e in events if e["type"] == "symbol"]
+        assert [s["symbol"] for s in record["symbols"]] == [e["symbol"] for e in symbol_events]
+        assert record["audio"]["character_speed_wpm"] == 25
+        assert isinstance(record["seed"], int)
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_stop_during_start_does_not_write_koch_record(tmp_path, patched_playback):
+    config_path = _write_test_config(tmp_path, ["K", "M"], duration=1.5)
+    save_dir = tmp_path / "records"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+            await ws.send(json.dumps({"action": "start"}))
+            # Wait for session-start so a session is actually in flight.
+            await _drain_until(ws, lambda e: e["type"] == "session-start", timeout=5.0)
+            await ws.send(json.dumps({"action": "stop"}))
+            await _drain_until(ws, lambda e: e["type"] == "session-end", timeout=5.0)
+
+        record_dir = save_dir / "koch-exercise"
+        assert not record_dir.exists() or list(record_dir.glob("*.json")) == []
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
 async def test_start_with_same_seed_replays_via_config_round_trip(tmp_path, patched_playback):
     """Two consecutive starts with different seeds ⇒ different streams.
     A session record can capture the seed; replaying is a session/
@@ -775,6 +843,7 @@ async def test_get_audio_settings_returns_configured_timing(tmp_path, patched_pl
                 "cadence_variation": 1,
                 "trinkey_buzzer_enabled": False,
                 "hh_clear_enabled": False,
+                "save_directory": str(config_path.parent),
             }
     finally:
         server.close()
@@ -821,6 +890,7 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
                 "cadence_variation": 1,
                 "trinkey_buzzer_enabled": True,
                 "hh_clear_enabled": True,
+                "save_directory": str(config_path.parent),
             }
 
         from copy_653.config import (

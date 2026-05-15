@@ -14,6 +14,10 @@ each in its own table:
   default ``duration_seconds``; spec §4.2 will eventually add
   per-mode keys.
 - ``[server]`` — HTTP/WebSocket bind settings for hosted service use.
+- ``[storage]`` — on-disk locations for engine-written artefacts.
+  ``save_directory`` is where session records and similar exports go;
+  spec §6.3 says the default is alongside ``config.toml`` and is
+  configurable.
 - ``[midi.key]`` — physical key input defaults for the reference
   TRRS Trinkey and Copy-owned sidetone.
 - ``[developer]`` — dev-only behaviour toggles (e.g. HH-clear).
@@ -73,6 +77,11 @@ DEFAULT_SESSION_DURATION_SECONDS = 30.0
 DEFAULT_SERVER_HOST = "127.0.0.1"
 DEFAULT_SERVER_PORT = 8653
 DEFAULT_SERVER_PORT_SEARCH_SPAN = 20
+
+# Spec §6.3: default storage directory sits next to the config file
+# itself, so a learner who relocates their config also relocates their
+# session records by default.
+DEFAULT_SAVE_DIRECTORY = DEFAULT_CONFIG_PATH.parent
 
 
 @dataclass(frozen=True, slots=True)
@@ -533,6 +542,68 @@ def load_session_duration(path: Path | None = None) -> float:
     if value <= 0:
         raise ValueError(f"[session].duration_seconds must be positive, got {value}")
     return value
+
+
+# ---------- storage ----------------------------------------------------
+
+
+def load_save_directory(path: Path | None = None) -> Path:
+    """Load the directory for engine-written artefacts (spec §6.3).
+
+    Reads ``[storage].save_directory`` from the config TOML. If the
+    file or table is missing, defaults to the parent directory of the
+    config file being read — i.e. alongside ``config.toml``.
+
+    The stored value may use ``~`` for the learner's home directory;
+    it is expanded but otherwise returned as written (no symlink
+    resolution, no creation).
+
+    Validation: must be a non-empty string. Raises ``ValueError``
+    otherwise.
+    """
+    config_path = path if path is not None else DEFAULT_CONFIG_PATH
+    data = _read_toml(config_path)
+    if data is None:
+        return config_path.parent
+
+    storage_table = data.get("storage", {})
+    if not isinstance(storage_table, dict):
+        return config_path.parent
+
+    raw = storage_table.get("save_directory")
+    if raw is None:
+        return config_path.parent
+
+    if not isinstance(raw, str):
+        raise ValueError(f"[storage].save_directory must be a string, got {type(raw).__name__}")
+    stripped = raw.strip()
+    if not stripped:
+        raise ValueError("[storage].save_directory must not be empty")
+    return Path(stripped).expanduser()
+
+
+def save_save_directory(directory: str | Path, path: Path | None = None) -> Path:
+    """Persist the save directory under ``[storage]``, preserving other tables.
+
+    Accepts either a ``str`` (as a learner would type into the UI) or
+    a ``Path``. The value is stored as a string so a hand-edited
+    ``~``-prefixed path survives a programmatic write.
+    """
+    config_path = path if path is not None else DEFAULT_CONFIG_PATH
+
+    raw = str(directory).strip()
+    if not raw:
+        raise ValueError("save_directory must not be empty")
+
+    data = _read_toml(config_path) or {}
+    storage_table = data.get("storage")
+    if not isinstance(storage_table, dict):
+        storage_table = {}
+        data["storage"] = storage_table
+    storage_table["save_directory"] = raw
+
+    _write_toml_atomic(data, config_path)
+    return Path(raw).expanduser()
 
 
 # ---------- letters ----------------------------------------------------
