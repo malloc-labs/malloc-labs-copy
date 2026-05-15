@@ -55,6 +55,11 @@ let diagnosticEvents = [];
 let midiInputArmed = true;
 let sentReviewEvents = [];
 let lastSentEndedAt = null;
+let claimedSymbolSet = new Set();
+// Left-Alt held state, tracked via event.code so we can scope the
+// Cadence preview keybind to LeftAlt only (not RightAlt). Reset on blur
+// because the matching keyup may never arrive if focus is lost.
+let leftAltDown = false;
 
 // Canonical Koch order — mirrors KOCH_ORDER in patterns.py.
 const KOCH_ORDER = [
@@ -643,8 +648,18 @@ function buildSequenceRow() {
     });
 }
 
+function setSequenceTokenPlaying(symbol, playing) {
+    sequenceRow.querySelectorAll("[data-playing]").forEach((el) => {
+        delete el.dataset.playing;
+    });
+    if (!playing || !symbol) return;
+    const token = sequenceRow.querySelector(`[data-symbol="${CSS.escape(symbol)}"]`);
+    if (token) token.dataset.playing = "true";
+}
+
 function renderSequence(state) {
     const claimedSet = new Set(state.symbols);
+    claimedSymbolSet = claimedSet;
     const next = state.suggested_next;
 
     KOCH_ORDER.forEach((sym) => {
@@ -994,6 +1009,10 @@ function connect() {
             renderKeyEvent(event);
         } else if (event.type === "key-input-reset") {
             renderKeyInputReset(event);
+        } else if (event.type === "morse-repeat-start") {
+            setSequenceTokenPlaying(event.symbol, true);
+        } else if (event.type === "morse-repeat-end") {
+            setSequenceTokenPlaying(event.symbol, false);
         } else if (event.type === "error") {
             renderError(event);
         }
@@ -1001,6 +1020,7 @@ function connect() {
 
     socket.addEventListener("close", () => {
         recordDiagnostic("websocket", { state: "close", url: wsUrl });
+        setSequenceTokenPlaying(null, false);
         sidetone.mute();
         if (browserMidiInput) {
             browserMidiInput.onmidimessage = null;
@@ -1060,6 +1080,61 @@ if (rhythmReviewToggleEl) {
         setRhythmReviewExpanded(!expanded);
     });
 }
+
+// Cadence preview: Left Alt + symbol-key plays the symbol's bare Morse
+// three times through the engine output. event.code is used because
+// Option+letter on macOS substitutes characters in event.key. Scoped to
+// the Cadence page via copyHistoryEl; the Sequence grid on Freeplay is
+// the same DOM but lacks the Copy section that motivates the preview.
+const PREVIEW_CODE_TO_SYMBOL = (() => {
+    const map = new Map();
+    for (let i = 0; i < 26; i++) {
+        map.set(`Key${String.fromCharCode(65 + i)}`, String.fromCharCode(65 + i));
+    }
+    for (let i = 0; i <= 9; i++) {
+        map.set(`Digit${i}`, String(i));
+    }
+    map.set("Period", ".");
+    map.set("Comma", ",");
+    map.set("Equal", "=");
+    return map;
+})();
+
+function symbolForPreviewCode(code, shiftKey) {
+    if (code === "Slash") return shiftKey ? "?" : "/";
+    return PREVIEW_CODE_TO_SYMBOL.get(code) || null;
+}
+
+window.addEventListener("keydown", (event) => {
+    if (event.code === "AltLeft") {
+        leftAltDown = true;
+        return;
+    }
+    if (!leftAltDown || !event.altKey) return;
+    if (!copyHistoryEl) return;
+    if (!activeSocket || activeSocket.readyState !== WebSocket.OPEN) return;
+    const target = event.target;
+    if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) return;
+    }
+    const symbol = symbolForPreviewCode(event.code, event.shiftKey);
+    if (!symbol) return;
+    if (!claimedSymbolSet.has(symbol)) return;
+    event.preventDefault();
+    if (event.repeat) return;
+    activeSocket.send(JSON.stringify({ action: "play-morse-repeat", symbol }));
+});
+
+window.addEventListener("keyup", (event) => {
+    if (event.code === "AltLeft") {
+        leftAltDown = false;
+    }
+});
+
+window.addEventListener("blur", () => {
+    leftAltDown = false;
+});
 
 window.addEventListener("keydown", (event) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;

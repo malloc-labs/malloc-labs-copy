@@ -20,6 +20,7 @@ from copy_653.letters.sequence import (
     NATO_PHONETIC_NAMES,
     find_anchors_dir,
     play_letter_sequence,
+    play_morse_sequence,
 )
 from copy_653.letters.wav import load_wav
 
@@ -30,4 +31,5 @@ __all__ = [
     "find_anchors_dir",
     "load_wav",
     "play_letter_sequence",
+    "play_morse_sequence",
 ]

@@ -31,6 +31,8 @@ Client → server, JSON over WS::
     {"action": "claim-symbol", "symbol": "U"}
     {"action": "unclaim-symbol", "symbol": "U"}
     {"action": "play-letter", "symbol": "K"}
+    {"action": "play-morse-repeat", "symbol": "K"}
+    {"action": "play-morse-repeat", "symbol": "K", "repeats": 3}
     {"action": "get-audio-settings"}
     {"action": "set-audio-settings", "character_wpm": 20, "effective_wpm": 10,
      "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1,
@@ -72,6 +74,11 @@ During a Letters playback (Koch hub → Letters page)::
 
     {"type": "letter-start", "symbol": "K"}
     {"type": "letter-end",   "symbol": "K"}
+
+During a Morse-only repeat (Cadence page Alt+character preview)::
+
+    {"type": "morse-repeat-start", "symbol": "K", "repeats": 3}
+    {"type": "morse-repeat-end",   "symbol": "K"}
 
 During Settings test-message playback/export::
 
@@ -164,6 +171,7 @@ from copy_653.letters import (
     ANCHORED_SYMBOLS,
     find_anchors_dir,
     play_letter_sequence,
+    play_morse_sequence,
 )
 from copy_653.midi import (
     DecodedSymbol,
@@ -1160,6 +1168,39 @@ def _browser_midi_note_event(
     return MidiNoteEvent(note=note, pressed=pressed, timestamp=monotonic_timestamp)
 
 
+async def _run_morse_repeat(
+    ws: WebSocketServerProtocol,
+    symbol: str,
+    repeats: int,
+    config_path: Path,
+) -> None:
+    """Play bare Morse for ``symbol`` ``repeats`` times. Emits start/end frames.
+
+    Used by the Cadence page's Alt+character preview keybind. Reads
+    audio params fresh so a learner who edits WPM mid-session hears the
+    change on the next preview.
+    """
+    audio_params = load_audio_parameters(config_path)
+
+    await _send_event(ws, {"type": "morse-repeat-start", "symbol": symbol, "repeats": repeats})
+    try:
+        await play_morse_sequence(symbol, audio_params, repeats=repeats)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        await _send_event(
+            ws,
+            {
+                "type": "error",
+                "reason": "morse-repeat-failed",
+                "symbol": symbol,
+                "detail": str(exc),
+            },
+        )
+        raise
+    await _send_event(ws, {"type": "morse-repeat-end", "symbol": symbol})
+
+
 async def _run_letter_sequence(
     ws: WebSocketServerProtocol,
     symbol: str,
@@ -1460,6 +1501,48 @@ async def handler(
 
                 current_letter_task = asyncio.create_task(
                     _run_letter_sequence(ws, upper, config_path, anchors_dir)
+                )
+            elif action == "play-morse-repeat":
+                symbol = message.get("symbol", "")
+                if not isinstance(symbol, str) or len(symbol) != 1:
+                    await _send_event(
+                        ws, {"type": "error", "reason": "symbol-must-be-single-character"}
+                    )
+                    continue
+                upper = symbol.upper()
+                try:
+                    patterns.pattern_for(upper)
+                except KeyError:
+                    await _send_event(
+                        ws, {"type": "error", "reason": "unknown-symbol", "symbol": upper}
+                    )
+                    continue
+                try:
+                    repeats = _optional_positive_int(message.get("repeats"), "repeats")
+                except ValueError as exc:
+                    await _send_event(
+                        ws,
+                        {
+                            "type": "error",
+                            "reason": "invalid-morse-repeat-request",
+                            "detail": str(exc),
+                        },
+                    )
+                    continue
+                if repeats is None:
+                    repeats = 3
+
+                # Share the current_letter_task slot so a new preview supersedes
+                # any in-flight play-letter or play-morse-repeat cleanly.
+                if current_letter_task is not None and not current_letter_task.done():
+                    current_letter_task.cancel()
+                    try:
+                        await current_letter_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+
+                current_letter_task = asyncio.create_task(
+                    _run_morse_repeat(ws, upper, repeats, config_path)
                 )
             else:
                 await _send_event(ws, {"type": "error", "reason": "unknown-action"})
