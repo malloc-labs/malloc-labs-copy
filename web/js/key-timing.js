@@ -18,8 +18,10 @@ const rhythmReviewArrowEl = document.getElementById("key-rhythm-review-arrow");
 const rhythmReviewMetaEl = document.getElementById("key-rhythm-review-meta");
 const rhythmReviewBodyEl = document.getElementById("key-rhythm-review-body");
 const rhythmReviewSymbolsEl = document.getElementById("key-rhythm-review-symbols");
+const rhythmReviewTabsEl = document.getElementById("key-rhythm-review-tabs");
 const soundToggleEl = document.getElementById("key-sound-toggle");
 const clearSentEl = document.getElementById("key-clear-sent");
+const newSetEl = document.getElementById("key-new-set");
 const keyInputToggleEl = document.getElementById("key-input-toggle");
 const copyDiagnosticsEl = document.getElementById("copy-diagnostics");
 const diagInputEl = document.getElementById("diag-input");
@@ -319,31 +321,61 @@ function renderClearSentLabel() {
     clearSentEl.setAttribute("aria-keyshortcuts", "C");
 }
 
-// Render every exercise in the current set as its own baseline block,
-// stacked vertically inside the review section. Each block carries a
-// "Exercise N / TEXT" header, one column per symbol (asymmetric
-// green|amber|red zone group, fixed width per column), and any sent
-// symbols overlaid beneath as an up-arrow + glyph at a continuous
-// x-fraction. x=0 is a perfectly-timed leading gap relative to the
-// column's *baseline-expected* gap (not the engine's runtime
-// classification); x rises into amber/red as the gap stretches.
-// dit_ms_expected from key-input-start is the source of truth for
-// the ideal gap math.
+function renderNewSetLabel() {
+    if (!newSetEl) return;
+    newSetEl.replaceChildren(makeAccelLabel("n", "ew"));
+    newSetEl.title = "New exercise set (N)";
+    newSetEl.setAttribute("aria-keyshortcuts", "N");
+}
+
+// Render the review as a tab bar (one tab per exercise) plus the
+// selected exercise's baseline block. Each block carries one column per
+// symbol (asymmetric green|amber|red zone group, fixed width per
+// column), and any sent symbols overlaid beneath as an up-arrow + glyph
+// at a continuous x-fraction. x=0 is a perfectly-timed leading gap
+// relative to the column's *baseline-expected* gap (not the engine's
+// runtime classification); x rises into amber/red as the gap stretches.
+// dit_ms_expected from key-input-start is the source of truth for the
+// ideal gap math.
 function renderRhythmReview() {
     if (!rhythmReviewSymbolsEl || !rhythmReviewMetaEl) return;
     rhythmReviewSymbolsEl.replaceChildren();
-    rhythmReviewSymbolsEl.setAttribute(
-        "aria-label",
-        "Baseline rhythm for each exercise",
-    );
+    if (rhythmReviewTabsEl) rhythmReviewTabsEl.replaceChildren();
 
-    const validExercises = copyExercises.filter((e) => e && e.length > 0);
+    const validIndices = copyExercises
+        .map((ex, idx) => (ex && ex.length > 0 ? idx : -1))
+        .filter((idx) => idx >= 0);
     rhythmReviewMetaEl.textContent =
-        validExercises.length === 0
+        validIndices.length === 0
             ? "no exercises"
-            : `${validExercises.length} ${validExercises.length === 1 ? "exercise" : "exercises"}`;
+            : `${validIndices.length} ${validIndices.length === 1 ? "exercise" : "exercises"}`;
 
-    if (validExercises.length === 0) return;
+    if (validIndices.length === 0) return;
+
+    if (!validIndices.includes(selectedReviewIndex)) {
+        selectedReviewIndex = validIndices[0];
+    }
+
+    if (rhythmReviewTabsEl) {
+        validIndices.forEach((exIdx, tabIdx) => {
+            const exercise = copyExercises[exIdx];
+            const tab = document.createElement("button");
+            tab.type = "button";
+            tab.className = "key-rhythm-review__tab";
+            tab.role = "tab";
+            tab.textContent = `${tabIdx + 1} / ${exercise}`;
+            tab.title = exercise;
+            const isSelected = exIdx === selectedReviewIndex;
+            tab.setAttribute("aria-selected", String(isSelected));
+            if (isSelected) tab.dataset.selected = "true";
+            tab.addEventListener("click", () => {
+                if (selectedReviewIndex === exIdx) return;
+                selectedReviewIndex = exIdx;
+                renderRhythmReview();
+            });
+            rhythmReviewTabsEl.appendChild(tab);
+        });
+    }
 
     const ditMs = Number(keyConfig && keyConfig.dit_ms_expected) || 60;
     const charGapMs = 3 * ditMs;
@@ -353,13 +385,18 @@ function renderRhythmReview() {
     // this is a perceptual mapping, not a hard tolerance.
     const X_SPAN_RATIO = 3.0;
 
-    copyExercises.forEach((exercise, exIdx) => {
-        if (!exercise) return;
-        const events = sentEventsByExercise[exIdx] || [];
-        rhythmReviewSymbolsEl.appendChild(
-            buildExerciseBlock(exercise, exIdx, events, charGapMs, wordGapMs, X_SPAN_RATIO),
-        );
-    });
+    const exercise = copyExercises[selectedReviewIndex];
+    const events = sentEventsByExercise[selectedReviewIndex] || [];
+    rhythmReviewSymbolsEl.appendChild(
+        buildExerciseBlock(
+            exercise,
+            selectedReviewIndex,
+            events,
+            charGapMs,
+            wordGapMs,
+            X_SPAN_RATIO,
+        ),
+    );
 }
 
 function buildExerciseBlock(exercise, exIdx, events, charGapMs, wordGapMs, X_SPAN_RATIO) {
@@ -438,34 +475,52 @@ function buildExerciseBlock(exercise, exIdx, events, charGapMs, wordGapMs, X_SPA
         }
     });
 
-    events.forEach((evt, i) => {
-        const col = charCols[i];
-        if (!col) return;
-        const expected = charColExpected[i];
-        const idealMs = expected === "word" ? wordGapMs : charGapMs;
-        const gapMs = Number(evt.leadingGapMs);
-        let xFrac = 0;
-        if (expected !== "none" && Number.isFinite(gapMs) && idealMs > 0) {
-            const overshootRatio = Math.max(0, (gapMs - idealMs) / idealMs);
-            xFrac = Math.min(1, overshootRatio / X_SPAN_RATIO);
-        }
+    // Segment events into attempt rows. Each event flagged
+    // isAttemptStart begins a new row; subsequent events fill the row
+    // left-to-right until the next start (or until the columns run
+    // out). Events keyed before any attempt-start lands in an
+    // implicit first row.
+    if (charCols.length > 0) {
+        const attempts = [];
+        events.forEach((evt) => {
+            if (evt.isAttemptStart || attempts.length === 0) {
+                attempts.push([]);
+            }
+            attempts[attempts.length - 1].push(evt);
+        });
 
-        const attemptEl = document.createElement("div");
-        attemptEl.className = "key-rhythm-baseline__attempt";
-        const markerEl = document.createElement("div");
-        markerEl.className = "key-rhythm-baseline__attempt-marker";
-        markerEl.style.setProperty("--attempt-x", String(xFrac));
-        const arrowEl = document.createElement("span");
-        arrowEl.className = "key-rhythm-baseline__attempt-arrow";
-        arrowEl.setAttribute("aria-hidden", "true");
-        arrowEl.textContent = "↑";
-        const sentEl = document.createElement("span");
-        sentEl.className = "key-rhythm-baseline__attempt-symbol";
-        sentEl.textContent = evt.symbol;
-        markerEl.append(arrowEl, sentEl);
-        attemptEl.append(markerEl);
-        col.appendChild(attemptEl);
-    });
+        attempts.forEach((attempt) => {
+            for (let colIdx = 0; colIdx < charCols.length; colIdx++) {
+                const col = charCols[colIdx];
+                const attemptEl = document.createElement("div");
+                attemptEl.className = "key-rhythm-baseline__attempt";
+                const evt = attempt[colIdx];
+                if (evt) {
+                    const expected = charColExpected[colIdx];
+                    const idealMs = expected === "word" ? wordGapMs : charGapMs;
+                    const gapMs = Number(evt.leadingGapMs);
+                    let xFrac = 0;
+                    if (expected !== "none" && Number.isFinite(gapMs) && idealMs > 0) {
+                        const overshootRatio = Math.max(0, (gapMs - idealMs) / idealMs);
+                        xFrac = Math.min(1, overshootRatio / X_SPAN_RATIO);
+                    }
+                    const markerEl = document.createElement("div");
+                    markerEl.className = "key-rhythm-baseline__attempt-marker";
+                    markerEl.style.setProperty("--attempt-x", String(xFrac));
+                    const arrowEl = document.createElement("span");
+                    arrowEl.className = "key-rhythm-baseline__attempt-arrow";
+                    arrowEl.setAttribute("aria-hidden", "true");
+                    arrowEl.textContent = "↑";
+                    const sentEl = document.createElement("span");
+                    sentEl.className = "key-rhythm-baseline__attempt-symbol";
+                    sentEl.textContent = evt.symbol;
+                    markerEl.append(arrowEl, sentEl);
+                    attemptEl.append(markerEl);
+                }
+                col.appendChild(attemptEl);
+            }
+        });
+    }
 
     block.appendChild(colsEl);
     return block;
@@ -482,12 +537,13 @@ function clearSentSymbols() {
     sentSymbolEl.textContent = "—";
     sentHistoryEl.replaceChildren();
     lastSentEndedAt = null;
-    sentEventsByExercise = copyExercises.map(() => []);
+    // Intentionally do NOT touch sentEventsByExercise or re-render the
+    // review — clear is scoped to the Sent line so the review section
+    // preserves prior attempts across clears.
     copyProgress = 0;
     diagGapEl.textContent = "none";
     resetHHClearTracker();
     recordDiagnostic("sent-symbols-clear");
-    renderRhythmReview();
 }
 
 function midiMessageToNoteEvent(message) {
@@ -773,6 +829,10 @@ function requestCopyExercises() {
 }
 
 let selectedCopyIndex = 0;
+// Which exercise's baseline block the review section shows. Tracks the
+// current copy exercise by default; tab clicks override it without
+// affecting copy progress.
+let selectedReviewIndex = 0;
 let copyExercises = [];
 // Per-step expectation: { symbol, leading } where leading is "none", "word",
 // or "character" — same vocabulary the engine emits on sent-symbol events.
@@ -814,10 +874,12 @@ function noteCopySymbolForProgress(symbol, leadingGap) {
         copyProgress += 1;
         if (copyProgress >= expectedCopySteps.length) {
             copyProgress = 0;
+            // Advance to the next exercise in the current set if any.
+            // On the final exercise we deliberately stop — the learner
+            // presses "new" (or N) to request a fresh set, which keeps
+            // the last review intact until they decide to move on.
             if (selectedCopyIndex + 1 < copyExercises.length) {
                 selectCopyExercise(selectedCopyIndex + 1);
-            } else {
-                requestCopyExercises();
             }
         }
         return;
@@ -839,6 +901,7 @@ function renderCopyExercises(event) {
     const exercises = Array.isArray(event.exercises) ? event.exercises : [];
     copyHistoryEl.replaceChildren();
     selectedCopyIndex = 0;
+    selectedReviewIndex = 0;
     copyExercises = exercises;
     sentEventsByExercise = exercises.map(() => []);
     updateExpectedCopySteps();
@@ -881,6 +944,7 @@ function selectCopyExercise(idx) {
     const items = copyHistoryEl.querySelectorAll(".key-copy-history__item");
     if (idx < 0 || idx >= items.length) return false;
     selectedCopyIndex = idx;
+    selectedReviewIndex = idx;
     items.forEach((item, i) => {
         if (i === idx) item.dataset.selected = "true";
         else delete item.dataset.selected;
@@ -891,11 +955,35 @@ function selectCopyExercise(idx) {
     return true;
 }
 
+// Predict whether the incoming event should start a new attempt row,
+// using the same step-walking vocabulary as noteCopySymbolForProgress
+// but called *before* that function mutates copyProgress. A new row
+// is begun only when the event matches step 0 of the exercise — either
+// from a clean state (copyProgress === 0) or as a mid-stream restart
+// where the user re-keys the exercise's first symbol while we'd been
+// expecting a later step. Junk symbols that don't match step 0 append
+// to the current row instead of fragmenting the display.
+function isAttemptStartForEvent(symbol, leadingGap) {
+    if (expectedCopySteps.length === 0) return true;
+    const stepZero = expectedCopySteps[0];
+    if (!stepZero || symbol !== stepZero.symbol) return false;
+    if (copyProgress === 0) return true;
+    // Mid-stream: only a restart if the current expected step isn't
+    // also satisfied by this event (e.g., MUM at progress=2 expects M
+    // and the user keys M — that's the legitimate finish, not a
+    // restart).
+    const expected = expectedCopySteps[copyProgress];
+    const continuesCurrentStep =
+        expected && symbol === expected.symbol && leadingGap === expected.leading;
+    return !continuesCurrentStep;
+}
+
 function clearCopyExercises() {
     if (!copyHistoryEl || !copySymbolEl) return;
     copySymbolEl.textContent = "—";
     copyHistoryEl.replaceChildren();
     selectedCopyIndex = 0;
+    selectedReviewIndex = 0;
     copyExercises = [];
     sentEventsByExercise = [];
     updateExpectedCopySteps();
@@ -944,6 +1032,12 @@ function renderSentSymbol(event) {
             symbol,
             leadingGap: event.leading_gap || "none",
             leadingGapMs,
+            // Computed against copyProgress *before* noteCopySymbolForProgress
+            // runs below — true on the event that begins a fresh walk through
+            // the exercise (progress was 0) or on a mid-stream restart where
+            // the symbol matches step 0 after a mismatch. The renderer
+            // segments the bucket into rows on these boundaries.
+            isAttemptStart: isAttemptStartForEvent(symbol, event.leading_gap || "none"),
         });
     }
     renderRhythmReview();
@@ -1169,6 +1263,7 @@ soundToggleEl.addEventListener("click", async () => {
     updateAudioDiagnostic();
 });
 clearSentEl.addEventListener("click", clearSentSymbols);
+if (newSetEl) newSetEl.addEventListener("click", requestCopyExercises);
 if (rhythmReviewToggleEl) {
     rhythmReviewToggleEl.addEventListener("click", () => {
         const expanded = rhythmReviewToggleEl.getAttribute("aria-expanded") === "true";
@@ -1248,6 +1343,9 @@ window.addEventListener("keydown", (event) => {
     } else if (key === "c") {
         event.preventDefault();
         clearSentSymbols();
+    } else if (key === "n") {
+        event.preventDefault();
+        requestCopyExercises();
     } else if (/^[1-9]$/.test(key)) {
         if (selectCopyExercise(parseInt(key, 10) - 1)) {
             event.preventDefault();
@@ -1255,6 +1353,7 @@ window.addEventListener("keydown", (event) => {
     }
 });
 renderClearSentLabel();
+renderNewSetLabel();
 renderRhythmReview();
 updateAudioDiagnostic();
 connect();

@@ -713,6 +713,42 @@
     flex-direction: column;
 }
 
+.key-rhythm-review__tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--mr-space-2);
+    margin-bottom: var(--mr-space-3);
+    padding-bottom: var(--mr-space-2);
+    border-bottom: var(--mr-border-rule);
+}
+
+.key-rhythm-review__tabs:empty {
+    display: none;
+}
+
+.key-rhythm-review__tab {
+    padding: var(--mr-space-1) var(--mr-space-3);
+    border: var(--mr-border-rule);
+    background: none;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    cursor: pointer;
+    transition: color 0.1s ease, border-color 0.1s ease, opacity 0.1s ease;
+    opacity: 0.7;
+}
+
+.key-rhythm-review__tab:hover {
+    color: var(--mr-text);
+    opacity: 1;
+}
+
+.key-rhythm-review__tab[data-selected="true"] {
+    color: var(--mr-text);
+    border-color: var(--mr-anchor);
+    opacity: 1;
+}
+
 .key-rhythm-review__symbols {
     /* One column per symbol, fixed width. Asymmetric zone fractions —
      * tolerance for stretched timing is more forgiving than compressed,
