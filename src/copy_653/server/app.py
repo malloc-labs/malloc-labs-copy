@@ -1182,9 +1182,7 @@ async def _run_morse_repeat(
     """
     audio_params = load_audio_parameters(config_path)
 
-    await _send_event(
-        ws, {"type": "morse-repeat-start", "symbol": symbol, "repeats": repeats}
-    )
+    await _send_event(ws, {"type": "morse-repeat-start", "symbol": symbol, "repeats": repeats})
     try:
         await play_morse_sequence(symbol, audio_params, repeats=repeats)
     except asyncio.CancelledError:
