@@ -391,6 +391,7 @@ function clearSentSymbols() {
     sentHistoryEl.replaceChildren();
     sentReviewEvents = [];
     lastSentEndedAt = null;
+    copyProgress = 0;
     renderRhythmReview();
     diagGapEl.textContent = "none";
     resetHHClearTracker();
@@ -670,6 +671,60 @@ function requestCopyExercises() {
 }
 
 let selectedCopyIndex = 0;
+let copyExercises = [];
+// Per-step expectation: { symbol, leading } where leading is "none", "word",
+// or "character" — same vocabulary the engine emits on sent-symbol events.
+let expectedCopySteps = [];
+let copyProgress = 0;
+
+function buildExpectedCopySteps(exercise) {
+    const steps = [];
+    const words = (exercise || "").split(" ");
+    words.forEach((word, wordIdx) => {
+        for (let i = 0; i < word.length; i++) {
+            const leading = wordIdx === 0 && i === 0
+                ? "none"
+                : i === 0
+                ? "word"
+                : "character";
+            steps.push({ symbol: word[i], leading });
+        }
+    });
+    return steps;
+}
+
+function updateExpectedCopySteps() {
+    expectedCopySteps = buildExpectedCopySteps(copyExercises[selectedCopyIndex]);
+    copyProgress = 0;
+}
+
+// Walk a single pointer through the expected steps. The first step accepts
+// any leading gap (the learner could be starting fresh, mid-stream, or after
+// a clear); every subsequent step requires both the symbol AND the leading
+// gap to match — so "MUM" only passes for one-word keying, not "M UM".
+function noteCopySymbolForProgress(symbol, leadingGap) {
+    if (expectedCopySteps.length === 0) return;
+    const expected = expectedCopySteps[copyProgress];
+    const symbolMatches = symbol === expected.symbol;
+    const gapMatches = copyProgress === 0 || leadingGap === expected.leading;
+
+    if (symbolMatches && gapMatches) {
+        copyProgress += 1;
+        if (copyProgress >= expectedCopySteps.length) {
+            copyProgress = 0;
+            if (selectedCopyIndex + 1 < copyExercises.length) {
+                selectCopyExercise(selectedCopyIndex + 1);
+            } else {
+                requestCopyExercises();
+            }
+        }
+        return;
+    }
+
+    // Mismatch — fall back to step 0. If this symbol matches step 0's symbol,
+    // count the current input as the start of a fresh attempt.
+    copyProgress = symbol === expectedCopySteps[0].symbol ? 1 : 0;
+}
 
 // TODO(cadence): if the HH-clear dev toggle is on (Settings → Developer),
 // keying "HH" clears the Sent area. The random exercises the engine emits
@@ -682,6 +737,8 @@ function renderCopyExercises(event) {
     const exercises = Array.isArray(event.exercises) ? event.exercises : [];
     copyHistoryEl.replaceChildren();
     selectedCopyIndex = 0;
+    copyExercises = exercises;
+    updateExpectedCopySteps();
     if (exercises.length === 0) {
         copySymbolEl.textContent = "—";
         return;
@@ -725,6 +782,7 @@ function selectCopyExercise(idx) {
         else delete item.dataset.selected;
     });
     copySymbolEl.textContent = items[idx].dataset.exercise || "";
+    updateExpectedCopySteps();
     return true;
 }
 
@@ -733,6 +791,8 @@ function clearCopyExercises() {
     copySymbolEl.textContent = "—";
     copyHistoryEl.replaceChildren();
     selectedCopyIndex = 0;
+    copyExercises = [];
+    updateExpectedCopySteps();
 }
 
 function renderSentSymbol(event) {
@@ -778,6 +838,7 @@ function renderSentSymbol(event) {
     }
     renderRhythmReview();
     noteSentSymbol(symbol, event.leading_gap, clearSentSymbols);
+    noteCopySymbolForProgress(symbol, event.leading_gap || "none");
 }
 
 function renderKeyInputStart(event) {
