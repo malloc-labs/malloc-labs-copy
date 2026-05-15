@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.4.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.3.0...v0.4.0) (2026-05-15)
+
+
+### Features
+
+* **key:** "HH clears send area" developer toggle ([#54](https://github.com/malloc-labs/malloc-labs-copy/issues/54)) ([91634cb](https://github.com/malloc-labs/malloc-labs-copy/commit/91634cb0bcc3d293047f13646cacd0e49d3b8bd5))
+* **key:** add S/M keyboard shortcuts and auto-rearm on tab return ([#48](https://github.com/malloc-labs/malloc-labs-copy/issues/48)) ([5dc36e9](https://github.com/malloc-labs/malloc-labs-copy/commit/5dc36e92ba96fecce8b962d833ca2c731f2baa72))
+* **key:** add timing known symbols page ([d0d535a](https://github.com/malloc-labs/malloc-labs-copy/commit/d0d535ad123dd1dfbf06a0f25d08e63a465bfaeb))
+* **key:** auto-advance Cadence Copy exercise on rhythmically-correct key-in ([#57](https://github.com/malloc-labs/malloc-labs-copy/issues/57)) ([024d414](https://github.com/malloc-labs/malloc-labs-copy/commit/024d41428b8bb14b0418ca5169dcfbff6118a829))
+* **key:** decode measured send timing ([023a469](https://github.com/malloc-labs/malloc-labs-copy/commit/023a4690903218024763918f83a35bd22c615206))
+* **key:** display decoded sent symbols ([39fef62](https://github.com/malloc-labs/malloc-labs-copy/commit/39fef622aa27766e7dc2a8542e9dadbbc68e1a53))
+* **key:** enlarge Cadence Copy exercise sequence display ([#56](https://github.com/malloc-labs/malloc-labs-copy/issues/56)) ([ed7decc](https://github.com/malloc-labs/malloc-labs-copy/commit/ed7decc7f083f7a705f506c531f3edac797308e6))
+* **key:** make sent-history words readable ([#49](https://github.com/malloc-labs/malloc-labs-copy/issues/49)) ([ad64ffb](https://github.com/malloc-labs/malloc-labs-copy/commit/ad64ffb2e8e678856ca83dfef0e8c52247b1fbbe))
+* **key:** sentence-shaped Copy exercises with digit keybinds ([#52](https://github.com/malloc-labs/malloc-labs-copy/issues/52)) ([e5be774](https://github.com/malloc-labs/malloc-labs-copy/commit/e5be77489fe01e0fd0ec204a8722a1a84c3a6fca))
+* **key:** split Key into Freeplay + Cadence, add Copy exercises ([#51](https://github.com/malloc-labs/malloc-labs-copy/issues/51)) ([f6dcc54](https://github.com/malloc-labs/malloc-labs-copy/commit/f6dcc54a61ccfde3f6477f6a5690e86160cbbf0f))
+* **key:** wire Trinkey MIDI input ([5b876cb](https://github.com/malloc-labs/malloc-labs-copy/commit/5b876cbba326f7355287c6116cc6f223b54286b9))
+* **midi:** add key decoder foundation ([158b039](https://github.com/malloc-labs/malloc-labs-copy/commit/158b0391bfdaa25dc7d759c6d101e9cdee909ab6))
+* **settings:** add developer mode + runaway guard toggles, collapsible sections ([#45](https://github.com/malloc-labs/malloc-labs-copy/issues/45)) ([8d2ae2d](https://github.com/malloc-labs/malloc-labs-copy/commit/8d2ae2d22dc29f4e6b03b3b42714be5ea3b8829c))
+* **settings:** add Trinkey buzzer option ([f007d63](https://github.com/malloc-labs/malloc-labs-copy/commit/f007d6362286395b0b5feb480688117ea784975b))
+
+
+### Bug Fixes
+
+* **key:** clean up MIDI input timing pipeline ([#50](https://github.com/malloc-labs/malloc-labs-copy/issues/50)) ([fea1351](https://github.com/malloc-labs/malloc-labs-copy/commit/fea13513651564b971170edccb6dbd3acb96a4a4))
+* **key:** disable unstable live sidetone ([8f5176f](https://github.com/malloc-labs/malloc-labs-copy/commit/8f5176faec92eed95e93ebf5923e8f7459e78d80))
+* **key:** only fire HH-clear on intra-word HH, not H + word-gap + H ([#55](https://github.com/malloc-labs/malloc-labs-copy/issues/55)) ([03c7011](https://github.com/malloc-labs/malloc-labs-copy/commit/03c70115488bea232d9dfd47b05b35f3126a2ba7))
+* **key:** persist runaway guard server-side instead of localStorage ([#47](https://github.com/malloc-labs/malloc-labs-copy/issues/47)) ([7bf1f67](https://github.com/malloc-labs/malloc-labs-copy/commit/7bf1f677dd6d8659a36cb0fa38d627894ddb69cd))
+* **key:** select Trinkey MIDI input by default ([90b02ea](https://github.com/malloc-labs/malloc-labs-copy/commit/90b02eacfc7e8c74a8b300f6bf4965a241fdbb75))
+
+
+### Documentation
+
+* **readme:** refresh browser surfaces and Settings sections ([#58](https://github.com/malloc-labs/malloc-labs-copy/issues/58)) ([5046433](https://github.com/malloc-labs/malloc-labs-copy/commit/50464338552963933f19b4a4216bb017e051bd8e))
+* **readme:** refresh stale references and document recent additions ([#46](https://github.com/malloc-labs/malloc-labs-copy/issues/46)) ([dbdd955](https://github.com/malloc-labs/malloc-labs-copy/commit/dbdd955dec81eab38dfbeb6408d7f05bb018099b))
+
 ## [0.3.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.2.0...v0.3.0) (2026-05-12)
 
 
