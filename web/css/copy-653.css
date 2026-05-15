@@ -522,6 +522,23 @@
     border-color: var(--mr-text);
 }
 
+/* Cadence drops the next-letter box and dims it back to the available
+ * tier — only claimed symbols stay bright. The box-with-accent
+ * affordance is reused below for the symbol whose Morse is previewing. */
+.cadence-shell .seq-token[data-state="next"] {
+    color: var(--mr-muted);
+    opacity: 0.35;
+    border-color: transparent;
+}
+
+/* Preview playback — mirrors the next-letter box style so the eye is
+ * drawn to whichever symbol the ear is currently parsing. */
+.seq-token[data-playing="true"] {
+    color: var(--mr-anchor);
+    opacity: 1;
+    border-color: var(--mr-anchor);
+}
+
 /* Available — not yet reached, muted but interactive */
 .seq-token[data-state="available"] {
     opacity: 0.35;

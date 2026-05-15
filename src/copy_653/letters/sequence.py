@@ -200,6 +200,46 @@ def wav_path_for(
     raise KeyError(upper)
 
 
+async def play_morse_sequence(
+    symbol: str,
+    audio_params: AudioParameters,
+    *,
+    repeats: int = 3,
+    gap_seconds: float = 0.6,
+    play_fn=None,
+    sleep_fn=None,
+) -> None:
+    """Play bare Morse for ``symbol`` ``repeats`` times with a fixed gap.
+
+    Used by the Cadence page's Alt+character preview keybind: no spoken
+    anchor, just the rhythm, repeated so the ear has more than one pass
+    to lock in. Each playback runs in a worker thread so cancellation
+    can take effect between repeats.
+
+    Raises :class:`KeyError` if the symbol has no CW pattern. Per spec
+    §1.5 the failure surfaces to the caller rather than becoming a
+    no-op.
+    """
+    if play_fn is None:
+        play_fn = _play_samples
+    if sleep_fn is None:
+        sleep_fn = asyncio.sleep
+    if repeats < 1:
+        raise ValueError(f"repeats must be at least 1, got {repeats}")
+    if gap_seconds < 0:
+        raise ValueError(f"gap_seconds must be non-negative, got {gap_seconds}")
+
+    upper = symbol.upper()
+    morse_samples = synth.synthesize_sequence([upper], audio_params)
+    morse_rate = audio_params.sample_rate_hz
+    output_device = audio_params.output_device
+
+    for i in range(repeats):
+        await asyncio.to_thread(play_fn, morse_samples, morse_rate, output_device)
+        if i < repeats - 1:
+            await sleep_fn(gap_seconds)
+
+
 async def play_letter_sequence(
     symbol: str,
     audio_params: AudioParameters,
