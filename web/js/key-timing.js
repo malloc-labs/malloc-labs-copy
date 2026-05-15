@@ -54,6 +54,13 @@ let activeSocket = null;
 let diagnosticEvents = [];
 let midiInputArmed = true;
 let lastSentEndedAt = null;
+// One bucket of sent events per exercise (index-aligned to
+// copyExercises). Filled live as sends arrive into the currently
+// selected exercise; preserved across exercise selection so the
+// learner can scroll the review and see prior attempts. Reset by
+// the explicit "clear" button and when the engine ships a new
+// exercise list.
+let sentEventsByExercise = [];
 let claimedSymbolSet = new Set();
 // Left-Alt held state, tracked via event.code so we can scope the
 // Cadence preview keybind to LeftAlt only (not RightAlt). Reset on blur
@@ -312,30 +319,70 @@ function renderClearSentLabel() {
     clearSentEl.setAttribute("aria-keyshortcuts", "C");
 }
 
-// Render the active exercise as a baseline rhythm view: one column per
-// symbol, each column carrying a letter on top and a zone-group below
-// (green | amber | red, asymmetric — green narrowest, red widest). Zone
-// groups are fixed width regardless of letter — the bar is a perceptual
-// tolerance ruler, not a CW-duration display. Word boundaries insert a
-// blank column the same width as a zone group. User-attempt markers
-// (future) will overlay onto each column's zone-group.
+// Render every exercise in the current set as its own baseline block,
+// stacked vertically inside the review section. Each block carries a
+// "Exercise N / TEXT" header, one column per symbol (asymmetric
+// green|amber|red zone group, fixed width per column), and any sent
+// symbols overlaid beneath as an up-arrow + glyph at a continuous
+// x-fraction. x=0 is a perfectly-timed leading gap relative to the
+// column's *baseline-expected* gap (not the engine's runtime
+// classification); x rises into amber/red as the gap stretches.
+// dit_ms_expected from key-input-start is the source of truth for
+// the ideal gap math.
 function renderRhythmReview() {
     if (!rhythmReviewSymbolsEl || !rhythmReviewMetaEl) return;
     rhythmReviewSymbolsEl.replaceChildren();
     rhythmReviewSymbolsEl.setAttribute(
         "aria-label",
-        "Baseline rhythm for the active exercise",
+        "Baseline rhythm for each exercise",
     );
 
-    const exercise = copyExercises[selectedCopyIndex] || "";
-    rhythmReviewMetaEl.textContent = exercise
-        ? `baseline / ${exercise}`
-        : "no exercise";
+    const validExercises = copyExercises.filter((e) => e && e.length > 0);
+    rhythmReviewMetaEl.textContent =
+        validExercises.length === 0
+            ? "no exercises"
+            : `${validExercises.length} ${validExercises.length === 1 ? "exercise" : "exercises"}`;
 
-    if (!exercise) return;
+    if (validExercises.length === 0) return;
+
+    const ditMs = Number(keyConfig && keyConfig.dit_ms_expected) || 60;
+    const charGapMs = 3 * ditMs;
+    const wordGapMs = 7 * ditMs;
+    // Span over the ideal gap that the attempt marker can travel within
+    // a column. Picked so that ~3x ideal lands at the right edge of red;
+    // this is a perceptual mapping, not a hard tolerance.
+    const X_SPAN_RATIO = 3.0;
+
+    copyExercises.forEach((exercise, exIdx) => {
+        if (!exercise) return;
+        const events = sentEventsByExercise[exIdx] || [];
+        rhythmReviewSymbolsEl.appendChild(
+            buildExerciseBlock(exercise, exIdx, events, charGapMs, wordGapMs, X_SPAN_RATIO),
+        );
+    });
+}
+
+function buildExerciseBlock(exercise, exIdx, events, charGapMs, wordGapMs, X_SPAN_RATIO) {
+    const block = document.createElement("section");
+    block.className = "key-rhythm-baseline__exercise";
+    block.setAttribute("aria-label", `Exercise ${exIdx + 1} baseline`);
+
+    const labelEl = document.createElement("p");
+    labelEl.className = "key-rhythm-baseline__exercise-label";
+    labelEl.textContent = `Exercise ${exIdx + 1} / ${exercise}`;
+    block.appendChild(labelEl);
 
     const colsEl = document.createElement("div");
     colsEl.className = "key-rhythm-baseline__cols";
+
+    const charCols = [];
+    // Per char column: the baseline-expected leading gap type that an
+    // on-time send would produce. "none" for the first symbol; "word"
+    // for the first symbol of each subsequent word; "character" for
+    // in-word symbols. This is what we compare an actual send against —
+    // *not* the engine's runtime classification, which only describes
+    // what the user's pause actually crossed.
+    const charColExpected = [];
 
     const appendCharCol = (symbol) => {
         const col = document.createElement("div");
@@ -356,6 +403,7 @@ function renderRhythmReview() {
 
         col.append(symEl, zonesEl);
         colsEl.appendChild(col);
+        charCols.push(col);
     };
 
     const appendWordGapCol = () => {
@@ -380,10 +428,47 @@ function renderRhythmReview() {
     const words = exercise.split(" ").filter((word) => word.length > 0);
     words.forEach((word, wordIdx) => {
         if (wordIdx > 0) appendWordGapCol();
-        for (let i = 0; i < word.length; i++) appendCharCol(word[i]);
+        for (let i = 0; i < word.length; i++) {
+            let expected;
+            if (charCols.length === 0) expected = "none";
+            else if (i === 0) expected = "word";
+            else expected = "character";
+            appendCharCol(word[i]);
+            charColExpected.push(expected);
+        }
     });
 
-    rhythmReviewSymbolsEl.appendChild(colsEl);
+    events.forEach((evt, i) => {
+        const col = charCols[i];
+        if (!col) return;
+        const expected = charColExpected[i];
+        const idealMs = expected === "word" ? wordGapMs : charGapMs;
+        const gapMs = Number(evt.leadingGapMs);
+        let xFrac = 0;
+        if (expected !== "none" && Number.isFinite(gapMs) && idealMs > 0) {
+            const overshootRatio = Math.max(0, (gapMs - idealMs) / idealMs);
+            xFrac = Math.min(1, overshootRatio / X_SPAN_RATIO);
+        }
+
+        const attemptEl = document.createElement("div");
+        attemptEl.className = "key-rhythm-baseline__attempt";
+        const markerEl = document.createElement("div");
+        markerEl.className = "key-rhythm-baseline__attempt-marker";
+        markerEl.style.setProperty("--attempt-x", String(xFrac));
+        const arrowEl = document.createElement("span");
+        arrowEl.className = "key-rhythm-baseline__attempt-arrow";
+        arrowEl.setAttribute("aria-hidden", "true");
+        arrowEl.textContent = "↑";
+        const sentEl = document.createElement("span");
+        sentEl.className = "key-rhythm-baseline__attempt-symbol";
+        sentEl.textContent = evt.symbol;
+        markerEl.append(arrowEl, sentEl);
+        attemptEl.append(markerEl);
+        col.appendChild(attemptEl);
+    });
+
+    block.appendChild(colsEl);
+    return block;
 }
 
 function setRhythmReviewExpanded(expanded) {
@@ -397,10 +482,12 @@ function clearSentSymbols() {
     sentSymbolEl.textContent = "—";
     sentHistoryEl.replaceChildren();
     lastSentEndedAt = null;
+    sentEventsByExercise = copyExercises.map(() => []);
     copyProgress = 0;
     diagGapEl.textContent = "none";
     resetHHClearTracker();
     recordDiagnostic("sent-symbols-clear");
+    renderRhythmReview();
 }
 
 function midiMessageToNoteEvent(message) {
@@ -753,6 +840,7 @@ function renderCopyExercises(event) {
     copyHistoryEl.replaceChildren();
     selectedCopyIndex = 0;
     copyExercises = exercises;
+    sentEventsByExercise = exercises.map(() => []);
     updateExpectedCopySteps();
     if (exercises.length === 0) {
         copySymbolEl.textContent = "—";
@@ -809,6 +897,7 @@ function clearCopyExercises() {
     copyHistoryEl.replaceChildren();
     selectedCopyIndex = 0;
     copyExercises = [];
+    sentEventsByExercise = [];
     updateExpectedCopySteps();
     renderRhythmReview();
 }
@@ -849,6 +938,15 @@ function renderSentSymbol(event) {
     if (Number.isFinite(endedAt)) {
         lastSentEndedAt = endedAt;
     }
+    const bucket = sentEventsByExercise[selectedCopyIndex];
+    if (bucket) {
+        bucket.push({
+            symbol,
+            leadingGap: event.leading_gap || "none",
+            leadingGapMs,
+        });
+    }
+    renderRhythmReview();
     noteSentSymbol(symbol, event.leading_gap, clearSentSymbols);
     noteCopySymbolForProgress(symbol, event.leading_gap || "none");
 }
