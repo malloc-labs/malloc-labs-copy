@@ -53,7 +53,6 @@ let browserMidiInput = null;
 let activeSocket = null;
 let diagnosticEvents = [];
 let midiInputArmed = true;
-let sentReviewEvents = [];
 let lastSentEndedAt = null;
 let claimedSymbolSet = new Set();
 // Left-Alt held state, tracked via event.code so we can scope the
@@ -68,6 +67,7 @@ const KOCH_ORDER = [
     ",", "V", "G", "5", "/", "Q", "9", "2", "H", "3",
     "8", "B", "?", "4", "7", "C", "1", "D", "6", "0", "X",
 ];
+
 
 function setStatus(state, text) {
     statusEl.dataset.status = state;
@@ -312,76 +312,78 @@ function renderClearSentLabel() {
     clearSentEl.setAttribute("aria-keyshortcuts", "C");
 }
 
-function classifyRhythmGap(event) {
-    const leading = event.leading_gap || "none";
-    if (leading === "none") return "none";
-
-    const wordGapMs = Number(keyConfig?.word_gap_ms);
-    const gapMs = Number(event.leading_gap_ms);
-    if (!Number.isFinite(wordGapMs) || wordGapMs <= 0 || !Number.isFinite(gapMs)) {
-        return leading === "word" ? "amber" : "green";
-    }
-
-    if (gapMs < wordGapMs * 0.8) return "green";
-    if (gapMs < wordGapMs * 1.3) return "amber";
-    return "red";
-}
-
-function rhythmGapLabel(event) {
-    const zone = classifyRhythmGap(event);
-    if (zone === "none") return "first symbol";
-    const gapMs = Number(event.leading_gap_ms);
-    const wordGapMs = Number(keyConfig?.word_gap_ms);
-    const gapText = formatMs(gapMs);
-    const reference = Number.isFinite(wordGapMs) && wordGapMs > 0
-        ? ` / word gap ${formatMs(wordGapMs)}`
-        : "";
-    if (zone === "green") return `${gapText}${reference}: green zone`;
-    if (zone === "amber") return `${gapText}${reference}: amber boundary`;
-    return `${gapText}${reference}: red separation`;
-}
-
-function rhythmGapScale(event) {
-    const wordGapMs = Number(keyConfig?.word_gap_ms);
-    const gapMs = Number(event.leading_gap_ms);
-    if (!Number.isFinite(wordGapMs) || wordGapMs <= 0 || !Number.isFinite(gapMs)) {
-        return 1;
-    }
-    return clamp(gapMs / wordGapMs, 0.35, 1.75);
-}
-
+// Render the active exercise as a baseline rhythm view: one column per
+// symbol, each column carrying a letter on top and a zone-group below
+// (green | amber | red, asymmetric — green narrowest, red widest). Zone
+// groups are fixed width regardless of letter — the bar is a perceptual
+// tolerance ruler, not a CW-duration display. Word boundaries insert a
+// blank column the same width as a zone group. User-attempt markers
+// (future) will overlay onto each column's zone-group.
 function renderRhythmReview() {
     if (!rhythmReviewSymbolsEl || !rhythmReviewMetaEl) return;
     rhythmReviewSymbolsEl.replaceChildren();
-    rhythmReviewMetaEl.textContent = sentReviewEvents.length === 0
-        ? "no symbols"
-        : `${sentReviewEvents.length} symbols / timing zones`;
+    rhythmReviewSymbolsEl.setAttribute(
+        "aria-label",
+        "Baseline rhythm for the active exercise",
+    );
 
-    const fragment = document.createDocumentFragment();
-    sentReviewEvents.forEach((event) => {
-        const symbol = event.symbol || "?";
-        const leading = event.leading_gap || "none";
-        const zone = classifyRhythmGap(event);
-        const item = document.createElement("li");
-        item.classList.add(
-            `key-rhythm-review__item--leading-${leading}`,
-            `key-rhythm-review__item--zone-${zone}`,
-        );
-        item.title = rhythmGapLabel(event);
-        item.style.setProperty("--key-rhythm-gap-scale", rhythmGapScale(event).toFixed(2));
+    const exercise = copyExercises[selectedCopyIndex] || "";
+    rhythmReviewMetaEl.textContent = exercise
+        ? `baseline / ${exercise}`
+        : "no exercise";
 
-        const symbolEl = document.createElement("span");
-        symbolEl.className = "key-rhythm-review__symbol";
-        symbolEl.textContent = symbol;
+    if (!exercise) return;
 
-        const markerEl = document.createElement("span");
-        markerEl.className = "key-rhythm-review__marker";
-        markerEl.setAttribute("aria-hidden", "true");
+    const colsEl = document.createElement("div");
+    colsEl.className = "key-rhythm-baseline__cols";
 
-        item.append(symbolEl, markerEl);
-        fragment.appendChild(item);
+    const appendCharCol = (symbol) => {
+        const col = document.createElement("div");
+        col.className = "key-rhythm-baseline__col key-rhythm-baseline__col--char";
+
+        const symEl = document.createElement("span");
+        symEl.className = "key-rhythm-baseline__symbol";
+        symEl.textContent = symbol;
+
+        const zonesEl = document.createElement("div");
+        zonesEl.className = "key-rhythm-baseline__zones";
+        zonesEl.setAttribute("aria-hidden", "true");
+        ["green", "amber", "red"].forEach((zone) => {
+            const cell = document.createElement("span");
+            cell.className = `key-rhythm-baseline__zone key-rhythm-baseline__zone--${zone}`;
+            zonesEl.appendChild(cell);
+        });
+
+        col.append(symEl, zonesEl);
+        colsEl.appendChild(col);
+    };
+
+    const appendWordGapCol = () => {
+        const col = document.createElement("div");
+        col.className = "key-rhythm-baseline__col key-rhythm-baseline__col--word-gap";
+        col.setAttribute("aria-hidden", "true");
+
+        // Placeholder children carry the same vertical space as a char
+        // column so the row stays aligned; nbsp keeps the symbol slot's
+        // baseline, the empty zones div picks up its CSS height.
+        const symEl = document.createElement("span");
+        symEl.className = "key-rhythm-baseline__symbol";
+        symEl.textContent = " ";
+
+        const zonesEl = document.createElement("div");
+        zonesEl.className = "key-rhythm-baseline__zones";
+
+        col.append(symEl, zonesEl);
+        colsEl.appendChild(col);
+    };
+
+    const words = exercise.split(" ").filter((word) => word.length > 0);
+    words.forEach((word, wordIdx) => {
+        if (wordIdx > 0) appendWordGapCol();
+        for (let i = 0; i < word.length; i++) appendCharCol(word[i]);
     });
-    rhythmReviewSymbolsEl.appendChild(fragment);
+
+    rhythmReviewSymbolsEl.appendChild(colsEl);
 }
 
 function setRhythmReviewExpanded(expanded) {
@@ -394,10 +396,8 @@ function setRhythmReviewExpanded(expanded) {
 function clearSentSymbols() {
     sentSymbolEl.textContent = "—";
     sentHistoryEl.replaceChildren();
-    sentReviewEvents = [];
     lastSentEndedAt = null;
     copyProgress = 0;
-    renderRhythmReview();
     diagGapEl.textContent = "none";
     resetHHClearTracker();
     recordDiagnostic("sent-symbols-clear");
@@ -785,6 +785,7 @@ function renderCopyExercises(event) {
         copyHistoryEl.appendChild(item);
     });
     copySymbolEl.textContent = exercises[selectedCopyIndex];
+    renderRhythmReview();
 }
 
 function selectCopyExercise(idx) {
@@ -798,6 +799,7 @@ function selectCopyExercise(idx) {
     });
     copySymbolEl.textContent = items[idx].dataset.exercise || "";
     updateExpectedCopySteps();
+    renderRhythmReview();
     return true;
 }
 
@@ -808,6 +810,7 @@ function clearCopyExercises() {
     selectedCopyIndex = 0;
     copyExercises = [];
     updateExpectedCopySteps();
+    renderRhythmReview();
 }
 
 function renderSentSymbol(event) {
@@ -817,7 +820,6 @@ function renderSentSymbol(event) {
     const leadingGapMs = Number.isFinite(startedAt) && Number.isFinite(lastSentEndedAt)
         ? Math.max(0, (startedAt - lastSentEndedAt) * 1000)
         : null;
-    const reviewEvent = { ...event, symbol, leading_gap_ms: leadingGapMs };
 
     sentSymbolEl.textContent = symbol;
     diagGapEl.textContent = event.leading_gap || "none";
@@ -844,14 +846,9 @@ function renderSentSymbol(event) {
         sentHistoryEl.firstElementChild.remove();
     }
 
-    sentReviewEvents.push(reviewEvent);
-    while (sentReviewEvents.length > MAX_SENT_HISTORY) {
-        sentReviewEvents.shift();
-    }
     if (Number.isFinite(endedAt)) {
         lastSentEndedAt = endedAt;
     }
-    renderRhythmReview();
     noteSentSymbol(symbol, event.leading_gap, clearSentSymbols);
     noteCopySymbolForProgress(symbol, event.leading_gap || "none");
 }

@@ -703,85 +703,90 @@
     height: auto;
     min-height: 0;
     overflow-y: visible;
+    /* Column layout so the legend can be pinned to the bottom-right via
+     * margin-top: auto on the legend itself. */
+    display: flex;
+    flex-direction: column;
 }
 
 .key-rhythm-review__symbols {
-    display: flex;
-    flex-wrap: wrap;
+    /* One column per symbol, fixed width. Asymmetric zone fractions —
+     * tolerance for stretched timing is more forgiving than compressed,
+     * so red is widest, green narrowest. Tune by retuning the vars. */
+    --zone-group-width: 5ch;
+    --zone-green-frac: 1.2fr;
+    --zone-amber-frac: 1.6fr;
+    --zone-red-frac: 2.2fr;
+    --zone-group-height: 0.9rem;
     width: 100%;
-    gap: 0;
-    list-style: none;
-    margin: 0;
-    padding: 0;
 }
 
-.key-rhythm-review__symbols li {
-    --key-rhythm-gap-scale: 1;
-    --key-rhythm-marker-width: clamp(0.55ch, calc(var(--key-rhythm-gap-scale) * 1.35ch), 3.2ch);
-    position: relative;
-    display: inline-flex;
-    align-items: baseline;
-    justify-content: center;
-    width: 1ch;
-    padding-bottom: 0.45rem;
+.key-rhythm-baseline__cols {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0;
+}
+
+.key-rhythm-baseline__col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+    width: var(--zone-group-width);
+    flex-shrink: 0;
+}
+
+.key-rhythm-baseline__symbol {
     font-family: var(--mr-font-mono);
     font-size: var(--mr-size-small);
     color: var(--mr-text);
-}
-
-.key-rhythm-review__symbol {
     line-height: 1.2;
 }
 
-.key-rhythm-review__marker {
-    position: absolute;
-    right: 100%;
-    bottom: 0.08rem;
+.key-rhythm-baseline__zones {
+    display: grid;
+    grid-template-columns:
+        var(--zone-green-frac)
+        var(--zone-amber-frac)
+        var(--zone-red-frac);
+    width: 100%;
+    height: var(--zone-group-height);
+}
+
+.key-rhythm-baseline__zone {
     display: block;
-    width: var(--key-rhythm-marker-width);
-    height: 0.14rem;
-    border-radius: 999px;
-    background: var(--mr-muted);
-    opacity: 0.32;
-    pointer-events: none;
+    height: 100%;
 }
 
-.key-rhythm-review__item--leading-none {
-    margin-left: 0;
+.key-rhythm-baseline__zone:first-child {
+    border-top-left-radius: 3px;
+    border-bottom-left-radius: 3px;
 }
 
-.key-rhythm-review__item--leading-character {
-    margin-left: 0.5ch;
+.key-rhythm-baseline__zone:last-child {
+    border-top-right-radius: 3px;
+    border-bottom-right-radius: 3px;
 }
 
-.key-rhythm-review__item--leading-word {
-    margin-left: var(--mr-space-5);
-}
-
-.key-rhythm-review__item--zone-none .key-rhythm-review__marker {
-    opacity: 0;
-}
-
-.key-rhythm-review__item--zone-green .key-rhythm-review__marker {
+.key-rhythm-baseline__zone--green {
     background: var(--key-rhythm-green);
-    opacity: 0.46;
 }
 
-.key-rhythm-review__item--zone-amber .key-rhythm-review__marker {
+.key-rhythm-baseline__zone--amber {
     background: var(--key-rhythm-amber);
-    opacity: 0.58;
 }
 
-.key-rhythm-review__item--zone-red .key-rhythm-review__marker {
+.key-rhythm-baseline__zone--red {
     background: var(--key-rhythm-red);
-    opacity: 0.62;
 }
 
 .key-rhythm-review__legend {
     display: flex;
     flex-wrap: wrap;
+    justify-content: flex-end;
     gap: var(--mr-space-4);
-    margin-top: var(--mr-space-3);
+    margin-top: auto;
     font-family: var(--mr-font-mono);
     font-size: var(--mr-size-small);
     color: var(--mr-muted);
