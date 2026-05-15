@@ -116,6 +116,24 @@
             </details>
 
             <details class="settings-section">
+                <summary>Save Directory</summary>
+                <p class="settings-section__desc">Where Copy writes session records and other exports.</p>
+
+                <div class="settings-field">
+                    <label for="save-directory">Path</label>
+                    <input
+                        id="save-directory"
+                        name="save_directory"
+                        type="text"
+                        autocomplete="off"
+                        spellcheck="false"
+                        required
+                    >
+                    <p>Defaults to the folder that holds <code>config.toml</code>. Use <code>~</code> for your home directory.</p>
+                </div>
+            </details>
+
+            <details class="settings-section">
                 <summary>Test Message</summary>
                 <div class="settings-test">
                     <p>ARE YOU READY / CAN YOU HEAR ME / YES LOUD AND CLEAR</p>

@@ -36,7 +36,8 @@ Client → server, JSON over WS::
     {"action": "get-audio-settings"}
     {"action": "set-audio-settings", "character_wpm": 20, "effective_wpm": 10,
      "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1,
-     "trinkey_buzzer_enabled": false, "hh_clear_enabled": false}
+     "trinkey_buzzer_enabled": false, "hh_clear_enabled": false,
+     "save_directory": "~/.local/share/copy_653"}
     {"action": "play-test-message", "character_wpm": 20, "effective_wpm": 10,
      "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1}
     {"action": "save-test-message", "character_wpm": 20, "effective_wpm": 10,
@@ -55,7 +56,8 @@ unsolicited on connect, and after every change::
     {"type": "audio-settings", "character_wpm": 20, "effective_wpm": 10,
      "farnsworth_enabled": true, "tone_shape": 2, "receiver_bed": 2,
      "cadence_variation": 1, "trinkey_buzzer_enabled": false,
-     "hh_clear_enabled": false}
+     "hh_clear_enabled": false,
+     "save_directory": "/home/learner/.local/share/copy_653"}
 
 During a Koch Exercise session::
 
@@ -135,6 +137,7 @@ import mimetypes
 import socket
 import threading
 import time
+from datetime import datetime, timezone
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any, Callable, Iterator
@@ -160,12 +163,19 @@ from copy_653.config import (
     load_developer_settings,
     load_keyer_settings,
     load_letters_config,
+    load_save_directory,
     load_server_settings,
     load_session_duration,
     save_audio_timing,
     save_claimed_symbols,
     save_developer_settings,
     save_keyer_settings,
+    save_save_directory,
+)
+from copy_653.session import (
+    CadenceSendRecord,
+    KochExerciseRecord,
+    write_record,
 )
 from copy_653.letters import (
     ANCHORED_SYMBOLS,
@@ -406,12 +416,15 @@ def _audio_settings_event_from_params(
     params: AudioParameters,
     keyer_settings: KeyerSettings | None = None,
     developer_settings: DeveloperSettings | None = None,
+    save_directory: Path | None = None,
 ) -> dict[str, Any]:
     """Build the learner-facing audio timing event payload."""
     if keyer_settings is None:
         keyer_settings = KeyerSettings()
     if developer_settings is None:
         developer_settings = DeveloperSettings()
+    if save_directory is None:
+        save_directory = DEFAULT_CONFIG_PATH.parent
     return {
         "type": "audio-settings",
         "character_wpm": params.character_speed_wpm,
@@ -422,6 +435,7 @@ def _audio_settings_event_from_params(
         "cadence_variation": params.cadence_variation,
         "trinkey_buzzer_enabled": keyer_settings.trinkey_buzzer_enabled,
         "hh_clear_enabled": developer_settings.hh_clear_enabled,
+        "save_directory": str(save_directory),
     }
 
 
@@ -468,6 +482,7 @@ async def _push_key_note_event(
     audio_params: AudioParameters,
     assembler: KeyElementAssembler,
     decoder: KeyDecoder,
+    recorder: Callable[[dict[str, Any]], None] | None = None,
 ) -> bool:
     """Apply one note event to the key decoder and emit any resulting events.
 
@@ -475,11 +490,17 @@ async def _push_key_note_event(
     closed an active note-on). Callers use the return value to gate the
     character-gap flush timer so it never fires mid-stroke between a
     note-on and its matching note-off.
+
+    If ``recorder`` is provided, every event payload sent to the client
+    is also handed to it. Used by the Cadence session recorder to
+    accumulate sent symbols and raw MIDI events.
     """
     element = assembler.push(item, settings)
     key_event = _key_event_event(item, settings, audio_params, element)
     if key_event is not None:
         await _send_event(ws, key_event)
+        if recorder is not None:
+            recorder(key_event)
     if element is None:
         return False
 
@@ -493,7 +514,10 @@ async def _push_key_note_event(
         decoder.reset()
         return True
     if decoded is not None:
-        await _send_event(ws, _sent_symbol_event(decoded))
+        sent_event = _sent_symbol_event(decoded)
+        await _send_event(ws, sent_event)
+        if recorder is not None:
+            recorder(sent_event)
     return True
 
 
@@ -548,6 +572,9 @@ async def _start_action(
     samples = synth.synthesize_sequence(symbols_list, audio_params)
     audio_task = asyncio.create_task(asyncio.to_thread(playback.play, samples, audio_params))
 
+    started_at = datetime.now(timezone.utc)
+    emitted_symbols: list[dict[str, Any]] = []
+
     try:
         cursor = 0.0
         for symbol, t_on, t_off in timeline:
@@ -555,6 +582,7 @@ async def _start_action(
             if wait > 0:
                 await asyncio.sleep(wait)
             cursor = t_on
+            emitted_symbols.append({"symbol": symbol, "t_on": t_on, "t_off": t_off})
             await _send_event(
                 ws,
                 {"type": "symbol", "symbol": symbol, "t_on": t_on, "t_off": t_off},
@@ -564,6 +592,15 @@ async def _start_action(
         # session ended — premature end-of-session would lie about what the
         # learner is hearing (§1.5).
         await audio_task
+        _write_koch_record(
+            config_path=config_path,
+            audio_params=audio_params,
+            claimed=claimed,
+            duration_seconds=duration,
+            seed=generated.seed,
+            symbols=emitted_symbols,
+            started_at=started_at,
+        )
         await _send_event(ws, {"type": "session-end"})
 
     except asyncio.CancelledError:
@@ -737,12 +774,17 @@ async def _request_copy_exercises_action(
     ws: WebSocketServerProtocol,
     message: dict[str, Any],
     config_path: Path,
-) -> None:
+) -> _ActiveCadenceSession | None:
     """Generate short copy exercises from the claimed set and push them.
 
     Used by the Cadence page's Copy section. Display-only on the
     client today; the engine owns generation so the seed is recorded
     and the lexicon swap stays a single-module change.
+
+    Returns a freshly-opened :class:`_ActiveCadenceSession` on success
+    (the handler will hold it for the duration of the keying), or
+    ``None`` if the request was rejected (invalid args, empty claimed
+    set, generator failure).
     """
     try:
         overrides = {
@@ -763,12 +805,12 @@ async def _request_copy_exercises_action(
             ws,
             {"type": "error", "reason": "invalid-copy-exercises-request", "detail": str(exc)},
         )
-        return
+        return None
 
     claimed = load_claimed_symbols(config_path)
     if not claimed:
         await _send_event(ws, {"type": "error", "reason": "no-claimed-symbols"})
-        return
+        return None
 
     kwargs: dict[str, Any] = {"claimed_set": claimed}
     for name, value in overrides.items():
@@ -782,7 +824,7 @@ async def _request_copy_exercises_action(
             ws,
             {"type": "error", "reason": "invalid-copy-exercises-request", "detail": str(exc)},
         )
-        return
+        return None
 
     await _send_event(
         ws,
@@ -794,6 +836,19 @@ async def _request_copy_exercises_action(
         },
     )
 
+    # Capture request params as the learner asked for them (after
+    # validation, before defaulting) so the record reflects intent
+    # rather than the engine's fallbacks.
+    request_payload = {k: v for k, v in overrides.items() if v is not None}
+    return _ActiveCadenceSession(
+        started_at=datetime.now(timezone.utc),
+        audio=load_audio_parameters(config_path),
+        claimed=claimed,
+        request=request_payload,
+        seed=result.seed,
+        exercises=list(result.exercises),
+    )
+
 
 async def _get_audio_settings_action(
     ws: WebSocketServerProtocol,
@@ -802,9 +857,12 @@ async def _get_audio_settings_action(
     params = load_audio_parameters(config_path)
     keyer_settings = load_keyer_settings(config_path)
     developer_settings = load_developer_settings(config_path)
+    save_directory = load_save_directory(config_path)
     await _send_event(
         ws,
-        _audio_settings_event_from_params(params, keyer_settings, developer_settings),
+        _audio_settings_event_from_params(
+            params, keyer_settings, developer_settings, save_directory
+        ),
     )
 
 
@@ -842,6 +900,10 @@ async def _set_audio_settings_action(
             message.get("hh_clear_enabled"),
             "hh_clear_enabled",
         )
+        save_directory_input = _optional_non_empty_string(
+            message.get("save_directory"),
+            "save_directory",
+        )
         params = save_audio_timing(
             character_speed_wpm=character_wpm,
             effective_speed_wpm=effective_wpm,
@@ -864,6 +926,10 @@ async def _set_audio_settings_action(
             )
         else:
             developer_settings = load_developer_settings(config_path)
+        if save_directory_input is not None:
+            save_directory = save_save_directory(save_directory_input, path=config_path)
+        else:
+            save_directory = load_save_directory(config_path)
     except ValueError as exc:
         await _send_event(
             ws,
@@ -877,7 +943,9 @@ async def _set_audio_settings_action(
 
     await _send_event(
         ws,
-        _audio_settings_event_from_params(params, keyer_settings, developer_settings),
+        _audio_settings_event_from_params(
+            params, keyer_settings, developer_settings, save_directory
+        ),
     )
 
 
@@ -961,6 +1029,7 @@ async def _run_key_input_action(
     ws: WebSocketServerProtocol,
     config_path: Path,
     note_source: KeyNoteSource | None = None,
+    recorder: Callable[[dict[str, Any]], None] | None = None,
 ) -> None:
     """Receive Trinkey MIDI note events, decode symbols, and push them to the page."""
     try:
@@ -1043,6 +1112,7 @@ async def _run_key_input_action(
                 audio_params=audio_params,
                 assembler=assembler,
                 decoder=decoder,
+                recorder=recorder,
             )
             if formed_element:
                 flush_deadline = loop.time() + character_gap_seconds
@@ -1134,6 +1204,133 @@ def _optional_bool(value: Any, field: str) -> bool | None:
     if not isinstance(value, bool):
         raise ValueError(f"{field} must be a boolean")
     return value
+
+
+class _ActiveCadenceSession:
+    """In-flight Cadence (Key → Send) recording state for one WS connection."""
+
+    __slots__ = (
+        "started_at",
+        "audio",
+        "claimed",
+        "request",
+        "seed",
+        "exercises",
+        "sent",
+        "key_events",
+    )
+
+    def __init__(
+        self,
+        *,
+        started_at: datetime,
+        audio: AudioParameters,
+        claimed: tuple[str, ...],
+        request: dict[str, Any],
+        seed: int,
+        exercises: list[str],
+    ) -> None:
+        self.started_at = started_at
+        self.audio = audio
+        self.claimed = claimed
+        self.request = request
+        self.seed = seed
+        self.exercises = exercises
+        self.sent: list[dict[str, Any]] = []
+        self.key_events: list[dict[str, Any]] = []
+
+    def record_event(self, payload: dict[str, Any]) -> None:
+        """Capture a relevant WS event payload into the session record."""
+        kind = payload.get("type")
+        if kind == "sent-symbol":
+            self.sent.append(
+                {
+                    "symbol": payload["symbol"],
+                    "pattern": payload["pattern"],
+                    "started_at": payload["started_at"],
+                    "ended_at": payload["ended_at"],
+                    "leading_gap": payload["leading_gap"],
+                }
+            )
+        elif kind == "key-event":
+            self.key_events.append(
+                {
+                    "kind": payload["kind"],
+                    "note": payload["note"],
+                    "pressed": payload["pressed"],
+                    "timestamp": payload["timestamp"],
+                }
+            )
+
+
+def _finalize_cadence_session(
+    session: _ActiveCadenceSession,
+    config_path: Path,
+) -> None:
+    """Persist a Cadence session record. Best-effort; failures are logged."""
+    if not session.sent and not session.key_events:
+        # Nothing was keyed — no truth to record. Avoids leaving empty
+        # files when a learner opens the page but never starts keying.
+        return
+    try:
+        save_directory = load_save_directory(config_path)
+        record = CadenceSendRecord(
+            started_at=session.started_at,
+            ended_at=datetime.now(timezone.utc),
+            audio=session.audio,
+            claimed_set=session.claimed,
+            request=session.request,
+            seed=session.seed,
+            exercises=session.exercises,
+            sent=session.sent,
+            key_events=session.key_events,
+        )
+        write_record(record, save_directory)
+    except Exception:
+        logger.exception("failed to write cadence-send record")
+
+
+def _write_koch_record(
+    *,
+    config_path: Path,
+    audio_params: AudioParameters,
+    claimed: tuple[str, ...],
+    duration_seconds: float,
+    seed: int,
+    symbols: list[dict[str, Any]],
+    started_at: datetime,
+) -> None:
+    """Persist a Koch Exercises session record (spec §5.1, §6.1).
+
+    Best-effort: a write failure is logged but does not interrupt the
+    ``session-end`` signal. Truth that fails to land on disk is still
+    truth the learner heard.
+    """
+    try:
+        save_directory = load_save_directory(config_path)
+        record = KochExerciseRecord(
+            started_at=started_at,
+            ended_at=datetime.now(timezone.utc),
+            audio=audio_params,
+            claimed_set=claimed,
+            duration_seconds=duration_seconds,
+            seed=seed,
+            symbols=symbols,
+        )
+        write_record(record, save_directory)
+    except Exception:
+        logger.exception("failed to write koch-exercise record")
+
+
+def _optional_non_empty_string(value: Any, field: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be a string")
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError(f"{field} must not be empty")
+    return stripped
 
 
 def _browser_midi_note_event(
@@ -1269,6 +1466,23 @@ async def handler(
     # timestamps and timer-driven flushes share one clock domain.
     browser_key_clock_offset: float | None = None
 
+    # Active Cadence (Key → Send) session, opened on request-copy-exercises
+    # and closed on stop-key-input, a fresh request-copy-exercises, or
+    # socket close. ``None`` between sessions.
+    active_cadence_session: _ActiveCadenceSession | None = None
+
+    def _cadence_recorder(event: dict[str, Any]) -> None:
+        """Forward an outbound key/sent event to the active Cadence record."""
+        if active_cadence_session is not None:
+            active_cadence_session.record_event(event)
+
+    def _close_active_cadence_session() -> None:
+        """Persist and clear any in-flight Cadence session."""
+        nonlocal active_cadence_session
+        if active_cadence_session is not None:
+            _finalize_cadence_session(active_cadence_session, config_path)
+            active_cadence_session = None
+
     async def _cancel_browser_key_flush() -> None:
         nonlocal browser_key_flush_task
         if browser_key_flush_task is not None and not browser_key_flush_task.done():
@@ -1352,7 +1566,13 @@ async def handler(
             elif action == "unclaim-symbol":
                 await _unclaim_symbol_action(ws, message.get("symbol", ""), config_path)
             elif action == "request-copy-exercises":
-                await _request_copy_exercises_action(ws, message, config_path)
+                # A fresh request closes any in-flight Cadence session
+                # before opening a new one — we never silently merge
+                # two separate rounds of keying into one record.
+                _close_active_cadence_session()
+                new_session = await _request_copy_exercises_action(ws, message, config_path)
+                if new_session is not None:
+                    active_cadence_session = new_session
             elif action == "get-audio-settings":
                 await _get_audio_settings_action(ws, config_path)
             elif action == "set-audio-settings":
@@ -1365,7 +1585,9 @@ async def handler(
                     except (asyncio.CancelledError, Exception):
                         pass
                 current_key_input_task = asyncio.create_task(
-                    _run_key_input_action(ws, config_path, key_note_source)
+                    _run_key_input_action(
+                        ws, config_path, key_note_source, recorder=_cadence_recorder
+                    )
                 )
             elif action == "start-browser-key-input":
                 if current_key_input_task is not None and not current_key_input_task.done():
@@ -1441,6 +1663,7 @@ async def handler(
                     audio_params=browser_key_audio_params,
                     assembler=browser_key_assembler,
                     decoder=browser_key_decoder,
+                    recorder=_cadence_recorder,
                 )
                 # Only arm the character-gap flush after a completed element
                 # (note-off). On note-on we're mid-stroke; rearming the timer
@@ -1462,6 +1685,7 @@ async def handler(
                 browser_key_clock_offset = None
                 if current_key_input_task is not None and not current_key_input_task.done():
                     current_key_input_task.cancel()
+                _close_active_cadence_session()
             elif action == "play-test-message":
                 if current_test_message_task is not None and not current_test_message_task.done():
                     current_test_message_task.cancel()
@@ -1560,6 +1784,9 @@ async def handler(
         if current_key_input_task is not None and not current_key_input_task.done():
             current_key_input_task.cancel()
         await _cancel_browser_key_flush()
+        # Persist any in-flight Cadence session before the connection
+        # disappears. The learner may have closed the tab mid-keying.
+        _close_active_cadence_session()
 
 
 async def serve_app(
