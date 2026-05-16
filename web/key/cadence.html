@@ -14,19 +14,35 @@
     <main class="landing-shell exercises-shell cadence-shell">
         <header class="landing-header">
             <p class="eyebrow"><a href="index.html" class="back-link">Key</a></p>
-            <h1 class="landing-title">Cadence <span class="status" data-status="connecting">connecting...</span></h1>
+            <h1 class="landing-title">
+                <span class="landing-title__text">Cadence <span class="status" data-status="connecting">connecting...</span></span>
+                <svg class="cadence-speaker" id="cadence-speaker" data-state="off" viewBox="0 0 32 32" role="img" aria-label="Sidetone state">
+                    <!-- IEEE 315 loudspeaker: rectangle body + trapezoidal cone -->
+                    <rect x="6" y="11" width="6" height="10"/>
+                    <polygon points="12,11 12,21 22,27 22,5"/>
+                </svg>
+            </h1>
         </header>
         <hr class="landing-rule">
 
-        <div class="key-page-actions">
-            <button type="button" class="key-sound-toggle" id="key-sound-toggle">enable sound</button>
-            <button type="button" class="key-sound-toggle" id="key-clear-sent">clear</button>
-            <button type="button" class="key-sound-toggle" id="key-new-set">new</button>
-        </div>
+        <section class="key-page-actions" aria-label="Top menu">
+            <button type="button" class="key-page-actions__toggle" id="key-page-actions-toggle" aria-expanded="false" aria-controls="key-page-actions-items">
+                <span class="key-page-actions__label" id="key-page-actions-label"></span>
+                <span class="key-page-actions__arrow" id="key-page-actions-arrow" aria-hidden="true">▶</span>
+            </button>
+            <div class="key-page-actions__items" id="key-page-actions-items" hidden>
+                <button type="button" class="key-sound-toggle" id="key-sound-toggle">enable sound</button>
+                <button type="button" class="key-sound-toggle" id="key-clear-sent">clear</button>
+                <button type="button" class="key-sound-toggle" id="key-new-set">new</button>
+            </div>
+        </section>
 
         <section class="koch-sequence" aria-label="Known symbol sequence">
-            <p class="sequence-label">Sequence</p>
-            <div class="sequence-row sequence-row--read-only" id="sequence-row" role="list"></div>
+            <button type="button" class="koch-sequence__toggle" id="sequence-toggle" aria-expanded="false" aria-controls="sequence-row">
+                <span class="koch-sequence__label" id="sequence-toggle-label"></span>
+                <span class="koch-sequence__arrow" id="sequence-arrow" aria-hidden="true">▶</span>
+            </button>
+            <div class="sequence-row sequence-row--read-only" id="sequence-row" role="list" hidden></div>
         </section>
 
         <section class="key-copy" aria-label="Copy">
@@ -45,11 +61,16 @@
         </section>
 
         <section class="key-sent" aria-label="Sent symbols">
-            <p class="sequence-label">Sent</p>
-            <div class="key-sent-current" aria-live="polite">
-                <span class="key-sent-symbol" id="sent-symbol">—</span>
+            <button type="button" class="key-sent__toggle" id="sent-toggle" aria-expanded="false" aria-controls="key-sent-body">
+                <span class="key-sent__label" id="sent-toggle-label"></span>
+                <span class="key-sent__arrow" id="sent-arrow" aria-hidden="true">▶</span>
+            </button>
+            <div class="key-sent__body" id="key-sent-body" hidden>
+                <div class="key-sent-current" aria-live="polite">
+                    <span class="key-sent-symbol" id="sent-symbol">—</span>
+                </div>
+                <ol class="key-sent-history" id="sent-history" aria-label="Recent sent symbols"></ol>
             </div>
-            <ol class="key-sent-history" id="sent-history" aria-label="Recent sent symbols"></ol>
         </section>
 
         <section class="key-rhythm-review" aria-label="Rhythm review">
