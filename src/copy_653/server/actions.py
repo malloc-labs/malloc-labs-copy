@@ -699,12 +699,12 @@ async def _run_key_input_action(
                 try:
                     item = await asyncio.wait_for(queue.get(), timeout=timeout)
                 except asyncio.TimeoutError:
-                    await _flush_key_symbol(ws, decoder)
+                    await _flush_key_symbol(ws, decoder, recorder)
                     flush_deadline = None
                     continue
 
             if item is None:
-                await _flush_key_symbol(ws, decoder)
+                await _flush_key_symbol(ws, decoder, recorder)
                 return
             if isinstance(item, BaseException):
                 reason = (
@@ -733,12 +733,26 @@ async def _run_key_input_action(
         await asyncio.to_thread(thread.join, 1.0)
 
 
-async def _flush_key_symbol(ws: WebSocketServerProtocol, decoder: KeyDecoder) -> None:
+async def _flush_key_symbol(
+    ws: WebSocketServerProtocol,
+    decoder: KeyDecoder,
+    recorder: Callable[[dict[str, Any]], None] | None = None,
+) -> None:
     """Force a flush of any pending marks; the caller has already waited
-    the character gap externally (timer task or wait_for timeout)."""
+    the character gap externally (timer task or wait_for timeout).
+
+    ``recorder`` mirrors :func:`_push_key_note_event`'s contract: when
+    provided, the sent-symbol payload is also handed to it so the
+    Cadence session record captures timer-flushed symbols (i.e. the
+    last symbol a learner keys, or any symbol finalised by silence
+    rather than by the next stroke).
+    """
     decoded = decoder.flush_pending()
     if decoded is not None:
-        await _send_event(ws, _sent_symbol_event(decoded))
+        sent_event = _sent_symbol_event(decoded)
+        await _send_event(ws, sent_event)
+        if recorder is not None:
+            recorder(sent_event)
 
 
 async def _run_morse_repeat(

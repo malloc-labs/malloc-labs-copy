@@ -100,6 +100,10 @@ class BrowserKeyInputState:
     # timestamps and timer-driven flushes share one clock domain.
     clock_offset: float | None = None
     flush_task: asyncio.Task[None] | None = None
+    # Forwarded to the timer-driven flush so symbols finalised by
+    # silence (the common case) reach the Cadence record alongside
+    # symbols finalised by the next stroke's gap-in-push.
+    recorder: Callable[[dict[str, Any]], None] | None = None
 
     async def cancel_flush(self) -> None:
         if self.flush_task is not None and not self.flush_task.done():
@@ -118,7 +122,7 @@ class BrowserKeyInputState:
             await asyncio.sleep(
                 timing.send_inter_character_seconds(self.audio_params.character_speed_wpm)
             )
-            await _flush_key_symbol(self.ws, self.decoder)
+            await _flush_key_symbol(self.ws, self.decoder, self.recorder)
 
         self.flush_task = asyncio.create_task(_flush_after_gap())
 
@@ -301,6 +305,7 @@ async def handler(
                         ),
                     ),
                     clock_offset=clock_offset,
+                    recorder=state.cadence_recorder,
                 )
                 await _send_event(
                     ws,
