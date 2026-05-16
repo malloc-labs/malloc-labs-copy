@@ -56,6 +56,12 @@ function initialise() {
         }
     });
 
+    document.addEventListener("copy-653:sent-clear", () => {
+        events = [];
+        progress = 0;
+        render();
+    });
+
     document.addEventListener("copy-653:sent-symbol", (event) => {
         if (expectedSteps.length === 0) return;
         const detail = event.detail || {};
