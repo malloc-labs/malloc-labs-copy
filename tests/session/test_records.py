@@ -39,7 +39,7 @@ def _koch_record(started_at: datetime | None = None) -> KochExerciseRecord:
     )
 
 
-def _cadence_record() -> CadenceSendRecord:
+def _cadence_record(selection: dict | None = None) -> CadenceSendRecord:
     started = datetime(2026, 5, 15, 19, 30, 45, 123_000, tzinfo=timezone.utc)
     ended = datetime(2026, 5, 15, 19, 31, 15, 456_000, tzinfo=timezone.utc)
     return CadenceSendRecord(
@@ -69,6 +69,7 @@ def _cadence_record() -> CadenceSendRecord:
             {"kind": "dit", "note": 1, "pressed": True, "timestamp": 1.024},
             {"kind": "dit", "note": 1, "pressed": False, "timestamp": 1.110},
         ],
+        selection=selection,
     )
 
 
@@ -119,6 +120,32 @@ def test_cadence_record_carries_exercises_sent_and_key_events(tmp_path: Path):
         "pressed": True,
         "timestamp": 1.024,
     }
+
+
+def test_schema_version_is_one_one():
+    assert SCHEMA_VERSION == "1.1"
+
+
+def test_cadence_selection_round_trips_when_present(tmp_path: Path):
+    selection = {"candidate_count": 20, "scores": [23, 42, 61, 69, 133]}
+    path = write_record(_cadence_record(selection=selection), tmp_path)
+    parsed = json.loads(path.read_text())
+
+    assert parsed["selection"] == selection
+
+
+def test_cadence_selection_absent_when_not_provided(tmp_path: Path):
+    path = write_record(_cadence_record(), tmp_path)
+    parsed = json.loads(path.read_text())
+
+    assert "selection" not in parsed
+
+
+def test_koch_record_never_carries_selection(tmp_path: Path):
+    path = write_record(_koch_record(), tmp_path)
+    parsed = json.loads(path.read_text())
+
+    assert "selection" not in parsed
 
 
 def test_write_record_uses_per_mode_subdirectory(tmp_path: Path):
