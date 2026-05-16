@@ -40,7 +40,7 @@ from typing import Any
 from copy_653 import __version__
 from copy_653.audio.parameters import AudioParameters
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 
 def _audio_snapshot(params: AudioParameters) -> dict[str, Any]:
@@ -125,11 +125,16 @@ class CadenceSendRecord:
     # Raw key press/release events. Each entry:
     # {"kind", "note", "pressed", "timestamp"}
     key_events: list[dict[str, Any]] = field(default_factory=list)
+    # Optional generator diagnostics (schema 1.1+). When present:
+    # {"candidate_count": int, "scores": [int, ...]}. ``scores`` is
+    # parallel to ``exercises``. Absent for records produced before
+    # the score+select layer landed; analysis tools should guard.
+    selection: dict[str, Any] | None = None
 
     mode: str = "cadence-send"
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "schema_version": SCHEMA_VERSION,
             "engine_version": __version__,
             "mode": self.mode,
@@ -143,6 +148,9 @@ class CadenceSendRecord:
             "sent": list(self.sent),
             "key_events": list(self.key_events),
         }
+        if self.selection is not None:
+            payload["selection"] = dict(self.selection)
+        return payload
 
 
 def write_record(

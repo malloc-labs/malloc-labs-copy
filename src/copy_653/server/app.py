@@ -847,6 +847,10 @@ async def _request_copy_exercises_action(
         request=request_payload,
         seed=result.seed,
         exercises=list(result.exercises),
+        selection={
+            "candidate_count": result.candidate_count,
+            "scores": list(result.scores),
+        },
     )
 
 
@@ -1216,6 +1220,7 @@ class _ActiveCadenceSession:
         "request",
         "seed",
         "exercises",
+        "selection",
         "sent",
         "key_events",
     )
@@ -1229,6 +1234,7 @@ class _ActiveCadenceSession:
         request: dict[str, Any],
         seed: int,
         exercises: list[str],
+        selection: dict[str, Any] | None = None,
     ) -> None:
         self.started_at = started_at
         self.audio = audio
@@ -1236,6 +1242,7 @@ class _ActiveCadenceSession:
         self.request = request
         self.seed = seed
         self.exercises = exercises
+        self.selection = selection
         self.sent: list[dict[str, Any]] = []
         self.key_events: list[dict[str, Any]] = []
 
@@ -1284,6 +1291,7 @@ def _finalize_cadence_session(
             exercises=session.exercises,
             sent=session.sent,
             key_events=session.key_events,
+            selection=session.selection,
         )
         write_record(record, save_directory)
     except Exception:

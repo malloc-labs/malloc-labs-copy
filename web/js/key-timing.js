@@ -945,6 +945,8 @@ function noteCopySymbolForProgress(symbol, leadingGap) {
             // the last review intact until they decide to move on.
             if (selectedCopyIndex + 1 < copyExercises.length) {
                 selectCopyExercise(selectedCopyIndex + 1);
+            } else {
+                sentSymbolEl.textContent = "Completed";
             }
         }
         return;

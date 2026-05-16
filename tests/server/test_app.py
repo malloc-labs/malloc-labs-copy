@@ -328,7 +328,7 @@ async def test_start_action_writes_koch_record_to_save_directory(tmp_path, patch
 
         record = json.loads(files[0].read_text())
         assert record["mode"] == "koch-exercise"
-        assert record["schema_version"] == "1.0"
+        assert record["schema_version"] == "1.1"
         assert record["duration_seconds"] == 1.5
         assert record["claimed_set"] == ["K", "M"]
         symbol_events = [e for e in events if e["type"] == "symbol"]
