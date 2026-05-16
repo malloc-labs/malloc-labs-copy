@@ -35,6 +35,7 @@ const diagLogEl = document.getElementById("diag-log");
 const diagRawLogEl = document.getElementById("diag-raw-log");
 // Copy section is Cadence-only; absent on the Freeplay page.
 const copySymbolEl = document.getElementById("copy-symbol");
+const copyImiEl = document.getElementById("copy-imi");
 const copyHistoryEl = document.getElementById("copy-history");
 const copyPositionLabelEl = document.getElementById("copy-position-label");
 const copyHistoryToggleEl = document.getElementById("copy-history-toggle");
@@ -82,6 +83,12 @@ let claimedSymbolSet = new Set();
 // Cadence preview keybind to LeftAlt only (not RightAlt). Reset on blur
 // because the matching keyup may never arrive if focus is lost.
 let leftAltDown = false;
+// IMI cue scheduling. lastNoteOffAt is stamped on every browser-MIDI
+// note-off (not lastSentEndedAt — that only updates after a successful
+// decode, so a runaway concat would let the cue flash while the learner
+// is still actively keying). Cleared to null on the next note-on.
+let lastNoteOffAt = null;
+let imiCueTimerId = null;
 
 // Canonical Koch order — mirrors KOCH_ORDER in patterns.py.
 const KOCH_ORDER = [
@@ -689,6 +696,7 @@ function clearSentSymbols() {
     // review — clear is scoped to the Sent line so the review section
     // preserves prior attempts across clears.
     copyProgress = 0;
+    clearImiCue();
     diagGapEl.textContent = "none";
     resetHHClearTracker();
     recordDiagnostic("sent-symbols-clear");
@@ -858,10 +866,14 @@ function handleFormedBrowserMidiEvent(event) {
     queueDiagEvent(`formed ${kind} ${event.pressed ? "down" : "up"} / note ${event.note}`);
 
     if (event.pressed) {
+        lastNoteOffAt = null;
+        clearImiCue();
         pendingRawOns.push({ kind, note: event.note, timestamp: Number(event.timestamp) });
         sidetone.keyDown(event.note);
     } else {
         sidetone.keyUp(event.note);
+        lastNoteOffAt = performance.now();
+        refreshImiCue();
     }
     updateAudioDiagnostic();
     if (activeSocket?.readyState === WebSocket.OPEN) {
@@ -1015,6 +1027,56 @@ function updateExpectedCopySteps() {
     copyProgress = 0;
 }
 
+// Show "IMI - Repeat; Say Again" once the learner has been silent for
+// word_gap_seconds with an in-flight attempt (copyProgress > 0). Word
+// gap is the threshold rather than character gap so the cue never
+// flickers during normal inter-character pauses inside an exercise.
+// Full reset — used by session events (clear, exercise switch,
+// completion) so the cue doesn't reappear after the context has
+// moved on. Resets lastNoteOffAt so a stale note-off can't trigger
+// the cue in the new context.
+function clearImiCue() {
+    if (imiCueTimerId !== null) {
+        clearTimeout(imiCueTimerId);
+        imiCueTimerId = null;
+    }
+    lastNoteOffAt = null;
+    if (copyImiEl) copyImiEl.hidden = true;
+}
+
+// Idempotent — recomputes the cue's pending-vs-visible state from
+// current lastNoteOffAt. Called from note-off and whenever copyProgress
+// changes via sent-symbol, so the cue tracks the actual silence window
+// rather than the moment of any single event. Intentionally does not
+// gate on copyProgress: after a runaway concat the decoder emits `?`
+// and noteCopySymbolForProgress resets progress to 0, but the learner
+// still needs the cue at that point — they were keying, they paused,
+// they want to try again.
+function refreshImiCue() {
+    if (imiCueTimerId !== null) {
+        clearTimeout(imiCueTimerId);
+        imiCueTimerId = null;
+    }
+    if (!copyImiEl) return;
+    if (expectedCopySteps.length === 0 || lastNoteOffAt === null) {
+        copyImiEl.hidden = true;
+        return;
+    }
+    const ditMs = Number(keyConfig?.dit_ms_expected) || 60;
+    const wordGapMs = 7 * ditMs;
+    const elapsed = performance.now() - lastNoteOffAt;
+    if (elapsed >= wordGapMs) {
+        copyImiEl.hidden = false;
+        return;
+    }
+    copyImiEl.hidden = true;
+    imiCueTimerId = window.setTimeout(() => {
+        imiCueTimerId = null;
+        if (expectedCopySteps.length === 0 || lastNoteOffAt === null) return;
+        copyImiEl.hidden = false;
+    }, wordGapMs - elapsed);
+}
+
 // Walk a single pointer through the expected steps. The first step accepts
 // any leading gap (the learner could be starting fresh, mid-stream, or after
 // a clear); every subsequent step requires both the symbol AND the leading
@@ -1040,14 +1102,17 @@ function noteCopySymbolForProgress(symbol, leadingGap) {
                 // Auto-reveal the Sent history so the learner can scan
                 // the final set of attempts without first hitting X.
                 setSentExpanded(true);
+                clearImiCue();
             }
         }
+        refreshImiCue();
         return;
     }
 
     // Mismatch — fall back to step 0. If this symbol matches step 0's symbol,
     // count the current input as the start of a fresh attempt.
     copyProgress = symbol === expectedCopySteps[0].symbol ? 1 : 0;
+    refreshImiCue();
 }
 
 // TODO(cadence): if the HH-clear dev toggle is on (Settings → Developer),
@@ -1065,6 +1130,7 @@ function renderCopyExercises(event) {
     copyExercises = exercises;
     sentEventsByExercise = exercises.map(() => []);
     updateExpectedCopySteps();
+    clearImiCue();
     if (exercises.length === 0) {
         copySymbolEl.textContent = "—";
         updateCopyPositionLabel();
@@ -1113,6 +1179,7 @@ function selectCopyExercise(idx) {
     });
     copySymbolEl.textContent = items[idx].dataset.exercise || "";
     updateExpectedCopySteps();
+    clearImiCue();
     updateCopyPositionLabel();
     renderRhythmReview();
     return true;
@@ -1150,6 +1217,7 @@ function clearCopyExercises() {
     copyExercises = [];
     sentEventsByExercise = [];
     updateExpectedCopySteps();
+    clearImiCue();
     updateCopyPositionLabel();
     renderRhythmReview();
 }

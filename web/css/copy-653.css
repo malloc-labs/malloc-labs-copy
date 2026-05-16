@@ -741,6 +741,23 @@
     color: var(--mr-text);
 }
 
+.key-copy-imi {
+    margin: 0 0 var(--mr-space-2);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    letter-spacing: 0.04em;
+    text-align: center;
+}
+
+/* Reserve the cue's vertical space whether or not it's showing so
+   the surrounding layout doesn't reflow when it toggles. Overrides
+   the user-agent ``[hidden] { display: none }``. */
+.key-copy-imi[hidden] {
+    display: block;
+    visibility: hidden;
+}
+
 .key-copy-history__toggle {
     display: inline-flex;
     align-items: baseline;
