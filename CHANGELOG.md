@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.5.0...v0.5.1) (2026-05-16)
+
+
+### Bug Fixes
+
+* **cadence:** IMI cue + record timer-flushed sent symbols ([#71](https://github.com/malloc-labs/malloc-labs-copy/issues/71)) ([6d5003a](https://github.com/malloc-labs/malloc-labs-copy/commit/6d5003a50a6edb0119b439bcf3fd2f6e1e8ed3ff))
+
 ## [0.5.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.4.0...v0.5.0) (2026-05-16)
 
 
