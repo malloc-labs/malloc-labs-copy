@@ -553,6 +553,10 @@ function clearSentSymbols() {
     diagGapEl.textContent = "none";
     resetHHClearTracker();
     recordDiagnostic("sent-symbols-clear");
+    // Fan-out for page-specific listeners. Freeplay extends clear to also
+    // wipe its custom-input review block; the cadence page has no
+    // listener, so its review is preserved as above.
+    document.dispatchEvent(new CustomEvent("copy-653:sent-clear"));
 }
 
 function midiMessageToNoteEvent(message) {
