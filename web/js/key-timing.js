@@ -964,12 +964,19 @@ function renderSequence(state) {
     const claimedSet = new Set(state.symbols);
     claimedSymbolSet = claimedSet;
     const next = state.suggested_next;
+    // Freeplay (no Copy section) renders every token uniformly so only
+    // the currently playing symbol stands out; the claimed / next /
+    // available tiering is a Cadence affordance tied to the curriculum.
+    const uniform = !copyHistoryEl;
 
     KOCH_ORDER.forEach((sym) => {
         const token = sequenceRow.querySelector(`[data-symbol="${CSS.escape(sym)}"]`);
         if (!token) return;
 
-        if (claimedSet.has(sym)) {
+        if (uniform) {
+            token.dataset.state = "available";
+            token.title = sym;
+        } else if (claimedSet.has(sym)) {
             token.dataset.state = "claimed";
             token.title = `${sym} — known`;
         } else if (sym === next) {
@@ -1509,11 +1516,11 @@ if (copyHistoryToggleEl) {
     });
 }
 
-// Cadence preview: Left Alt + symbol-key plays the symbol's bare Morse
+// Key-page preview: Left Alt + symbol-key plays the symbol's bare Morse
 // three times through the engine output. event.code is used because
 // Option+letter on macOS substitutes characters in event.key. Scoped to
-// the Cadence page via copyHistoryEl; the Sequence grid on Freeplay is
-// the same DOM but lacks the Copy section that motivates the preview.
+// pages that render the Sequence grid (Cadence + Freeplay) via
+// sequenceRow.
 const PREVIEW_CODE_TO_SYMBOL = (() => {
     const map = new Map();
     for (let i = 0; i < 26; i++) {
@@ -1539,7 +1546,7 @@ window.addEventListener("keydown", (event) => {
         return;
     }
     if (!leftAltDown || !event.altKey) return;
-    if (!copyHistoryEl) return;
+    if (!sequenceRow) return;
     if (!activeSocket || activeSocket.readyState !== WebSocket.OPEN) return;
     const target = event.target;
     if (target instanceof HTMLElement) {
@@ -1548,7 +1555,10 @@ window.addEventListener("keydown", (event) => {
     }
     const symbol = symbolForPreviewCode(event.code, event.shiftKey);
     if (!symbol) return;
-    if (!claimedSymbolSet.has(symbol)) return;
+    // Freeplay (no Copy section) opens up every symbol for preview;
+    // Cadence still gates on the claimed set so the preview matches the
+    // curriculum the Copy exercise is drawing from.
+    if (copyHistoryEl && !claimedSymbolSet.has(symbol)) return;
     event.preventDefault();
     if (event.repeat) return;
     activeSocket.send(JSON.stringify({ action: "play-morse-repeat", symbol }));

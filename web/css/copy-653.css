@@ -595,14 +595,6 @@
     border-color: transparent;
 }
 
-/* Preview playback — mirrors the next-letter box style so the eye is
- * drawn to whichever symbol the ear is currently parsing. */
-.seq-token[data-playing="true"] {
-    color: var(--mr-anchor);
-    opacity: 1;
-    border-color: var(--mr-anchor);
-}
-
 /* Available — not yet reached, muted but interactive */
 .seq-token[data-state="available"] {
     opacity: 0.35;
@@ -611,6 +603,16 @@
 .seq-token[data-state="available"]:hover {
     color: var(--mr-text);
     opacity: 0.75;
+}
+
+/* Preview playback — mirrors the next-letter box style so the eye is
+ * drawn to whichever symbol the ear is currently parsing. Declared last
+ * so it wins over any data-state styling at equal specificity (Freeplay
+ * renders every token as data-state="available"). */
+.seq-token[data-playing="true"] {
+    color: var(--mr-anchor);
+    opacity: 1;
+    border-color: var(--mr-anchor);
 }
 
 .key-sent {
