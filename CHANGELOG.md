@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.4.0...v0.5.0) (2026-05-16)
+
+
+### Features
+
+* **cadence:** collapsible disclosures, accel offset, sidetone speaker icon ([#69](https://github.com/malloc-labs/malloc-labs-copy/issues/69)) ([78d6d02](https://github.com/malloc-labs/malloc-labs-copy/commit/78d6d025535a1f134d0aed032a035d4ae570a331))
+* **cadence:** progressive exercise ranking and Completed banner ([#68](https://github.com/malloc-labs/malloc-labs-copy/issues/68)) ([983b8de](https://github.com/malloc-labs/malloc-labs-copy/commit/983b8de10488ba1c629f43d1351842c1fd80bf65))
+* **key:** Alt+symbol previews Morse on Cadence, only claimed stay bright ([#59](https://github.com/malloc-labs/malloc-labs-copy/issues/59)) ([4f6d310](https://github.com/malloc-labs/malloc-labs-copy/commit/4f6d310176c2da9d57be8322cf3d470105686cf8))
+* **key:** perceptual tolerance baseline for Cadence rhythm review ([#61](https://github.com/malloc-labs/malloc-labs-copy/issues/61)) ([6e1c05c](https://github.com/malloc-labs/malloc-labs-copy/commit/6e1c05c04e6708f403f3ca2780ae4159272a96b1))
+* **key:** redraw rhythm baseline every two attempts and pin tab row ([#65](https://github.com/malloc-labs/malloc-labs-copy/issues/65)) ([59199aa](https://github.com/malloc-labs/malloc-labs-copy/commit/59199aa5c945430a72fa1291e7436771df326c68))
+* **key:** show N/M exercise position and collapse exercise list ([#66](https://github.com/malloc-labs/malloc-labs-copy/issues/66)) ([e9c31da](https://github.com/malloc-labs/malloc-labs-copy/commit/e9c31da006aeea1992d2dca228e2a8c415e2904d))
+* **key:** single-line sent stream, dim sent symbols, E/R toggle keybinds ([#67](https://github.com/malloc-labs/malloc-labs-copy/issues/67)) ([6c5a6c5](https://github.com/malloc-labs/malloc-labs-copy/commit/6c5a6c5e966fd9e6f2af69382c264ec04c03a166))
+* **key:** stack per-exercise baselines and overlay attempt markers ([#62](https://github.com/malloc-labs/malloc-labs-copy/issues/62)) ([edebde7](https://github.com/malloc-labs/malloc-labs-copy/commit/edebde79cc9a51dd82f5b46064e6a6490ef802a9))
+* **key:** tabbed review with attempt-row stacking and manual new-set ([#64](https://github.com/malloc-labs/malloc-labs-copy/issues/64)) ([54aac39](https://github.com/malloc-labs/malloc-labs-copy/commit/54aac3957b75d3004b6751fd8e6bf158d1f16505))
+* **session:** configurable save directory and per-mode JSON session records ([#63](https://github.com/malloc-labs/malloc-labs-copy/issues/63)) ([3e3a678](https://github.com/malloc-labs/malloc-labs-copy/commit/3e3a678461a04bed2ff42f4e51930b54789bd01f))
+
 ## [0.4.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.3.0...v0.4.0) (2026-05-15)
 
 
