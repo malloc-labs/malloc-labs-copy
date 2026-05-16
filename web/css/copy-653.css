@@ -717,9 +717,18 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--mr-space-2);
-    margin-bottom: var(--mr-space-3);
-    padding-bottom: var(--mr-space-2);
+    /* Negative side margins pull the tab strip out over the body's
+     * padding so the sticky background spans the full bordered region;
+     * matching padding keeps the tab buttons in their original spots.
+     * Without this, scrolling content shows through the padding gap
+     * above the sticky bar. */
+    margin: calc(-1 * var(--mr-space-3)) calc(-1 * var(--mr-space-3)) var(--mr-space-3);
+    padding: calc(var(--mr-space-3) + var(--mr-space-2)) var(--mr-space-3) var(--mr-space-2);
     border-bottom: var(--mr-border-rule);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--mr-bg);
 }
 
 .key-rhythm-review__tabs:empty {

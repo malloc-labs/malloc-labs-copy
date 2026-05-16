@@ -413,6 +413,7 @@ function buildExerciseBlock(exercise, exIdx, events, charGapMs, wordGapMs, X_SPA
     colsEl.className = "key-rhythm-baseline__cols";
 
     const charCols = [];
+    const wordGapCols = [];
     // Per char column: the baseline-expected leading gap type that an
     // on-time send would produce. "none" for the first symbol; "word"
     // for the first symbol of each subsequent word; "character" for
@@ -420,6 +421,24 @@ function buildExerciseBlock(exercise, exIdx, events, charGapMs, wordGapMs, X_SPA
     // *not* the engine's runtime classification, which only describes
     // what the user's pause actually crossed.
     const charColExpected = [];
+
+    const buildZonesEl = () => {
+        const zonesEl = document.createElement("div");
+        zonesEl.className = "key-rhythm-baseline__zones";
+        zonesEl.setAttribute("aria-hidden", "true");
+        ["green", "amber", "red"].forEach((zone) => {
+            const cell = document.createElement("span");
+            cell.className = `key-rhythm-baseline__zone key-rhythm-baseline__zone--${zone}`;
+            zonesEl.appendChild(cell);
+        });
+        return zonesEl;
+    };
+
+    const buildEmptyZonesEl = () => {
+        const zonesEl = document.createElement("div");
+        zonesEl.className = "key-rhythm-baseline__zones";
+        return zonesEl;
+    };
 
     const appendCharCol = (symbol) => {
         const col = document.createElement("div");
@@ -429,16 +448,7 @@ function buildExerciseBlock(exercise, exIdx, events, charGapMs, wordGapMs, X_SPA
         symEl.className = "key-rhythm-baseline__symbol";
         symEl.textContent = symbol;
 
-        const zonesEl = document.createElement("div");
-        zonesEl.className = "key-rhythm-baseline__zones";
-        zonesEl.setAttribute("aria-hidden", "true");
-        ["green", "amber", "red"].forEach((zone) => {
-            const cell = document.createElement("span");
-            cell.className = `key-rhythm-baseline__zone key-rhythm-baseline__zone--${zone}`;
-            zonesEl.appendChild(cell);
-        });
-
-        col.append(symEl, zonesEl);
+        col.append(symEl, buildZonesEl());
         colsEl.appendChild(col);
         charCols.push(col);
     };
@@ -455,11 +465,9 @@ function buildExerciseBlock(exercise, exIdx, events, charGapMs, wordGapMs, X_SPA
         symEl.className = "key-rhythm-baseline__symbol";
         symEl.textContent = " ";
 
-        const zonesEl = document.createElement("div");
-        zonesEl.className = "key-rhythm-baseline__zones";
-
-        col.append(symEl, zonesEl);
+        col.append(symEl, buildEmptyZonesEl());
         colsEl.appendChild(col);
+        wordGapCols.push(col);
     };
 
     const words = exercise.split(" ").filter((word) => word.length > 0);
@@ -489,7 +497,7 @@ function buildExerciseBlock(exercise, exIdx, events, charGapMs, wordGapMs, X_SPA
             attempts[attempts.length - 1].push(evt);
         });
 
-        attempts.forEach((attempt) => {
+        attempts.forEach((attempt, attemptIdx) => {
             for (let colIdx = 0; colIdx < charCols.length; colIdx++) {
                 const col = charCols[colIdx];
                 const attemptEl = document.createElement("div");
@@ -518,6 +526,14 @@ function buildExerciseBlock(exercise, exIdx, events, charGapMs, wordGapMs, X_SPA
                     attemptEl.append(markerEl);
                 }
                 col.appendChild(attemptEl);
+            }
+            // After every second attempt (and not after the final one),
+            // redraw the baseline bar so the next two attempts have a
+            // fresh reference instead of stacking into a waterfall.
+            const isLastAttempt = attemptIdx === attempts.length - 1;
+            if ((attemptIdx + 1) % 2 === 0 && !isLastAttempt) {
+                charCols.forEach((col) => col.appendChild(buildZonesEl()));
+                wordGapCols.forEach((col) => col.appendChild(buildEmptyZonesEl()));
             }
         });
     }
