@@ -655,6 +655,10 @@
     margin-bottom: var(--mr-space-3);
 }
 
+.key-custom-input__body[hidden] {
+    display: none;
+}
+
 .key-custom-input__field-label {
     font-family: var(--mr-font-mono);
     font-size: var(--mr-size-small);
