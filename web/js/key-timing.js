@@ -36,6 +36,9 @@ const diagRawLogEl = document.getElementById("diag-raw-log");
 // Copy section is Cadence-only; absent on the Freeplay page.
 const copySymbolEl = document.getElementById("copy-symbol");
 const copyHistoryEl = document.getElementById("copy-history");
+const copyPositionLabelEl = document.getElementById("copy-position-label");
+const copyHistoryToggleEl = document.getElementById("copy-history-toggle");
+const copyHistoryArrowEl = document.getElementById("copy-history-arrow");
 
 const MAX_SENT_HISTORY = 48;
 const MAX_DIAGNOSTIC_ROWS = 24;
@@ -549,6 +552,26 @@ function setRhythmReviewExpanded(expanded) {
     rhythmReviewBodyEl.hidden = !expanded;
 }
 
+function setCopyHistoryExpanded(expanded) {
+    if (!copyHistoryToggleEl || !copyHistoryArrowEl || !copyHistoryEl) return;
+    copyHistoryToggleEl.setAttribute("aria-expanded", String(expanded));
+    copyHistoryArrowEl.textContent = expanded ? "▼" : "▶";
+    copyHistoryEl.hidden = !expanded;
+    const labelEl = copyHistoryToggleEl.querySelector("span:not(.key-copy-history__arrow)");
+    if (labelEl) labelEl.textContent = expanded ? "hide exercises" : "show exercises";
+}
+
+function updateCopyPositionLabel() {
+    if (!copyPositionLabelEl) return;
+    const total = copyExercises.length;
+    if (total === 0) {
+        copyPositionLabelEl.textContent = "Exercise sequence:";
+        return;
+    }
+    const position = Math.min(selectedCopyIndex + 1, total);
+    copyPositionLabelEl.textContent = `Exercise sequence ${position}/${total}:`;
+}
+
 function clearSentSymbols() {
     sentSymbolEl.textContent = "—";
     sentHistoryEl.replaceChildren();
@@ -923,6 +946,7 @@ function renderCopyExercises(event) {
     updateExpectedCopySteps();
     if (exercises.length === 0) {
         copySymbolEl.textContent = "—";
+        updateCopyPositionLabel();
         return;
     }
     exercises.forEach((exercise, idx) => {
@@ -952,6 +976,7 @@ function renderCopyExercises(event) {
         copyHistoryEl.appendChild(item);
     });
     copySymbolEl.textContent = exercises[selectedCopyIndex];
+    updateCopyPositionLabel();
     renderRhythmReview();
 }
 
@@ -967,6 +992,7 @@ function selectCopyExercise(idx) {
     });
     copySymbolEl.textContent = items[idx].dataset.exercise || "";
     updateExpectedCopySteps();
+    updateCopyPositionLabel();
     renderRhythmReview();
     return true;
 }
@@ -1003,6 +1029,7 @@ function clearCopyExercises() {
     copyExercises = [];
     sentEventsByExercise = [];
     updateExpectedCopySteps();
+    updateCopyPositionLabel();
     renderRhythmReview();
 }
 
@@ -1284,6 +1311,12 @@ if (rhythmReviewToggleEl) {
     rhythmReviewToggleEl.addEventListener("click", () => {
         const expanded = rhythmReviewToggleEl.getAttribute("aria-expanded") === "true";
         setRhythmReviewExpanded(!expanded);
+    });
+}
+if (copyHistoryToggleEl) {
+    copyHistoryToggleEl.addEventListener("click", () => {
+        const expanded = copyHistoryToggleEl.getAttribute("aria-expanded") === "true";
+        setCopyHistoryExpanded(!expanded);
     });
 }
 

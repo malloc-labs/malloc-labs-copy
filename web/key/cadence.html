@@ -33,11 +33,15 @@
             <div class="key-copy-target">
                 <div class="key-copy-target-labels">
                     <p class="sequence-label">Copy</p>
-                    <span class="key-copy-target-label">Exercise sequence:</span>
+                    <span class="key-copy-target-label" id="copy-position-label">Exercise sequence:</span>
                 </div>
                 <span class="key-copy-symbol" id="copy-symbol" aria-live="polite">—</span>
             </div>
-            <ol class="key-copy-history" id="copy-history" aria-label="Copy history"></ol>
+            <button type="button" class="key-copy-history__toggle" id="copy-history-toggle" aria-expanded="false" aria-controls="copy-history">
+                <span class="key-copy-history__arrow" id="copy-history-arrow" aria-hidden="true">▶</span>
+                <span>show exercises</span>
+            </button>
+            <ol class="key-copy-history" id="copy-history" aria-label="Copy history" hidden></ol>
         </section>
 
         <section class="key-sent" aria-label="Sent symbols">

@@ -643,6 +643,33 @@
     color: var(--mr-text);
 }
 
+.key-copy-history__toggle {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--mr-space-2);
+    margin: 0 0 var(--mr-space-2);
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    color: var(--mr-muted);
+    opacity: 0.55;
+    cursor: pointer;
+    text-align: left;
+    transition: color 0.1s ease, opacity 0.1s ease;
+}
+
+.key-copy-history__toggle:hover {
+    color: var(--mr-text);
+    opacity: 0.75;
+}
+
+.key-copy-history__arrow {
+    flex-shrink: 0;
+    font-size: var(--mr-size-small);
+}
+
 .key-copy-history {
     margin: 0;
     padding-left: var(--mr-space-5);
