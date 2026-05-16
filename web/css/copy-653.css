@@ -433,6 +433,39 @@
     font-size: clamp(1.5rem, 3.5vw, 2rem);
 }
 
+/* Cadence title row: title text on the left, the sidetone circuit
+ * diagram floats to the right edge. align-items: center keeps the
+ * SVG vertically balanced against the h1 baseline. */
+.cadence-shell .landing-title {
+    display: flex;
+    align-items: center;
+    gap: var(--mr-space-3);
+    flex-wrap: wrap;
+}
+
+.cadence-shell .landing-title__text {
+    /* Lets the text+status stay inline as a single shrink-to-fit item;
+     * the speaker icon margins-auto past it. */
+}
+
+.cadence-speaker {
+    margin-left: auto;
+    width: 2rem;
+    height: 2rem;
+    flex-shrink: 0;
+    color: var(--mr-anchor);
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+    fill: none;
+    opacity: 0.2;
+    transition: opacity 0.15s ease;
+}
+
+.cadence-speaker[data-state="on"] {
+    opacity: 1;
+}
+
 /* The exercises page has a collapsible timeline that grows the content
  * height after the initial render. place-items:center on the parent grid
  * re-centres on every height change, causing the content to jump upward
@@ -460,6 +493,33 @@
     margin-bottom: var(--mr-space-5);
 }
 
+.koch-sequence__toggle {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--mr-space-2);
+    margin: 0 0 var(--mr-space-3);
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    color: var(--mr-muted);
+    opacity: 0.55;
+    cursor: pointer;
+    text-align: left;
+    transition: color 0.1s ease, opacity 0.1s ease;
+}
+
+.koch-sequence__toggle:hover {
+    color: var(--mr-text);
+    opacity: 0.75;
+}
+
+.koch-sequence__arrow {
+    flex-shrink: 0;
+    font-size: var(--mr-size-small);
+}
+
 .sequence-label {
     font-family: var(--mr-font-mono);
     font-size: var(--mr-size-small);
@@ -474,6 +534,10 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--mr-space-2);
+}
+
+.sequence-row[hidden] {
+    display: none;
 }
 
 .seq-token {
@@ -553,6 +617,33 @@
     margin-top: var(--mr-space-5);
     border-top: var(--mr-border-rule);
     padding-top: var(--mr-space-4);
+}
+
+.key-sent__toggle {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--mr-space-2);
+    margin: 0 0 var(--mr-space-3);
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    color: var(--mr-muted);
+    opacity: 0.55;
+    cursor: pointer;
+    text-align: left;
+    transition: color 0.1s ease, opacity 0.1s ease;
+}
+
+.key-sent__toggle:hover {
+    color: var(--mr-text);
+    opacity: 0.75;
+}
+
+.key-sent__arrow {
+    flex-shrink: 0;
+    font-size: var(--mr-size-small);
 }
 
 .key-sent-current {
@@ -976,6 +1067,50 @@
     justify-content: flex-end;
     gap: var(--mr-space-2);
     margin: var(--mr-space-3) 0;
+}
+
+/* Cadence wraps the action row in a collapsible section: the toggle
+ * sits on top, items appear underneath when expanded. Freeplay keeps
+ * the flat right-aligned row. */
+.cadence-shell .key-page-actions {
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.key-page-actions__toggle {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--mr-space-2);
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    color: var(--mr-muted);
+    opacity: 0.55;
+    cursor: pointer;
+    text-align: left;
+    transition: color 0.1s ease, opacity 0.1s ease;
+}
+
+.key-page-actions__toggle:hover {
+    color: var(--mr-text);
+    opacity: 0.75;
+}
+
+.key-page-actions__arrow {
+    flex-shrink: 0;
+    font-size: var(--mr-size-small);
+}
+
+.key-page-actions__items {
+    display: flex;
+    gap: var(--mr-space-2);
+}
+
+.key-page-actions__items[hidden] {
+    display: none;
 }
 
 .key-sound-toggle {
