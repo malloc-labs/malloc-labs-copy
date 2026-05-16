@@ -557,8 +557,34 @@ function setCopyHistoryExpanded(expanded) {
     copyHistoryToggleEl.setAttribute("aria-expanded", String(expanded));
     copyHistoryArrowEl.textContent = expanded ? "▼" : "▶";
     copyHistoryEl.hidden = !expanded;
-    const labelEl = copyHistoryToggleEl.querySelector("span:not(.key-copy-history__arrow)");
-    if (labelEl) labelEl.textContent = expanded ? "hide exercises" : "show exercises";
+}
+
+function toggleCopyHistory() {
+    if (!copyHistoryToggleEl) return;
+    const expanded = copyHistoryToggleEl.getAttribute("aria-expanded") === "true";
+    setCopyHistoryExpanded(!expanded);
+}
+
+function toggleRhythmReview() {
+    if (!rhythmReviewToggleEl) return;
+    const expanded = rhythmReviewToggleEl.getAttribute("aria-expanded") === "true";
+    setRhythmReviewExpanded(!expanded);
+}
+
+function renderCopyHistoryToggleLabel() {
+    const labelEl = document.getElementById("copy-history-label");
+    if (!labelEl || !copyHistoryToggleEl) return;
+    labelEl.replaceChildren(makeAccelLabel("e", ""));
+    copyHistoryToggleEl.title = "Show/hide exercises (E)";
+    copyHistoryToggleEl.setAttribute("aria-keyshortcuts", "E");
+}
+
+function renderRhythmReviewToggleLabel() {
+    const labelEl = document.getElementById("key-rhythm-review-label");
+    if (!labelEl || !rhythmReviewToggleEl) return;
+    labelEl.replaceChildren(makeAccelLabel("r", ""));
+    rhythmReviewToggleEl.title = "Review rhythm (R)";
+    rhythmReviewToggleEl.setAttribute("aria-keyshortcuts", "R");
 }
 
 function updateCopyPositionLabel() {
@@ -1395,6 +1421,12 @@ window.addEventListener("keydown", (event) => {
     } else if (key === "n") {
         event.preventDefault();
         requestCopyExercises();
+    } else if (key === "e") {
+        event.preventDefault();
+        toggleCopyHistory();
+    } else if (key === "r") {
+        event.preventDefault();
+        toggleRhythmReview();
     } else if (/^[1-9]$/.test(key)) {
         if (selectCopyExercise(parseInt(key, 10) - 1)) {
             event.preventDefault();
@@ -1403,6 +1435,8 @@ window.addEventListener("keydown", (event) => {
 });
 renderClearSentLabel();
 renderNewSetLabel();
+renderCopyHistoryToggleLabel();
+renderRhythmReviewToggleLabel();
 renderRhythmReview();
 updateAudioDiagnostic();
 connect();
