@@ -566,15 +566,20 @@
     font-family: var(--mr-font-mono);
     font-size: 4rem;
     line-height: 1;
-    color: var(--mr-text);
+    color: var(--mr-muted);
+    opacity: 0.35;
 }
 
 .key-sent-history {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
     width: 100%;
+    overflow: hidden;
     /* Per-item margins encode the leading gap; the container does not
-       add its own uniform spacing so within-word characters can touch. */
+       add its own uniform spacing so within-word characters can touch.
+       Single line: newest symbols are anchored to the right and older
+       ones scroll off to the left as the history fills. */
     gap: 0;
     list-style: none;
     margin: 0;
@@ -584,14 +589,16 @@
 .key-sent-history li {
     display: inline-flex;
     align-items: baseline;
+    flex-shrink: 0;
     gap: var(--mr-space-2);
     font-family: var(--mr-font-mono);
     font-size: var(--mr-size-small);
     color: var(--mr-muted);
+    opacity: 0.35;
 }
 
 .key-sent-history__symbol {
-    color: var(--mr-text);
+    color: var(--mr-muted);
 }
 
 /* No space before the first symbol. */
