@@ -1,0 +1,145 @@
+"""Session record writers for Koch and Cadence sessions (spec §5.1, §6.1).
+
+Both writers are best-effort: a write failure is logged but does not
+propagate. Truth that fails to land on disk is still truth the learner
+heard, and the WS contract should not be held up by a slow filesystem.
+This is one of the few places in the engine that deliberately swallows
+exceptions; see the spec §6.1 rationale.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from copy_653.audio.parameters import AudioParameters
+from copy_653.config import load_save_directory
+from copy_653.session import (
+    CadenceSendRecord,
+    KochExerciseRecord,
+    write_record,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class _ActiveCadenceSession:
+    """In-flight Cadence (Key → Send) recording state for one WS connection."""
+
+    __slots__ = (
+        "started_at",
+        "audio",
+        "claimed",
+        "request",
+        "seed",
+        "exercises",
+        "selection",
+        "sent",
+        "key_events",
+    )
+
+    def __init__(
+        self,
+        *,
+        started_at: datetime,
+        audio: AudioParameters,
+        claimed: tuple[str, ...],
+        request: dict[str, Any],
+        seed: int,
+        exercises: list[str],
+        selection: dict[str, Any] | None = None,
+    ) -> None:
+        self.started_at = started_at
+        self.audio = audio
+        self.claimed = claimed
+        self.request = request
+        self.seed = seed
+        self.exercises = exercises
+        self.selection = selection
+        self.sent: list[dict[str, Any]] = []
+        self.key_events: list[dict[str, Any]] = []
+
+    def record_event(self, payload: dict[str, Any]) -> None:
+        """Capture a relevant WS event payload into the session record."""
+        kind = payload.get("type")
+        if kind == "sent-symbol":
+            self.sent.append(
+                {
+                    "symbol": payload["symbol"],
+                    "pattern": payload["pattern"],
+                    "started_at": payload["started_at"],
+                    "ended_at": payload["ended_at"],
+                    "leading_gap": payload["leading_gap"],
+                }
+            )
+        elif kind == "key-event":
+            self.key_events.append(
+                {
+                    "kind": payload["kind"],
+                    "note": payload["note"],
+                    "pressed": payload["pressed"],
+                    "timestamp": payload["timestamp"],
+                }
+            )
+
+
+def _finalize_cadence_session(
+    session: _ActiveCadenceSession,
+    config_path: Path,
+) -> None:
+    """Persist a Cadence session record. Best-effort; failures are logged."""
+    if not session.sent and not session.key_events:
+        # Nothing was keyed — no truth to record. Avoids leaving empty
+        # files when a learner opens the page but never starts keying.
+        return
+    try:
+        save_directory = load_save_directory(config_path)
+        record = CadenceSendRecord(
+            started_at=session.started_at,
+            ended_at=datetime.now(timezone.utc),
+            audio=session.audio,
+            claimed_set=session.claimed,
+            request=session.request,
+            seed=session.seed,
+            exercises=session.exercises,
+            sent=session.sent,
+            key_events=session.key_events,
+            selection=session.selection,
+        )
+        write_record(record, save_directory)
+    except Exception:
+        logger.exception("failed to write cadence-send record")
+
+
+def _write_koch_record(
+    *,
+    config_path: Path,
+    audio_params: AudioParameters,
+    claimed: tuple[str, ...],
+    duration_seconds: float,
+    seed: int,
+    symbols: list[dict[str, Any]],
+    started_at: datetime,
+) -> None:
+    """Persist a Koch Exercises session record (spec §5.1, §6.1).
+
+    Best-effort: a write failure is logged but does not interrupt the
+    ``session-end`` signal. Truth that fails to land on disk is still
+    truth the learner heard.
+    """
+    try:
+        save_directory = load_save_directory(config_path)
+        record = KochExerciseRecord(
+            started_at=started_at,
+            ended_at=datetime.now(timezone.utc),
+            audio=audio_params,
+            claimed_set=claimed,
+            duration_seconds=duration_seconds,
+            seed=seed,
+            symbols=symbols,
+        )
+        write_record(record, save_directory)
+    except Exception:
+        logger.exception("failed to write koch-exercise record")

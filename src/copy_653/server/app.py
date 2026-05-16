@@ -133,21 +133,17 @@ import asyncio
 import base64
 import json
 import logging
-import mimetypes
 import socket
 import threading
 import time
 from datetime import datetime, timezone
-from http import HTTPStatus
 from pathlib import Path
 from typing import Any, Callable, Iterator
-from urllib.parse import urlsplit
 
-from websockets.datastructures import Headers
 from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol, serve
 
-from copy_653 import __version__, sequence
+from copy_653 import sequence
 from copy_653.audio import patterns, playback, synth, texture, timing
 from copy_653.audio.parameters import AudioParameters
 from copy_653.audio.wav import encode_pcm16_wav
@@ -171,11 +167,6 @@ from copy_653.config import (
     save_keyer_settings,
     save_save_directory,
 )
-from copy_653.session import (
-    CadenceSendRecord,
-    KochExerciseRecord,
-    write_record,
-)
 from copy_653.letters import (
     ANCHORED_SYMBOLS,
     find_anchors_dir,
@@ -188,6 +179,12 @@ from copy_653.midi import (
     KeyElementAssembler,
     MidiNoteEvent,
     iter_midi_note_events,
+)
+from copy_653.server.http_static import _build_static_handler, find_web_root
+from copy_653.server.records import (
+    _ActiveCadenceSession,
+    _finalize_cadence_session,
+    _write_koch_record,
 )
 from copy_653.server.test_message_audio import build_marconi_test_message
 from copy_653.server.validation import (
@@ -220,25 +217,6 @@ KeyNoteSource = Callable[[threading.Event], Iterator[MidiNoteEvent]]
 logger = logging.getLogger(__name__)
 
 
-def find_web_root() -> Path:
-    """Locate the ``web/`` directory by walking up from this file.
-
-    Works for editable installs (``pip install -e .``), which is the v0
-    distribution shape (spec §11.1). A future packaged install would
-    need ``importlib.resources`` and a ``web/`` bundled into the
-    package; that is not v0.
-    """
-    here = Path(__file__).resolve()
-    for parent in here.parents:
-        candidate = parent / "web"
-        if candidate.is_dir() and (candidate / "index.html").is_file():
-            return candidate
-    raise RuntimeError(
-        f"Could not locate web/ relative to {here}. "
-        "v0 expects an editable install layout (spec §11.1)."
-    )
-
-
 def find_available_port(
     start: int,
     span: int = DEFAULT_PORT_SEARCH_SPAN,
@@ -265,92 +243,6 @@ def find_available_port(
     raise RuntimeError(
         f"No port available in [{start}, {start + span}). "
         "Pass --port to choose a different starting point."
-    )
-
-
-def _build_static_handler(web_root: Path):
-    """Return a ``process_request`` callable bound to ``web_root``.
-
-    The callable is what websockets invokes for every incoming HTTP
-    request before deciding whether to upgrade to WS. Returning
-    ``None`` lets the WS handshake proceed; returning a 3-tuple
-    answers the request as plain HTTP.
-    """
-
-    async def process_request(
-        path: str, request_headers: Headers
-    ) -> tuple[HTTPStatus, list[tuple[str, str]], bytes] | None:
-        """Serve static HTTP requests or allow the WebSocket upgrade."""
-        # Strip the query string for static lookups; we do not use it
-        # for anything in v0.
-        parsed_path = urlsplit(path)
-        clean_path = parsed_path.path
-
-        # /ws is the only WS endpoint. Returning None hands control
-        # back to websockets to complete the upgrade.
-        if clean_path == "/ws":
-            return None
-
-        if clean_path == "/api/version":
-            return _json_response({"version": __version__})
-
-        target = "index.html" if clean_path == "/" else clean_path.lstrip("/")
-        resolved = (web_root / target).resolve()
-
-        # Defence in depth against path traversal — a request like
-        # /../etc/passwd should 404, not escape the web root.
-        try:
-            resolved.relative_to(web_root)
-        except ValueError:
-            return _http_response(HTTPStatus.NOT_FOUND, b"not found")
-
-        if not resolved.is_file():
-            return _http_response(HTTPStatus.NOT_FOUND, b"not found")
-
-        body = resolved.read_bytes()
-        mime, _ = mimetypes.guess_type(resolved.name)
-        content_type = mime or "application/octet-stream"
-        # Modern browsers want charset=utf-8 on text payloads — without
-        # it Firefox in particular complains about the meta charset.
-        if content_type.startswith("text/") or content_type == "application/javascript":
-            content_type = f"{content_type}; charset=utf-8"
-
-        return (
-            HTTPStatus.OK,
-            [
-                ("Content-Type", content_type),
-                ("Content-Length", str(len(body))),
-                ("Cache-Control", "no-store"),
-            ],
-            body,
-        )
-
-    return process_request
-
-
-def _http_response(
-    status: HTTPStatus, body: bytes
-) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
-    return (
-        status,
-        [
-            ("Content-Type", "text/plain; charset=utf-8"),
-            ("Content-Length", str(len(body))),
-        ],
-        body,
-    )
-
-
-def _json_response(payload: dict[str, Any]) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
-    body = json.dumps(payload).encode("utf-8")
-    return (
-        HTTPStatus.OK,
-        [
-            ("Content-Type", "application/json; charset=utf-8"),
-            ("Content-Length", str(len(body))),
-            ("Cache-Control", "no-store"),
-        ],
-        body,
     )
 
 
@@ -1015,126 +907,6 @@ async def _flush_key_symbol(ws: WebSocketServerProtocol, decoder: KeyDecoder) ->
     decoded = decoder.flush_pending()
     if decoded is not None:
         await _send_event(ws, _sent_symbol_event(decoded))
-
-
-class _ActiveCadenceSession:
-    """In-flight Cadence (Key → Send) recording state for one WS connection."""
-
-    __slots__ = (
-        "started_at",
-        "audio",
-        "claimed",
-        "request",
-        "seed",
-        "exercises",
-        "selection",
-        "sent",
-        "key_events",
-    )
-
-    def __init__(
-        self,
-        *,
-        started_at: datetime,
-        audio: AudioParameters,
-        claimed: tuple[str, ...],
-        request: dict[str, Any],
-        seed: int,
-        exercises: list[str],
-        selection: dict[str, Any] | None = None,
-    ) -> None:
-        self.started_at = started_at
-        self.audio = audio
-        self.claimed = claimed
-        self.request = request
-        self.seed = seed
-        self.exercises = exercises
-        self.selection = selection
-        self.sent: list[dict[str, Any]] = []
-        self.key_events: list[dict[str, Any]] = []
-
-    def record_event(self, payload: dict[str, Any]) -> None:
-        """Capture a relevant WS event payload into the session record."""
-        kind = payload.get("type")
-        if kind == "sent-symbol":
-            self.sent.append(
-                {
-                    "symbol": payload["symbol"],
-                    "pattern": payload["pattern"],
-                    "started_at": payload["started_at"],
-                    "ended_at": payload["ended_at"],
-                    "leading_gap": payload["leading_gap"],
-                }
-            )
-        elif kind == "key-event":
-            self.key_events.append(
-                {
-                    "kind": payload["kind"],
-                    "note": payload["note"],
-                    "pressed": payload["pressed"],
-                    "timestamp": payload["timestamp"],
-                }
-            )
-
-
-def _finalize_cadence_session(
-    session: _ActiveCadenceSession,
-    config_path: Path,
-) -> None:
-    """Persist a Cadence session record. Best-effort; failures are logged."""
-    if not session.sent and not session.key_events:
-        # Nothing was keyed — no truth to record. Avoids leaving empty
-        # files when a learner opens the page but never starts keying.
-        return
-    try:
-        save_directory = load_save_directory(config_path)
-        record = CadenceSendRecord(
-            started_at=session.started_at,
-            ended_at=datetime.now(timezone.utc),
-            audio=session.audio,
-            claimed_set=session.claimed,
-            request=session.request,
-            seed=session.seed,
-            exercises=session.exercises,
-            sent=session.sent,
-            key_events=session.key_events,
-            selection=session.selection,
-        )
-        write_record(record, save_directory)
-    except Exception:
-        logger.exception("failed to write cadence-send record")
-
-
-def _write_koch_record(
-    *,
-    config_path: Path,
-    audio_params: AudioParameters,
-    claimed: tuple[str, ...],
-    duration_seconds: float,
-    seed: int,
-    symbols: list[dict[str, Any]],
-    started_at: datetime,
-) -> None:
-    """Persist a Koch Exercises session record (spec §5.1, §6.1).
-
-    Best-effort: a write failure is logged but does not interrupt the
-    ``session-end`` signal. Truth that fails to land on disk is still
-    truth the learner heard.
-    """
-    try:
-        save_directory = load_save_directory(config_path)
-        record = KochExerciseRecord(
-            started_at=started_at,
-            ended_at=datetime.now(timezone.utc),
-            audio=audio_params,
-            claimed_set=claimed,
-            duration_seconds=duration_seconds,
-            seed=seed,
-            symbols=symbols,
-        )
-        write_record(record, save_directory)
-    except Exception:
-        logger.exception("failed to write koch-exercise record")
 
 
 async def _run_morse_repeat(
