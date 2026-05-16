@@ -5,6 +5,7 @@
 
 import "./developer-mode.js";
 import { noteSentSymbol, resetHHClearTracker } from "./hh-clear.js";
+import { buildExerciseBlock, buildExpectedSteps } from "./rhythm-review.js";
 
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const wsUrl = `${wsProtocol}//${location.host}/ws`;
@@ -363,6 +364,9 @@ function renderNewSetLabel() {
 // ideal gap math.
 function renderRhythmReview() {
     if (!rhythmReviewSymbolsEl || !rhythmReviewMetaEl) return;
+    // Freeplay has its own review pipeline (driven by the custom-input
+    // textbox); leave the section alone so freeplay-custom.js owns it.
+    if (!copyHistoryEl) return;
     rhythmReviewSymbolsEl.replaceChildren();
     if (rhythmReviewTabsEl) rhythmReviewTabsEl.replaceChildren();
 
@@ -402,168 +406,17 @@ function renderRhythmReview() {
     }
 
     const ditMs = Number(keyConfig && keyConfig.dit_ms_expected) || 60;
-    const charGapMs = 3 * ditMs;
-    const wordGapMs = 7 * ditMs;
-    // Span over the ideal gap that the attempt marker can travel within
-    // a column. Picked so that ~3x ideal lands at the right edge of red;
-    // this is a perceptual mapping, not a hard tolerance.
-    const X_SPAN_RATIO = 3.0;
-
     const exercise = copyExercises[selectedReviewIndex];
     const events = sentEventsByExercise[selectedReviewIndex] || [];
     rhythmReviewSymbolsEl.appendChild(
-        buildExerciseBlock(
+        buildExerciseBlock({
             exercise,
-            selectedReviewIndex,
+            title: `Exercise ${selectedReviewIndex + 1} / ${exercise}`,
+            ariaLabel: `Exercise ${selectedReviewIndex + 1} baseline`,
             events,
-            charGapMs,
-            wordGapMs,
-            X_SPAN_RATIO,
-        ),
+            ditMs,
+        }),
     );
-}
-
-function buildExerciseBlock(exercise, exIdx, events, charGapMs, wordGapMs, X_SPAN_RATIO) {
-    const block = document.createElement("section");
-    block.className = "key-rhythm-baseline__exercise";
-    block.setAttribute("aria-label", `Exercise ${exIdx + 1} baseline`);
-
-    const labelEl = document.createElement("p");
-    labelEl.className = "key-rhythm-baseline__exercise-label";
-    labelEl.textContent = `Exercise ${exIdx + 1} / ${exercise}`;
-    block.appendChild(labelEl);
-
-    const colsEl = document.createElement("div");
-    colsEl.className = "key-rhythm-baseline__cols";
-
-    const charCols = [];
-    const wordGapCols = [];
-    // Per char column: the baseline-expected leading gap type that an
-    // on-time send would produce. "none" for the first symbol; "word"
-    // for the first symbol of each subsequent word; "character" for
-    // in-word symbols. This is what we compare an actual send against —
-    // *not* the engine's runtime classification, which only describes
-    // what the user's pause actually crossed.
-    const charColExpected = [];
-
-    const buildZonesEl = () => {
-        const zonesEl = document.createElement("div");
-        zonesEl.className = "key-rhythm-baseline__zones";
-        zonesEl.setAttribute("aria-hidden", "true");
-        ["green", "amber", "red"].forEach((zone) => {
-            const cell = document.createElement("span");
-            cell.className = `key-rhythm-baseline__zone key-rhythm-baseline__zone--${zone}`;
-            zonesEl.appendChild(cell);
-        });
-        return zonesEl;
-    };
-
-    const buildEmptyZonesEl = () => {
-        const zonesEl = document.createElement("div");
-        zonesEl.className = "key-rhythm-baseline__zones";
-        return zonesEl;
-    };
-
-    const appendCharCol = (symbol) => {
-        const col = document.createElement("div");
-        col.className = "key-rhythm-baseline__col key-rhythm-baseline__col--char";
-
-        const symEl = document.createElement("span");
-        symEl.className = "key-rhythm-baseline__symbol";
-        symEl.textContent = symbol;
-
-        col.append(symEl, buildZonesEl());
-        colsEl.appendChild(col);
-        charCols.push(col);
-    };
-
-    const appendWordGapCol = () => {
-        const col = document.createElement("div");
-        col.className = "key-rhythm-baseline__col key-rhythm-baseline__col--word-gap";
-        col.setAttribute("aria-hidden", "true");
-
-        // Placeholder children carry the same vertical space as a char
-        // column so the row stays aligned; nbsp keeps the symbol slot's
-        // baseline, the empty zones div picks up its CSS height.
-        const symEl = document.createElement("span");
-        symEl.className = "key-rhythm-baseline__symbol";
-        symEl.textContent = " ";
-
-        col.append(symEl, buildEmptyZonesEl());
-        colsEl.appendChild(col);
-        wordGapCols.push(col);
-    };
-
-    const words = exercise.split(" ").filter((word) => word.length > 0);
-    words.forEach((word, wordIdx) => {
-        if (wordIdx > 0) appendWordGapCol();
-        for (let i = 0; i < word.length; i++) {
-            let expected;
-            if (charCols.length === 0) expected = "none";
-            else if (i === 0) expected = "word";
-            else expected = "character";
-            appendCharCol(word[i]);
-            charColExpected.push(expected);
-        }
-    });
-
-    // Segment events into attempt rows. Each event flagged
-    // isAttemptStart begins a new row; subsequent events fill the row
-    // left-to-right until the next start (or until the columns run
-    // out). Events keyed before any attempt-start lands in an
-    // implicit first row.
-    if (charCols.length > 0) {
-        const attempts = [];
-        events.forEach((evt) => {
-            if (evt.isAttemptStart || attempts.length === 0) {
-                attempts.push([]);
-            }
-            attempts[attempts.length - 1].push(evt);
-        });
-
-        attempts.forEach((attempt, attemptIdx) => {
-            for (let colIdx = 0; colIdx < charCols.length; colIdx++) {
-                const col = charCols[colIdx];
-                const attemptEl = document.createElement("div");
-                attemptEl.className = "key-rhythm-baseline__attempt";
-                const evt = attempt[colIdx];
-                if (evt) {
-                    const expected = charColExpected[colIdx];
-                    const idealMs = expected === "word" ? wordGapMs : charGapMs;
-                    const gapMs = Number(evt.leadingGapMs);
-                    let xFrac = 0;
-                    if (expected !== "none" && Number.isFinite(gapMs) && idealMs > 0) {
-                        const overshootRatio = Math.max(0, (gapMs - idealMs) / idealMs);
-                        xFrac = Math.min(1, overshootRatio / X_SPAN_RATIO);
-                    }
-                    const markerEl = document.createElement("div");
-                    markerEl.className = "key-rhythm-baseline__attempt-marker";
-                    markerEl.style.setProperty("--attempt-x", String(xFrac));
-                    const arrowEl = document.createElement("span");
-                    arrowEl.className = "key-rhythm-baseline__attempt-arrow";
-                    arrowEl.setAttribute("aria-hidden", "true");
-                    arrowEl.textContent = "↑";
-                    const sentEl = document.createElement("span");
-                    sentEl.className = "key-rhythm-baseline__attempt-symbol";
-                    sentEl.textContent = evt.symbol;
-                    markerEl.append(arrowEl, sentEl);
-                    attemptEl.append(markerEl);
-                }
-                col.appendChild(attemptEl);
-            }
-            // After every second attempt (and not after the final one),
-            // redraw the baseline bar so the next two attempts have a
-            // fresh reference instead of stacking into a waterfall.
-            const isLastAttempt = attemptIdx === attempts.length - 1;
-            if ((attemptIdx + 1) % 2 === 0 && !isLastAttempt) {
-                charCols.forEach((col) => col.appendChild(buildZonesEl()));
-                wordGapCols.forEach((col) => col.appendChild(buildEmptyZonesEl()));
-            }
-        });
-    }
-
-    block.appendChild(colsEl);
-    return block;
 }
 
 function setRhythmReviewExpanded(expanded) {
@@ -1013,24 +866,8 @@ let copyExercises = [];
 let expectedCopySteps = [];
 let copyProgress = 0;
 
-function buildExpectedCopySteps(exercise) {
-    const steps = [];
-    const words = (exercise || "").split(" ");
-    words.forEach((word, wordIdx) => {
-        for (let i = 0; i < word.length; i++) {
-            const leading = wordIdx === 0 && i === 0
-                ? "none"
-                : i === 0
-                ? "word"
-                : "character";
-            steps.push({ symbol: word[i], leading });
-        }
-    });
-    return steps;
-}
-
 function updateExpectedCopySteps() {
-    expectedCopySteps = buildExpectedCopySteps(copyExercises[selectedCopyIndex]);
+    expectedCopySteps = buildExpectedSteps(copyExercises[selectedCopyIndex]);
     copyProgress = 0;
 }
 
@@ -1282,10 +1119,25 @@ function renderSentSymbol(event) {
     renderRhythmReview();
     noteSentSymbol(symbol, event.leading_gap, clearSentSymbols);
     noteCopySymbolForProgress(symbol, event.leading_gap || "none");
+    // Fan-out for page-specific listeners (e.g. Freeplay's custom-input
+    // review). Dispatched after the cadence pipeline has finished so the
+    // shared state is consistent if a listener cares to read it.
+    document.dispatchEvent(new CustomEvent("copy-653:sent-symbol", {
+        detail: {
+            symbol,
+            leadingGap: event.leading_gap || "none",
+            leadingGapMs,
+        },
+    }));
 }
 
 function renderKeyInputStart(event) {
     keyConfig = event;
+    // Fan-out: any page-specific listener needs ditMs to scale the
+    // green/amber/red zones consistently with the cadence renderer.
+    document.dispatchEvent(new CustomEvent("copy-653:key-input-start", {
+        detail: { ditMs: Number(event.dit_ms_expected) || 60 },
+    }));
     recordDiagnostic("key-input-start", {
         source: event.source,
         input_name: event.input_name,
