@@ -689,7 +689,6 @@ async def _run_key_input_action(
     # note-on and its note-off). Rearming this on every event would race the
     # next note-off and split a single character into two symbols.
     flush_deadline: float | None = None
-    loop = asyncio.get_running_loop()
 
     try:
         while True:
