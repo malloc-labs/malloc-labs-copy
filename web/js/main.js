@@ -11,6 +11,7 @@ const wsUrl = `${wsProtocol}//${location.host}/ws`;
 
 const statusEl     = document.querySelector(".status");
 const eventsEl     = document.getElementById("events");
+const answersEl    = document.getElementById("answers");
 const startBtn     = document.getElementById("start");
 const stopBtn      = document.getElementById("stop");
 const clearBtn     = document.getElementById("clear");
@@ -155,6 +156,65 @@ toggleBtn.addEventListener("click", () => {
 setTimelineOpen(false);
 setTimelineLocked(true);
 
+// ─── Truth disclosure tabs ────────────────────────────────────────────────────
+// Answers (Tab 1) is the learner's input panel; Truth (Tab 2) is the rendered
+// exercise list. Both live inside the collapsible disclosure, so neither is
+// reachable until session-end unlocks .timeline-toggle.
+
+const tabButtons = document.querySelectorAll(".timeline-tab");
+const tabPanels  = {
+    answers: document.getElementById("timeline-panel-answers"),
+    truth:   document.getElementById("timeline-panel-truth"),
+};
+
+function setActiveTab(name) {
+    tabButtons.forEach((btn) => {
+        const selected = btn.dataset.tab === name;
+        btn.dataset.selected   = selected ? "true" : "false";
+        btn.setAttribute("aria-selected", selected ? "true" : "false");
+    });
+    Object.entries(tabPanels).forEach(([key, panel]) => {
+        panel.hidden = key !== name;
+    });
+}
+
+tabButtons.forEach((btn) => {
+    btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
+});
+
+setActiveTab("answers");
+
+function buildAnswerInputs(exercises) {
+    answersEl.replaceChildren();
+    exercises.forEach((_, idx) => {
+        const li = document.createElement("li");
+        li.className = "answer-row";
+
+        const label = document.createElement("label");
+        const inputId = `answer-${idx + 1}`;
+        label.htmlFor = inputId;
+        label.className = "answer-row__label";
+        label.textContent = `Exercise ${idx + 1}:`;
+
+        const input = document.createElement("input");
+        input.type = "text";
+        input.id = inputId;
+        input.className = "answer-row__input";
+        input.autocomplete = "off";
+        input.spellcheck = false;
+        input.disabled = true;
+
+        li.append(label, input);
+        answersEl.appendChild(li);
+    });
+}
+
+function setAnswerInputsEnabled(enabled) {
+    answersEl.querySelectorAll(".answer-row__input").forEach((input) => {
+        input.disabled = !enabled;
+    });
+}
+
 // ─── Status ───────────────────────────────────────────────────────────────────
 
 function setStatus(state, text) {
@@ -208,6 +268,12 @@ function appendEvent(event) {
         // header itself stays hidden behind the timeline lock until
         // session-end — see setTimelineLocked.
         if (event.exercise_index !== currentExerciseIndex) {
+            if (currentExerciseIndex !== 0) {
+                const divider = document.createElement("li");
+                divider.dataset.kind = "exercise-divider";
+                divider.appendChild(document.createElement("hr"));
+                eventsEl.appendChild(divider);
+            }
             currentExerciseIndex = event.exercise_index;
             const header = document.createElement("li");
             header.dataset.kind = "exercise-header";
@@ -234,7 +300,9 @@ function appendEvent(event) {
 
         setTimelineLocked(true);
         setTimelineOpen(false);
+        setActiveTab("answers");
         eventsEl.replaceChildren();
+        buildAnswerInputs(currentExercises);
         primedEl.textContent = `Exercise — of ${currentExercises.length}`;
         return;
 
@@ -247,6 +315,7 @@ function appendEvent(event) {
         clearBtn.disabled = false;
         sessionStartedAtMs = null;
         setTimelineLocked(false);
+        setAnswerInputsEnabled(true);
         renderPrimed();
 
     } else if (event.type === "error") {
@@ -321,11 +390,13 @@ stopBtn.addEventListener("click", () => {
 
 clearBtn.addEventListener("click", () => {
     eventsEl.replaceChildren();
+    answersEl.replaceChildren();
     const meta = toggleBtn.querySelector(".timeline-meta");
     meta.textContent = "—";
     sessionStartedAtMs = null;
     currentExercises = [];
     currentExerciseIndex = 0;
+    setActiveTab("answers");
     setTimelineOpen(false);
     setTimelineLocked(true);
     clearBtn.disabled = true;

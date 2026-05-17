@@ -40,7 +40,37 @@
                 <span class="timeline-meta">—</span>
             </button>
             <div class="timeline-body" id="timeline-body" aria-live="polite">
-                <ol id="events"></ol>
+                <div class="timeline-tabs" role="tablist" aria-label="Truth view">
+                    <button type="button"
+                            class="timeline-tab"
+                            role="tab"
+                            id="timeline-tab-answers"
+                            aria-controls="timeline-panel-answers"
+                            aria-selected="true"
+                            data-selected="true"
+                            data-tab="answers">Answers</button>
+                    <button type="button"
+                            class="timeline-tab"
+                            role="tab"
+                            id="timeline-tab-truth"
+                            aria-controls="timeline-panel-truth"
+                            aria-selected="false"
+                            data-selected="false"
+                            data-tab="truth">Truth</button>
+                </div>
+                <div class="timeline-panel"
+                     id="timeline-panel-answers"
+                     role="tabpanel"
+                     aria-labelledby="timeline-tab-answers">
+                    <ol id="answers" class="answers-list"></ol>
+                </div>
+                <div class="timeline-panel"
+                     id="timeline-panel-truth"
+                     role="tabpanel"
+                     aria-labelledby="timeline-tab-truth"
+                     hidden>
+                    <ol id="events"></ol>
+                </div>
             </div>
         </section>
     </main>

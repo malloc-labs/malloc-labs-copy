@@ -1393,10 +1393,127 @@ copy-top-menu {
     overflow-y: auto;
     /* Subtle inset border so the scroll region reads as contained */
     border: var(--mr-border-rule);
-    padding: var(--mr-space-3);
+    /* Padding lives on the tab strip and each panel — keeping it off the
+     * scroll container lets the sticky tab strip sit flush with the visible
+     * top edge so scrolling content can't peek through above it. */
+    padding: 0;
     /* Thin scrollbar on supporting browsers */
     scrollbar-width: thin;
     scrollbar-color: var(--mr-muted) transparent;
+}
+
+/* Tabs inside the timeline disclosure. Answers (input) and Truth (the rendered
+ * exercise list) share the scroll region; the strip sticks to the top so it
+ * stays visible as the panel scrolls. */
+.timeline-tabs {
+    display: flex;
+    gap: var(--mr-space-2);
+    padding: var(--mr-space-3) var(--mr-space-3) var(--mr-space-2);
+    border-bottom: var(--mr-border-rule);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--mr-bg);
+}
+
+.timeline-tab {
+    padding: var(--mr-space-1) var(--mr-space-3);
+    border: var(--mr-border-rule);
+    background: none;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    cursor: pointer;
+    opacity: 0.7;
+    transition: color 0.1s ease, border-color 0.1s ease, opacity 0.1s ease;
+}
+
+.timeline-tab:hover {
+    color: var(--mr-text);
+    opacity: 1;
+}
+
+.timeline-tab[data-selected="true"] {
+    color: var(--mr-text);
+    border-color: var(--mr-anchor);
+    opacity: 1;
+}
+
+.timeline-panel {
+    padding: var(--mr-space-3);
+}
+
+.timeline-panel[hidden] {
+    display: none;
+}
+
+/* Tab 2 (Truth) — drop symbol/end rows to the rule-line colour so the eye
+ * lands on the per-exercise header. var(--mr-border) is the same colour
+ * the <hr> separator uses, so the rows visually rhyme with the dividers.
+ * Selector wins on specificity over the base .timeline li[data-kind=…] rule. */
+#timeline-panel-truth li[data-kind="symbol"],
+#timeline-panel-truth li[data-kind="end"] {
+    color: var(--mr-border);
+}
+
+#timeline-panel-truth li[data-kind="exercise-header"] {
+    color: var(--mr-text);
+}
+
+#timeline-panel-truth li[data-kind="exercise-divider"] {
+    padding: 0;
+}
+
+#timeline-panel-truth li[data-kind="exercise-divider"] hr {
+    border: 0;
+    border-top: var(--mr-border-rule);
+    margin: var(--mr-space-3) 0;
+}
+
+/* Tab 1 (Answers) — one labeled text input per exercise. Inputs are
+ * disabled while the session is in flight and enabled on session-end so
+ * the learner can write what they heard before flipping to Truth. */
+.answers-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.answer-row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--mr-space-3);
+    padding: var(--mr-space-2) 0;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+}
+
+.answer-row__label {
+    color: var(--mr-text);
+    flex-shrink: 0;
+}
+
+.answer-row__input {
+    flex: 1;
+    min-width: 0;
+    background: none;
+    border: 0;
+    border-bottom: var(--mr-border-rule);
+    color: var(--mr-text);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    padding: var(--mr-space-1) 0;
+}
+
+.answer-row__input:focus {
+    outline: none;
+    border-bottom-color: var(--mr-anchor);
+}
+
+.answer-row__input:disabled {
+    color: var(--mr-muted);
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .symbol-truth-body {
