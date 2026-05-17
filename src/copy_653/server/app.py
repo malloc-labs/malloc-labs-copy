@@ -62,18 +62,21 @@ unsolicited on connect, and after every change::
 During a Koch Exercises session::
 
     {"type": "session-start", "mode": "exercises",
-     "exercises": ["MK", "K MK", "KM K MMK"], "exercise_count": 3, "seed": 12345}
-    {"type": "symbol", "symbol": "M", "t_on": 0.0,  "t_off": 0.18,
-     "exercise_index": 1, "word_index": 1, "word": "mk"}
-    {"type": "symbol", "symbol": "K", "t_on": 0.42, "t_off": 0.6,
-     "exercise_index": 1, "word_index": 1, "word": "mk"}
+     "exercises": ["DE MK", "DE K MK", "DE KM K MMK"], "exercise_count": 3, "seed": 12345}
+    {"type": "symbol", "symbol": "D", "t_on": 0.0,  "t_off": 0.24,
+     "exercise_index": 1, "word_index": 1, "word": "de"}
+    {"type": "symbol", "symbol": "E", "t_on": 0.34, "t_off": 0.38,
+     "exercise_index": 1, "word_index": 1, "word": "de"}
     {"type": "session-end"}
 
-The ``exercises`` field carries the full per-session truth up front,
-but the UI is responsible for keeping it hidden until ``session-end``.
-``exercise_index`` and ``word_index`` are 1-based, so a UI can drive a
-live "Exercise N of M" indicator from each ``symbol`` event without
-threading session-start state through every handler.
+Every exercise opens with the fixed ``DE`` listening anchor (spec
+§2.5) — a deliberate structural framing, not a draw from the claimed
+set. The ``exercises`` field carries the full per-session truth up
+front, but the UI is responsible for keeping it hidden until
+``session-end``. ``exercise_index`` and ``word_index`` are 1-based,
+so a UI can drive a live "Exercise N of M" indicator from each
+``symbol`` event without threading session-start state through every
+handler.
 
 During a Word Detection session::
 

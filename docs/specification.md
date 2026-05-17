@@ -106,7 +106,9 @@ Apps that promise easier learning by lowering character speed below the counting
 
 ### 2.5 Symbol set
 
-The symbol set in any stream is gated by what the learner has claimed competence in (philosophy 5). The v0 starting set is **K and M** (the canonical Koch first pair). Unknown symbols never enter the stream.
+The symbol set in any stream is gated by what the learner has claimed competence in (philosophy 5). The v0 starting set is **K and M** (the canonical Koch first pair). Unknown symbols never enter the per-session uniform draw.
+
+One narrow exception: the Koch Exercises listening path prepends a fixed `DE` anchor to every exercise. `DE` is the standard CW abbreviation for "from" — the universal transmission opener, predating modern operating activities — and serves here as deliberate structural framing rather than a draw from the symbol set. The same two letters open every exercise, so the learner enters the listening frame from a known shape regardless of their claimed set, and gain advance exposure to `D` and `E` as sounds before being asked to identify them. When `D` and `E` later join the claimed set, their shapes are already familiar to the ear.
 
 ### 2.6 Phonetic anchors
 
