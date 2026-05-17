@@ -10,13 +10,9 @@
     <script src="../js/theme.js"></script>
 </head>
 <body class="landing-body">
-    <button class="theme-btn" id="theme-toggle" aria-label="Switch theme">light</button>
+    <copy-theme-btn></copy-theme-btn>
     <main class="landing-shell">
-        <header class="landing-header">
-            <p class="eyebrow"><a href="../index.html" class="back-link">Copy 653</a></p>
-            <h1 class="landing-title">Operational</h1>
-        </header>
-        <hr class="landing-rule">
+        <copy-landing-header eyebrow="Copy 653" eyebrow-href="../index.html" title="Operational"></copy-landing-header>
         <p class="landing-desc">Operational introduces real-world radio structures including callsigns, prosigns, procedural words, and noisy conditions. Practice shifts from isolated symbols toward practical listening environments closer to live amateur radio operation.</p>
         <nav class="landing-nav" aria-label="Operational navigation">
             <a href="../speed/index.html" class="nav-item">
@@ -25,5 +21,7 @@
             </a>
         </nav>
     </main>
+    <script type="module" src="../js/partials/landing-header.js"></script>
+    <script type="module" src="../js/partials/theme-btn.js"></script>
 </body>
 </html>

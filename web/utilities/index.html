@@ -10,14 +10,12 @@
     <script src="../js/theme.js"></script>
 </head>
 <body class="landing-body">
-    <button class="theme-btn" id="theme-toggle" aria-label="Switch theme">light</button>
+    <copy-theme-btn></copy-theme-btn>
     <main class="landing-shell">
-        <header class="landing-header">
-            <p class="eyebrow"><a href="../index.html" class="back-link">Copy 653</a></p>
-            <h1 class="landing-title">Utilities</h1>
-        </header>
-        <hr class="landing-rule">
+        <copy-landing-header eyebrow="Copy 653" eyebrow-href="../index.html" title="Utilities"></copy-landing-header>
         <p class="landing-desc">Utilities contains supporting tools for audio setup, tone generation, device testing, MIDI integration, and signal experimentation. These tools support the listening environment without interrupting or replacing the primary learning path.</p>
     </main>
+    <script type="module" src="../js/partials/landing-header.js"></script>
+    <script type="module" src="../js/partials/theme-btn.js"></script>
 </body>
 </html>

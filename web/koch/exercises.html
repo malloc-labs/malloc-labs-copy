@@ -10,13 +10,9 @@
     <script src="../js/theme.js"></script>
 </head>
 <body class="landing-body">
-    <button class="theme-btn" id="theme-toggle" aria-label="Switch theme">light</button>
+    <copy-theme-btn></copy-theme-btn>
     <main class="landing-shell exercises-shell">
-        <header class="landing-header">
-            <p class="eyebrow"><a href="index.html" class="back-link">Koch Method</a></p>
-            <h1 class="landing-title">Exercises <span class="status" data-status="connecting">connecting…</span></h1>
-        </header>
-        <hr class="landing-rule">
+        <copy-header eyebrow="Koch Method" title="Exercises"></copy-header>
 
         <!--
             Koch sequence row — full 41-symbol sequence rendered by JS.
@@ -26,10 +22,7 @@
               available — not yet claimed
             K and M are the permanent starting pair; they cannot be unclaimed.
         -->
-        <section class="koch-sequence" aria-label="Koch symbol sequence">
-            <p class="sequence-label">Sequence</p>
-            <div class="sequence-row" id="sequence-row" role="list"></div>
-        </section>
+        <copy-koch-sequence section-label="Koch symbol sequence"></copy-koch-sequence>
 
         <section class="controls" aria-label="Listening controls">
             <button type="button" id="start" disabled>Start</button>
@@ -51,6 +44,9 @@
             </div>
         </section>
     </main>
+    <script type="module" src="../js/partials/header.js"></script>
+    <script type="module" src="../js/partials/koch-sequence.js"></script>
+    <script type="module" src="../js/partials/theme-btn.js"></script>
     <script type="module" src="../js/main.js"></script>
 </body>
 </html>

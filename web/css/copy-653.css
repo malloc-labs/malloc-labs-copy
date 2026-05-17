@@ -22,6 +22,26 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 /*
+ * Partial hosts (web/js/partials/*.js) — make every <copy-*> wrapper
+ * transparent to layout so its children behave as direct children of the
+ * surrounding container. Without this, the custom-element wrapper defaults
+ * to display: inline and gives flex/grid containers (e.g. .landing-body's
+ * place-items: center) the wrong intrinsic size, pushing centred content
+ * off-axis. The wrapper carries no semantics of its own; the meaningful
+ * roles live on its inner <header>/<section>/<button> elements.
+ */
+copy-diagnostics,
+copy-header,
+copy-koch-sequence,
+copy-landing-header,
+copy-rhythm-review,
+copy-sent,
+copy-theme-btn,
+copy-top-menu {
+    display: contents;
+}
+
+/*
  * Full-viewport centred grid. The landing surface is intentionally minimal —
  * the app title, a single rule, and three navigation rows. Nothing else.
  * Crisis Room doctrine: the interface must not compete with the event.
