@@ -289,21 +289,31 @@ async def test_start_action_runs_a_session(tmp_path, patched_playback):
         assert start_event["exercise_count"] == 5
         assert len(start_event["exercises"]) == 5
         for exercise in start_event["exercises"]:
-            # Words use intra-character spacing; the wire string carries
-            # words separated by single spaces. Only K/M after gating.
-            assert exercise != ""
-            assert all(ch in {"K", "M", " "} for ch in exercise)
+            # Every exercise opens with the fixed DE listening anchor
+            # (spec §2.5); the remaining content is gated to the
+            # claimed set (K, M here).
+            assert exercise.startswith("DE ")
+            assert all(ch in {"K", "M", "D", "E", " "} for ch in exercise)
 
         symbol_events = [e for e in events if e["type"] == "symbol"]
         assert len(symbol_events) > 0
         for ev in symbol_events:
-            assert ev["symbol"] in {"K", "M"}
+            assert ev["symbol"] in {"K", "M", "D", "E"}
             assert isinstance(ev["exercise_index"], int)
             assert 1 <= ev["exercise_index"] <= 5
             assert isinstance(ev["word_index"], int)
             assert ev["word_index"] >= 1
         # Every exercise emits at least one symbol — indices cover 1..5.
         assert {e["exercise_index"] for e in symbol_events} == {1, 2, 3, 4, 5}
+        # Each exercise's first word is the DE anchor: word_index 1 of
+        # every exercise is exactly the D then E symbols, in that order.
+        for exercise_index in range(1, 6):
+            first_word = [
+                ev
+                for ev in symbol_events
+                if ev["exercise_index"] == exercise_index and ev["word_index"] == 1
+            ]
+            assert [ev["symbol"] for ev in first_word[:2]] == ["D", "E"]
 
         # Audio thread was driven once, with the configured WPM.
         assert len(patched_playback) == 1

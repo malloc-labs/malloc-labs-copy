@@ -163,7 +163,11 @@ async def _start_action(
         min_word_length=1,
         max_word_length=3,
     )
-    exercises = list(result.exercises)
+    # Prepend the fixed ``DE`` listening anchor (spec §2.5). Unlike the
+    # uniform draw, this is deliberate structural framing — the same two
+    # letters open every exercise so the learner enters the listening
+    # frame from a known shape regardless of their claimed set.
+    exercises = [f"DE {exercise}" for exercise in result.exercises]
     samples, timeline = build_exercises_audio(exercises, audio_params)
 
     await _send_event(
