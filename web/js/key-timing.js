@@ -1,41 +1,25 @@
-// Copy — Key timing page.
+// Copy — Key timing page entry.
 //
-// Read-only sequence display for known symbols. The engine pushes the same
-// claimed-symbols event used by Koch Exercises; this page only renders it.
+// Slim orchestrator: wires up the per-concern modules under
+// ./key-timing/, owns the WebSocket connection lifecycle, and binds
+// the page-level keyboard shortcuts and the symbol-preview keydown
+// handler. Every other concern lives in its own module.
 
 import "./developer-mode.js";
-import { noteSentSymbol, resetHHClearTracker } from "./hh-clear.js";
-import { buildExpectedSteps } from "./rhythm-review.js";
-import {
-    formatMs,
-    formatRatio,
-    formatTimestamp,
-    kindForNote,
-    makeAccelLabel,
-} from "./key-timing/utils.js";
+import { makeAccelLabel } from "./key-timing/utils.js";
 import {
     clearSentEl,
     copyDiagnosticsEl,
     copyHistoryEl,
     copyHistoryToggleEl,
-    copyImiEl,
-    copyPositionLabelEl,
-    copySymbolEl,
-    diagGapEl,
-    diagInputEl,
-    diagLogEl,
-    diagTimingEl,
     keyInputToggleEl,
     newSetEl,
     rhythmReviewToggleEl,
-    sentHistoryEl,
-    sentSymbolEl,
     sequenceRow,
     statusEl,
 } from "./key-timing/dom.js";
 import {
     isSoundEnabled,
-    setKeyConfig,
     sidetone,
     toggleSidetone,
     updateAudioDiagnostic,
@@ -47,10 +31,7 @@ import {
     renderSentToggleLabel,
     renderSequenceToggleLabel,
     setCopyHistoryExpanded,
-    setKeyPageActionsExpanded,
     setRhythmReviewExpanded,
-    setSentExpanded,
-    setSequenceExpanded,
     toggleCopyHistory,
     toggleKeyPageActions,
     toggleRhythmReview,
@@ -58,19 +39,13 @@ import {
     toggleSequence,
 } from "./key-timing/collapsibles.js";
 import {
-    BROWSER_MIDI_INPUT_MODE,
-    appendRawDiagnosticRow,
     diagnosticText,
     installDiagnosticsAccessors,
-    queueDiagElement,
-    queueDiagEvent,
     recordDiagnostic,
-    updateInputDiagnostic,
 } from "./key-timing/diagnostics.js";
 import {
     installReviewAccessors,
     renderRhythmReview,
-    setSelectedReviewIndex,
 } from "./key-timing/review.js";
 import {
     buildSequenceRow,
@@ -78,65 +53,59 @@ import {
     renderSequence,
     setSequenceTokenPlaying,
 } from "./key-timing/sequence-row.js";
+import {
+    clearSentSymbols,
+    getCopyExercises,
+    getSentEventsByExercise,
+    installCopyProgressAccessors,
+    renderCopyExercises,
+    renderSentSymbol,
+    requestCopyExercises,
+    selectCopyExercise,
+} from "./key-timing/copy-progress.js";
+import {
+    appendDiagnosticRow,
+    clearBrowserMidiInput,
+    getKeyConfig,
+    getMidiInputArmed,
+    installMidiInputAccessors,
+    renderError,
+    renderKeyEvent,
+    renderKeyInputReset,
+    renderKeyInputStart,
+    setMidiInputArmed,
+    startBrowserMidi,
+} from "./key-timing/midi-input.js";
 
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const wsUrl = `${wsProtocol}//${location.host}/ws`;
 
-const MAX_SENT_HISTORY = 48;
-const MAX_DIAGNOSTIC_ROWS = 24;
-
-let keyConfig = null;
-let pendingGeneratedOns = [];
-let pendingRawOns = [];
-let browserMidiAccess = null;
-let browserMidiInput = null;
 let activeSocket = null;
-let midiInputArmed = true;
-let lastSentEndedAt = null;
-// One bucket of sent events per exercise (index-aligned to
-// copyExercises). Filled live as sends arrive into the currently
-// selected exercise; preserved across exercise selection so the
-// learner can scroll the review and see prior attempts. Reset by
-// the explicit "clear" button and when the engine ships a new
-// exercise list.
-let sentEventsByExercise = [];
 // Left-Alt held state, tracked via event.code so we can scope the
-// Cadence preview keybind to LeftAlt only (not RightAlt). Reset on blur
-// because the matching keyup may never arrive if focus is lost.
+// Cadence preview keybind to LeftAlt only (not RightAlt). Reset on
+// blur because the matching keyup may never arrive if focus is lost.
 let leftAltDown = false;
-// IMI cue scheduling. lastNoteOffAt is stamped on every browser-MIDI
-// note-off (not lastSentEndedAt — that only updates after a successful
-// decode, so a runaway concat would let the cue flash while the learner
-// is still actively keying). Cleared to null on the next note-on.
-let lastNoteOffAt = null;
-let imiCueTimerId = null;
-
-installDiagnosticsAccessors({
-    keyConfig: () => keyConfig,
-    midiInputArmed: () => midiInputArmed,
-});
-installReviewAccessors({
-    exercises: () => copyExercises,
-    sentEvents: () => sentEventsByExercise,
-    keyConfig: () => keyConfig,
-});
-
 
 function setStatus(state, text) {
     statusEl.dataset.status = state;
     statusEl.textContent = text;
 }
 
-function setMidiInputArmed(armed, reason) {
-    midiInputArmed = armed;
-    if (!armed) {
-        sidetone.mute();
-    }
-    recordDiagnostic("midi-input-arm", { armed, reason });
-    queueDiagEvent(armed ? "input armed" : `input disarmed / ${reason}`);
-    updateInputDiagnostic();
-    updateAudioDiagnostic();
-}
+installCopyProgressAccessors({
+    activeSocket: () => activeSocket,
+    keyConfig: getKeyConfig,
+    appendDiagnosticRow,
+});
+installMidiInputAccessors({ setStatus });
+installDiagnosticsAccessors({
+    keyConfig: getKeyConfig,
+    midiInputArmed: getMidiInputArmed,
+});
+installReviewAccessors({
+    exercises: getCopyExercises,
+    sentEvents: getSentEventsByExercise,
+    keyConfig: getKeyConfig,
+});
 
 function renderClearSentLabel() {
     clearSentEl.replaceChildren(makeAccelLabel("c", "lear"));
@@ -149,601 +118,6 @@ function renderNewSetLabel() {
     newSetEl.replaceChildren(makeAccelLabel("n", "ew"));
     newSetEl.title = "New exercise set (N)";
     newSetEl.setAttribute("aria-keyshortcuts", "N");
-}
-
-function updateCopyPositionLabel() {
-    if (!copyPositionLabelEl) return;
-    const total = copyExercises.length;
-    if (total === 0) {
-        copyPositionLabelEl.textContent = "Exercise sequence:";
-        return;
-    }
-    const position = Math.min(selectedCopyIndex + 1, total);
-    copyPositionLabelEl.textContent = `Exercise sequence ${position}/${total}:`;
-}
-
-function clearSentSymbols() {
-    sentSymbolEl.textContent = "—";
-    sentHistoryEl.replaceChildren();
-    lastSentEndedAt = null;
-    // Intentionally do NOT touch sentEventsByExercise or re-render the
-    // review — clear is scoped to the Sent line so the review section
-    // preserves prior attempts across clears.
-    copyProgress = 0;
-    clearImiCue();
-    diagGapEl.textContent = "none";
-    resetHHClearTracker();
-    recordDiagnostic("sent-symbols-clear");
-    // Fan-out for page-specific listeners. Freeplay extends clear to also
-    // wipe its custom-input review block; the cadence page has no
-    // listener, so its review is preserved as above.
-    document.dispatchEvent(new CustomEvent("copy-653:sent-clear"));
-}
-
-function midiMessageToNoteEvent(message) {
-    const [status, note, velocity = 0] = message.data;
-    const command = status & 0xf0;
-    if (command !== 0x80 && command !== 0x90) return null;
-
-    // message.timeStamp is the CoreMIDI/Web MIDI arrival time in the same
-    // domain as performance.now() — using it directly preserves hardware
-    // timing through any JS dispatch jitter.
-    return {
-        note,
-        pressed: command === 0x90 && velocity !== 0,
-        timestamp: message.timeStamp / 1000,
-    };
-}
-
-function pageAcceptsMidiInput() {
-    // Visibility, not focus: a brief click on another app window is not a
-    // reason to drop input. The visibilitychange handler covers genuine
-    // off-screen states (tab switched away, window minimised).
-    return document.visibilityState === "visible";
-}
-
-function handleFormedBrowserMidiEvent(event) {
-    const kind = kindForNote(event.note, keyConfig);
-    if (!kind || !keyConfig) {
-        appendRawDiagnosticRow(event, "ignored / unmapped");
-        recordDiagnostic("raw-midi", {
-            note: event.note,
-            pressed: event.pressed,
-            action: "ignored / unmapped",
-            mode: BROWSER_MIDI_INPUT_MODE,
-        });
-        return;
-    }
-
-    if (!midiInputArmed) {
-        appendRawDiagnosticRow(event, "ignored / input disarmed", kind);
-        recordDiagnostic("raw-midi", {
-            kind,
-            note: event.note,
-            pressed: event.pressed,
-            action: "ignored / input disarmed",
-            mode: BROWSER_MIDI_INPUT_MODE,
-        });
-        if (!event.pressed) {
-            sidetone.keyUp(event.note);
-        }
-        updateAudioDiagnostic();
-        return;
-    }
-
-    if (!pageAcceptsMidiInput()) {
-        appendRawDiagnosticRow(event, "ignored / page hidden", kind);
-        recordDiagnostic("raw-midi", {
-            kind,
-            note: event.note,
-            pressed: event.pressed,
-            action: "ignored / page hidden",
-            mode: BROWSER_MIDI_INPUT_MODE,
-        });
-        sidetone.keyUp(event.note);
-        return;
-    }
-
-    // The Trinkey firmware emits already-formed elements (note-on + note-off
-    // per dit/dah). Pass them straight through to sidetone and server decoder.
-    appendRawDiagnosticRow(event, "accepted / formed pass-through", kind);
-    recordDiagnostic("raw-midi", {
-        kind,
-        note: event.note,
-        pressed: event.pressed,
-        action: "accepted / formed pass-through",
-        mode: BROWSER_MIDI_INPUT_MODE,
-    });
-    queueDiagEvent(`formed ${kind} ${event.pressed ? "down" : "up"} / note ${event.note}`);
-
-    if (event.pressed) {
-        lastNoteOffAt = null;
-        clearImiCue();
-        pendingRawOns.push({ kind, note: event.note, timestamp: Number(event.timestamp) });
-        sidetone.keyDown(event.note);
-    } else {
-        sidetone.keyUp(event.note);
-        lastNoteOffAt = performance.now();
-        refreshImiCue();
-    }
-    updateAudioDiagnostic();
-    if (activeSocket?.readyState === WebSocket.OPEN) {
-        activeSocket.send(JSON.stringify({ action: "key-note-event", ...event }));
-    }
-}
-
-function selectMidiInput(inputs) {
-    const available = Array.from(inputs.values());
-    return available.find((input) => input.name?.toLowerCase().includes("trrs trinkey"))
-        || available[0]
-        || null;
-}
-
-async function startBrowserMidi(socket) {
-    if (!navigator.requestMIDIAccess) {
-        diagInputEl.textContent = "browser MIDI unavailable";
-        socket.send(JSON.stringify({ action: "start-key-input" }));
-        return;
-    }
-
-    try {
-        const access = await navigator.requestMIDIAccess({ sysex: false });
-        browserMidiAccess = access;
-        access.addEventListener("statechange", (event) => {
-            if (event.port?.type === "input" && event.port.state !== "connected") {
-                sidetone.mute();
-                setMidiInputArmed(false, "midi input changed");
-            }
-        });
-        const input = selectMidiInput(access.inputs);
-        if (!input) {
-            diagInputEl.textContent = "no browser MIDI input";
-            socket.send(JSON.stringify({ action: "start-key-input" }));
-            return;
-        }
-
-        browserMidiInput = input;
-        browserMidiInput.onmidimessage = (message) => {
-            if (socket.readyState !== WebSocket.OPEN) return;
-            recordDiagnostic("web-midi-message", {
-                input_name: input.name || "browser MIDI",
-                data: Array.from(message.data),
-            });
-            const event = midiMessageToNoteEvent(message);
-            if (!event) return;
-            handleFormedBrowserMidiEvent(event);
-        };
-
-        // Send the current performance.now() so the server can calibrate
-        // browser timestamps into its time.monotonic() domain. Without this
-        // the decoder's flush-time arithmetic would mix clock epochs.
-        socket.send(JSON.stringify({
-            action: "start-browser-key-input",
-            input_name: input.name || "browser MIDI",
-            perf_now: performance.now() / 1000,
-        }));
-    } catch (error) {
-        diagInputEl.textContent = "browser MIDI blocked";
-        diagInputEl.title = error?.message || "";
-        socket.send(JSON.stringify({ action: "start-key-input" }));
-    }
-}
-
-function requestCopyExercises() {
-    if (!copyHistoryEl) return;
-    if (!activeSocket || activeSocket.readyState !== WebSocket.OPEN) return;
-    activeSocket.send(JSON.stringify({ action: "request-copy-exercises" }));
-    // A fresh set discards any in-flight state; collapse every
-    // disclosure so the page returns to its default quiet layout.
-    setSentExpanded(false);
-    setSequenceExpanded(false);
-    setKeyPageActionsExpanded(false);
-    setCopyHistoryExpanded(false);
-    setRhythmReviewExpanded(false);
-}
-
-let selectedCopyIndex = 0;
-let copyExercises = [];
-// Per-step expectation: { symbol, leading } where leading is "none", "word",
-// or "character" — same vocabulary the engine emits on sent-symbol events.
-let expectedCopySteps = [];
-let copyProgress = 0;
-
-function updateExpectedCopySteps() {
-    expectedCopySteps = buildExpectedSteps(copyExercises[selectedCopyIndex]);
-    copyProgress = 0;
-}
-
-// Show "IMI - Repeat; Say Again" once the learner has been silent for
-// word_gap_seconds with an in-flight attempt (copyProgress > 0). Word
-// gap is the threshold rather than character gap so the cue never
-// flickers during normal inter-character pauses inside an exercise.
-// Full reset — used by session events (clear, exercise switch,
-// completion) so the cue doesn't reappear after the context has
-// moved on. Resets lastNoteOffAt so a stale note-off can't trigger
-// the cue in the new context.
-function clearImiCue() {
-    if (imiCueTimerId !== null) {
-        clearTimeout(imiCueTimerId);
-        imiCueTimerId = null;
-    }
-    lastNoteOffAt = null;
-    if (copyImiEl) copyImiEl.hidden = true;
-}
-
-// Idempotent — recomputes the cue's pending-vs-visible state from
-// current lastNoteOffAt. Called from note-off and whenever copyProgress
-// changes via sent-symbol, so the cue tracks the actual silence window
-// rather than the moment of any single event. Intentionally does not
-// gate on copyProgress: after a runaway concat the decoder emits `?`
-// and noteCopySymbolForProgress resets progress to 0, but the learner
-// still needs the cue at that point — they were keying, they paused,
-// they want to try again.
-function refreshImiCue() {
-    if (imiCueTimerId !== null) {
-        clearTimeout(imiCueTimerId);
-        imiCueTimerId = null;
-    }
-    if (!copyImiEl) return;
-    if (expectedCopySteps.length === 0 || lastNoteOffAt === null) {
-        copyImiEl.hidden = true;
-        return;
-    }
-    const ditMs = Number(keyConfig?.dit_ms_expected) || 60;
-    const wordGapMs = 7 * ditMs;
-    const elapsed = performance.now() - lastNoteOffAt;
-    if (elapsed >= wordGapMs) {
-        copyImiEl.hidden = false;
-        return;
-    }
-    copyImiEl.hidden = true;
-    imiCueTimerId = window.setTimeout(() => {
-        imiCueTimerId = null;
-        if (expectedCopySteps.length === 0 || lastNoteOffAt === null) return;
-        copyImiEl.hidden = false;
-    }, wordGapMs - elapsed);
-}
-
-// Walk a single pointer through the expected steps. The first step accepts
-// any leading gap (the learner could be starting fresh, mid-stream, or after
-// a clear); every subsequent step requires both the symbol AND the leading
-// gap to match — so "MUM" only passes for one-word keying, not "M UM".
-function noteCopySymbolForProgress(symbol, leadingGap) {
-    if (expectedCopySteps.length === 0) return;
-    const expected = expectedCopySteps[copyProgress];
-    const symbolMatches = symbol === expected.symbol;
-    const gapMatches = copyProgress === 0 || leadingGap === expected.leading;
-
-    if (symbolMatches && gapMatches) {
-        copyProgress += 1;
-        if (copyProgress >= expectedCopySteps.length) {
-            copyProgress = 0;
-            // Advance to the next exercise in the current set if any.
-            // On the final exercise we deliberately stop — the learner
-            // presses "new" (or N) to request a fresh set, which keeps
-            // the last review intact until they decide to move on.
-            if (selectedCopyIndex + 1 < copyExercises.length) {
-                selectCopyExercise(selectedCopyIndex + 1);
-            } else {
-                sentSymbolEl.textContent = "Completed";
-                // Auto-reveal the Sent history so the learner can scan
-                // the final set of attempts without first hitting X.
-                setSentExpanded(true);
-                clearImiCue();
-            }
-        }
-        refreshImiCue();
-        return;
-    }
-
-    // Mismatch — fall back to step 0. If this symbol matches step 0's symbol,
-    // count the current input as the start of a fresh attempt.
-    copyProgress = symbol === expectedCopySteps[0].symbol ? 1 : 0;
-    refreshImiCue();
-}
-
-// TODO(cadence): if the HH-clear dev toggle is on (Settings → Developer),
-// keying "HH" clears the Sent area. The random exercises the engine emits
-// can still contain "HH" — once H joins the claimed set, keying such an
-// exercise as displayed would inadvertently clear the learner's work.
-// Either filter incoming exercises here, or pass the toggle state up so the
-// generator suppresses HH at source. See web/js/hh-clear.js.
-function renderCopyExercises(event) {
-    if (!copyHistoryEl || !copySymbolEl) return;
-    const exercises = Array.isArray(event.exercises) ? event.exercises : [];
-    copyHistoryEl.replaceChildren();
-    selectedCopyIndex = 0;
-    setSelectedReviewIndex(0);
-    copyExercises = exercises;
-    sentEventsByExercise = exercises.map(() => []);
-    updateExpectedCopySteps();
-    clearImiCue();
-    if (exercises.length === 0) {
-        copySymbolEl.textContent = "—";
-        updateCopyPositionLabel();
-        return;
-    }
-    exercises.forEach((exercise, idx) => {
-        const item = document.createElement("li");
-        item.className = "key-copy-history__item";
-        item.dataset.exercise = exercise;
-        if (idx === selectedCopyIndex) item.dataset.selected = "true";
-        const row = document.createElement("div");
-        row.className = "key-copy-history__row";
-        const words = exercise.split(" ");
-        words.forEach((word, wordIdx) => {
-            for (let i = 0; i < word.length; i++) {
-                const leading =
-                    wordIdx === 0 && i === 0
-                        ? "none"
-                        : i === 0
-                        ? "word"
-                        : "character";
-                const charEl = document.createElement("span");
-                charEl.className =
-                    `key-copy-history__symbol key-copy-history__symbol--leading-${leading}`;
-                charEl.textContent = word[i];
-                row.appendChild(charEl);
-            }
-        });
-        item.appendChild(row);
-        copyHistoryEl.appendChild(item);
-    });
-    copySymbolEl.textContent = exercises[selectedCopyIndex];
-    updateCopyPositionLabel();
-    renderRhythmReview();
-}
-
-function selectCopyExercise(idx) {
-    if (!copyHistoryEl || !copySymbolEl) return false;
-    const items = copyHistoryEl.querySelectorAll(".key-copy-history__item");
-    if (idx < 0 || idx >= items.length) return false;
-    selectedCopyIndex = idx;
-    setSelectedReviewIndex(idx);
-    items.forEach((item, i) => {
-        if (i === idx) item.dataset.selected = "true";
-        else delete item.dataset.selected;
-    });
-    copySymbolEl.textContent = items[idx].dataset.exercise || "";
-    updateExpectedCopySteps();
-    clearImiCue();
-    updateCopyPositionLabel();
-    renderRhythmReview();
-    return true;
-}
-
-// Predict whether the incoming event should start a new attempt row,
-// using the same step-walking vocabulary as noteCopySymbolForProgress
-// but called *before* that function mutates copyProgress. A new row
-// is begun only when the event matches step 0 of the exercise — either
-// from a clean state (copyProgress === 0) or as a mid-stream restart
-// where the user re-keys the exercise's first symbol while we'd been
-// expecting a later step. Junk symbols that don't match step 0 append
-// to the current row instead of fragmenting the display.
-function isAttemptStartForEvent(symbol, leadingGap) {
-    if (expectedCopySteps.length === 0) return true;
-    const stepZero = expectedCopySteps[0];
-    if (!stepZero || symbol !== stepZero.symbol) return false;
-    if (copyProgress === 0) return true;
-    // Mid-stream: only a restart if the current expected step isn't
-    // also satisfied by this event (e.g., MUM at progress=2 expects M
-    // and the user keys M — that's the legitimate finish, not a
-    // restart).
-    const expected = expectedCopySteps[copyProgress];
-    const continuesCurrentStep =
-        expected && symbol === expected.symbol && leadingGap === expected.leading;
-    return !continuesCurrentStep;
-}
-
-function clearCopyExercises() {
-    if (!copyHistoryEl || !copySymbolEl) return;
-    copySymbolEl.textContent = "—";
-    copyHistoryEl.replaceChildren();
-    selectedCopyIndex = 0;
-    setSelectedReviewIndex(0);
-    copyExercises = [];
-    sentEventsByExercise = [];
-    updateExpectedCopySteps();
-    clearImiCue();
-    updateCopyPositionLabel();
-    renderRhythmReview();
-}
-
-function renderSentSymbol(event) {
-    const symbol = event.symbol || "?";
-    const startedAt = Number(event.started_at);
-    const endedAt = Number(event.ended_at);
-    const leadingGapMs = Number.isFinite(startedAt) && Number.isFinite(lastSentEndedAt)
-        ? Math.max(0, (startedAt - lastSentEndedAt) * 1000)
-        : null;
-
-    sentSymbolEl.textContent = symbol;
-    diagGapEl.textContent = event.leading_gap || "none";
-    recordDiagnostic("sent-symbol", {
-        symbol,
-        pattern: event.pattern,
-        leading_gap: event.leading_gap || "none",
-        leading_gap_ms: leadingGapMs,
-        started_at: event.started_at,
-        ended_at: event.ended_at,
-    });
-    appendDiagnosticRow(event);
-
-    const item = document.createElement("li");
-    const leading = event.leading_gap || "none";
-    item.classList.add(`key-sent-history__item--leading-${leading}`);
-    const symbolEl = document.createElement("span");
-    symbolEl.className = "key-sent-history__symbol";
-    symbolEl.textContent = symbol;
-    item.append(symbolEl);
-    sentHistoryEl.appendChild(item);
-
-    while (sentHistoryEl.children.length > MAX_SENT_HISTORY) {
-        sentHistoryEl.firstElementChild.remove();
-    }
-
-    if (Number.isFinite(endedAt)) {
-        lastSentEndedAt = endedAt;
-    }
-    const bucket = sentEventsByExercise[selectedCopyIndex];
-    if (bucket) {
-        bucket.push({
-            symbol,
-            leadingGap: event.leading_gap || "none",
-            leadingGapMs,
-            // Computed against copyProgress *before* noteCopySymbolForProgress
-            // runs below — true on the event that begins a fresh walk through
-            // the exercise (progress was 0) or on a mid-stream restart where
-            // the symbol matches step 0 after a mismatch. The renderer
-            // segments the bucket into rows on these boundaries.
-            isAttemptStart: isAttemptStartForEvent(symbol, event.leading_gap || "none"),
-        });
-    }
-    renderRhythmReview();
-    noteSentSymbol(symbol, event.leading_gap, clearSentSymbols);
-    noteCopySymbolForProgress(symbol, event.leading_gap || "none");
-    // Fan-out for page-specific listeners (e.g. Freeplay's custom-input
-    // review). Dispatched after the cadence pipeline has finished so the
-    // shared state is consistent if a listener cares to read it.
-    document.dispatchEvent(new CustomEvent("copy-653:sent-symbol", {
-        detail: {
-            symbol,
-            leadingGap: event.leading_gap || "none",
-            leadingGapMs,
-        },
-    }));
-}
-
-function renderKeyInputStart(event) {
-    keyConfig = event;
-    setKeyConfig(event);
-    // Fan-out: any page-specific listener needs ditMs to scale the
-    // green/amber/red zones consistently with the cadence renderer.
-    document.dispatchEvent(new CustomEvent("copy-653:key-input-start", {
-        detail: { ditMs: Number(event.dit_ms_expected) || 60 },
-    }));
-    recordDiagnostic("key-input-start", {
-        source: event.source,
-        input_name: event.input_name,
-        dit_note: event.dit_note,
-        dah_note: event.dah_note,
-        dit_ms_expected: event.dit_ms_expected,
-    });
-    setStatus("connected", "key ready");
-    statusEl.title = event.input_name ? `input: ${event.input_name}` : "";
-    diagInputEl.textContent = event.source === "browser"
-        ? `${event.input_name || "browser MIDI"} / browser`
-        : event.input_name || "system default";
-    updateInputDiagnostic();
-    diagTimingEl.textContent = [
-        `${event.character_wpm || "—"} WPM`,
-        `${event.effective_wpm || "—"} effective`,
-        `dit ${formatMs(event.dit_ms_expected)}`,
-        `char ${formatMs(event.character_gap_ms)}`,
-        `word ${formatMs(event.word_gap_ms)}`,
-    ].join(" / ");
-    sidetone.configure(event);
-    updateAudioDiagnostic();
-}
-
-function appendDiagnosticRow(event) {
-    const startedAt = Number(event.started_at);
-    const endedAt = Number(event.ended_at);
-    const symbolRawOns = pendingRawOns.filter((entry) => (
-        entry.timestamp >= startedAt && entry.timestamp <= endedAt
-    ));
-    pendingRawOns = pendingRawOns.filter((entry) => entry.timestamp > endedAt);
-    const symbolGeneratedOns = pendingGeneratedOns.filter((entry) => (
-        entry.timestamp >= startedAt && entry.timestamp <= endedAt
-    ));
-    pendingGeneratedOns = pendingGeneratedOns.filter((entry) => entry.timestamp > endedAt);
-
-    const row = document.createElement("tr");
-    const timestampCell = document.createElement("td");
-    const rawCell = document.createElement("td");
-    const generatedCell = document.createElement("td");
-    const symbolCell = document.createElement("td");
-    const morseCell = document.createElement("td");
-
-    timestampCell.textContent = formatTimestamp();
-    rawCell.textContent = symbolRawOns.length > 0
-        ? symbolRawOns.map((entry) => `${entry.kind} ${entry.note}`).join(" ")
-        : "—";
-    generatedCell.textContent = symbolGeneratedOns.length > 0
-        ? symbolGeneratedOns.map((entry) => `${entry.kind} ${entry.note}`).join(" ")
-        : "—";
-    symbolCell.textContent = event.symbol || "?";
-    morseCell.textContent = event.pattern || "—";
-
-    row.append(timestampCell, rawCell, generatedCell, symbolCell, morseCell);
-    diagLogEl.prepend(row);
-
-    while (diagLogEl.children.length > MAX_DIAGNOSTIC_ROWS) {
-        diagLogEl.lastElementChild.remove();
-    }
-}
-
-function renderKeyEvent(event) {
-    const state = event.pressed ? "down" : "up";
-    queueDiagEvent(`${event.kind} ${state} / note ${event.note}`);
-    recordDiagnostic("server-key-event", {
-        kind: event.kind,
-        note: event.note,
-        pressed: event.pressed,
-        duration_ms: event.duration_ms,
-        ratio_dits: event.ratio_dits,
-    });
-    sidetone.configure(event);
-
-    if (event.pressed) {
-        pendingGeneratedOns.push({
-            kind: event.kind,
-            note: event.note,
-            timestamp: Number(event.timestamp),
-        });
-    } else {
-        if (Number.isFinite(event.duration_ms)) {
-            queueDiagElement([
-                event.kind,
-                formatMs(event.duration_ms),
-                formatRatio(event.ratio_dits),
-            ].join(" / "));
-        }
-    }
-    if (keyConfig?.source !== "browser") {
-        if (event.pressed) {
-            sidetone.keyDown(event.note);
-        } else {
-            sidetone.keyUp(event.note);
-        }
-    }
-    updateAudioDiagnostic();
-}
-
-function renderKeyInputReset(event) {
-    pendingGeneratedOns = [];
-    pendingRawOns = [];
-    queueDiagEvent(`input reset / ${event.reason || "manual"}`);
-    recordDiagnostic("key-input-reset", { reason: event.reason || null });
-}
-
-function renderError(event) {
-    const reason = event.reason || "error";
-    const detail = event.detail ? `: ${event.detail}` : "";
-    recordDiagnostic("server-error", { reason, detail: event.detail || null });
-    statusEl.title = `${reason}${detail}`;
-
-    if (reason === "no-claimed-symbols") {
-        clearCopyExercises();
-    }
-
-    if (reason === "key-input-unavailable" || reason === "key-input-failed") {
-        setStatus("connecting", "midi unavailable");
-    } else if (reason === "key-input-decode-failed") {
-        setStatus("connecting", "decode timing error");
-    } else {
-        setStatus("connecting", reason);
-    }
 }
 
 function connect() {
@@ -761,7 +135,8 @@ function connect() {
         const event = JSON.parse(message.data);
         if (event.type === "claimed-symbols") {
             renderSequence(event);
-            // Cadence page only — refresh exercises when the claimed set changes.
+            // Cadence page only — refresh exercises when the claimed
+            // set changes.
             requestCopyExercises();
         } else if (event.type === "copy-exercises") {
             renderCopyExercises(event);
@@ -786,10 +161,7 @@ function connect() {
         recordDiagnostic("websocket", { state: "close", url: wsUrl });
         setSequenceTokenPlaying(null, false);
         sidetone.mute();
-        if (browserMidiInput) {
-            browserMidiInput.onmidimessage = null;
-            browserMidiInput = null;
-        }
+        clearBrowserMidiInput();
         if (activeSocket === socket) {
             activeSocket = null;
         }
@@ -805,12 +177,12 @@ document.addEventListener("visibilitychange", () => {
     });
     if (document.visibilityState === "hidden") {
         setMidiInputArmed(false, "page hidden");
-    } else if (document.visibilityState === "visible" && !midiInputArmed) {
+    } else if (document.visibilityState === "visible" && !getMidiInputArmed()) {
         setMidiInputArmed(true, "page visible");
     }
 });
 keyInputToggleEl.addEventListener("click", () => {
-    setMidiInputArmed(!midiInputArmed, "manual toggle");
+    setMidiInputArmed(!getMidiInputArmed(), "manual toggle");
 });
 copyDiagnosticsEl.addEventListener("click", async () => {
     const previousText = copyDiagnosticsEl.textContent;
@@ -843,11 +215,11 @@ if (copyHistoryToggleEl) {
     });
 }
 
-// Key-page preview: Left Alt + symbol-key plays the symbol's bare Morse
-// three times through the engine output. event.code is used because
-// Option+letter on macOS substitutes characters in event.key. Scoped to
-// pages that render the Sequence grid (Cadence + Freeplay) via
-// sequenceRow.
+// Key-page preview: Left Alt + symbol-key plays the symbol's bare
+// Morse three times through the engine output. event.code is used
+// because Option+letter on macOS substitutes characters in event.key.
+// Scoped to pages that render the Sequence grid (Cadence + Freeplay)
+// via sequenceRow.
 const PREVIEW_CODE_TO_SYMBOL = (() => {
     const map = new Map();
     for (let i = 0; i < 26; i++) {
@@ -883,8 +255,8 @@ window.addEventListener("keydown", (event) => {
     const symbol = symbolForPreviewCode(event.code, event.shiftKey);
     if (!symbol) return;
     // Freeplay (no Copy section) opens up every symbol for preview;
-    // Cadence still gates on the claimed set so the preview matches the
-    // curriculum the Copy exercise is drawing from.
+    // Cadence still gates on the claimed set so the preview matches
+    // the curriculum the Copy exercise is drawing from.
     if (copyHistoryEl && !claimedSymbolHas(symbol)) return;
     event.preventDefault();
     if (event.repeat) return;
