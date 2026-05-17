@@ -4,6 +4,14 @@ name: release-please
 # maintains a single rolling release PR. Merging that PR creates the
 # git tag and the GitHub release. No PyPI publish in v0 — spec §11.1
 # defers that until a second person installs Copy.
+#
+# Authenticates with RELEASE_PLEASE_TOKEN (a fine-grained PAT or GitHub
+# App token) instead of the default GITHUB_TOKEN. GitHub deliberately
+# suppresses downstream workflow triggers — including pull_request —
+# for PRs authored or updated by GITHUB_TOKEN, which means CI never
+# runs on the release PR and branch protection blocks the merge.
+# A user-owned token sidesteps that guard.
+# https://docs.github.com/en/actions/security-guides/automatic-token-authentication
 
 on:
   push:
@@ -19,5 +27,6 @@ jobs:
     steps:
       - uses: googleapis/release-please-action@v4
         with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
