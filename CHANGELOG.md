@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.5.1...v0.6.0) (2026-05-17)
+
+
+### Features
+
+* **freeplay:** custom-input section and rhythm review ([#75](https://github.com/malloc-labs/malloc-labs-copy/issues/75)) ([15745c7](https://github.com/malloc-labs/malloc-labs-copy/commit/15745c747bde4df7d919b79536e724912d3394cd))
+* **koch:** Left-Alt + key previews a claimed symbol's Morse ([#81](https://github.com/malloc-labs/malloc-labs-copy/issues/81)) ([5ea0ff2](https://github.com/malloc-labs/malloc-labs-copy/commit/5ea0ff2372f680713ddf96a4d292d4de0d20c4d8))
+* **koch:** play 5 ranked exercises in place of the 30s random stream ([#79](https://github.com/malloc-labs/malloc-labs-copy/issues/79)) ([a5bf0b3](https://github.com/malloc-labs/malloc-labs-copy/commit/a5bf0b384c7b3f83921776218bbb969c552f5824))
+* **koch:** prepend fixed DE listening anchor to every exercise ([#80](https://github.com/malloc-labs/malloc-labs-copy/issues/80)) ([7e4fc51](https://github.com/malloc-labs/malloc-labs-copy/commit/7e4fc519eaf2d13e1e726215e815bab73bf3dc66))
+* **koch:** split truth disclosure into Answers/Truth tabs ([#82](https://github.com/malloc-labs/malloc-labs-copy/issues/82)) ([ea5259c](https://github.com/malloc-labs/malloc-labs-copy/commit/ea5259c09de77ec9a7350239d46177dcbff4f610))
+
+
+### Bug Fixes
+
+* **freeplay:** align menu, sent disclosure, and preview with cadence ([#73](https://github.com/malloc-labs/malloc-labs-copy/issues/73)) ([7aef91f](https://github.com/malloc-labs/malloc-labs-copy/commit/7aef91fc271af46ad1fac51612f6e9c3025f007c))
+* **freeplay:** clear button also clears review section ([#77](https://github.com/malloc-labs/malloc-labs-copy/issues/77)) ([726e3e7](https://github.com/malloc-labs/malloc-labs-copy/commit/726e3e7613cb47465c9868d5780d066d363cae74))
+* **freeplay:** hide custom-input body when collapsed ([#76](https://github.com/malloc-labs/malloc-labs-copy/issues/76)) ([2183ec3](https://github.com/malloc-labs/malloc-labs-copy/commit/2183ec329fae05dc8e4b7c0a79073d0cb23c06be))
+
 ## [0.5.1](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.5.0...v0.5.1) (2026-05-16)
 
 
