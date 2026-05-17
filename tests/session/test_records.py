@@ -30,11 +30,33 @@ def _koch_record(started_at: datetime | None = None) -> KochExerciseRecord:
         ended_at=ended,
         audio=_audio(),
         claimed_set=("K", "M", "U"),
-        duration_seconds=30.0,
         seed=12345,
+        exercises=["mk", "kmu"],
         symbols=[
-            {"symbol": "K", "t_on": 0.0, "t_off": 0.18},
-            {"symbol": "M", "t_on": 0.42, "t_off": 0.6},
+            {
+                "symbol": "M",
+                "t_on": 0.0,
+                "t_off": 0.18,
+                "exercise_index": 1,
+                "word_index": 1,
+                "word": "mk",
+            },
+            {
+                "symbol": "K",
+                "t_on": 0.42,
+                "t_off": 0.6,
+                "exercise_index": 1,
+                "word_index": 1,
+                "word": "mk",
+            },
+            {
+                "symbol": "K",
+                "t_on": 1.2,
+                "t_off": 1.38,
+                "exercise_index": 2,
+                "word_index": 1,
+                "word": "kmu",
+            },
         ],
     )
 
@@ -91,12 +113,18 @@ def test_koch_record_carries_truth_timeline(tmp_path: Path):
     path = write_record(_koch_record(), tmp_path)
     parsed = json.loads(path.read_text())
 
-    assert parsed["duration_seconds"] == 30.0
     assert parsed["seed"] == 12345
-    assert parsed["symbols"] == [
-        {"symbol": "K", "t_on": 0.0, "t_off": 0.18},
-        {"symbol": "M", "t_on": 0.42, "t_off": 0.6},
-    ]
+    assert parsed["exercises"] == ["mk", "kmu"]
+    assert parsed["symbols"][0] == {
+        "symbol": "M",
+        "t_on": 0.0,
+        "t_off": 0.18,
+        "exercise_index": 1,
+        "word_index": 1,
+        "word": "mk",
+    }
+    assert parsed["symbols"][-1]["exercise_index"] == 2
+    assert "duration_seconds" not in parsed
 
 
 def test_cadence_record_carries_exercises_sent_and_key_events(tmp_path: Path):
@@ -122,8 +150,8 @@ def test_cadence_record_carries_exercises_sent_and_key_events(tmp_path: Path):
     }
 
 
-def test_schema_version_is_one_one():
-    assert SCHEMA_VERSION == "1.1"
+def test_schema_version_is_one_two():
+    assert SCHEMA_VERSION == "1.2"
 
 
 def test_cadence_selection_round_trips_when_present(tmp_path: Path):

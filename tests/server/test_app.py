@@ -262,8 +262,7 @@ async def test_serves_index_and_pushes_initial_claimed_state(tmp_path):
 
 
 async def test_start_action_runs_a_session(tmp_path, patched_playback):
-    # 1.5s gives roughly two K/M symbols at 25 WPM.
-    config_path = _write_test_config(tmp_path, ["K", "M"], duration=1.5)
+    config_path = _write_test_config(tmp_path, ["K", "M"])
     web_root = _make_web_root(tmp_path)
 
     server, port = await app.serve_app(
@@ -278,20 +277,33 @@ async def test_start_action_runs_a_session(tmp_path, patched_playback):
             await asyncio.wait_for(ws.recv(), timeout=2.0)
 
             await ws.send(json.dumps({"action": "start"}))
-            events = await _drain_until(ws, lambda e: e["type"] == "session-end", timeout=10.0)
+            events = await _drain_until(ws, lambda e: e["type"] == "session-end", timeout=25.0)
 
         kinds = [e["type"] for e in events]
         assert kinds[0] == "session-start"
         assert kinds[-1] == "session-end"
 
         start_event = events[0]
+        assert start_event["mode"] == "exercises"
         assert isinstance(start_event["seed"], int)
-        assert start_event["duration_seconds"] == 1.5
-        assert all(s in ("K", "M") for s in start_event["symbols"])
-        assert len(start_event["symbols"]) > 0
+        assert start_event["exercise_count"] == 5
+        assert len(start_event["exercises"]) == 5
+        for exercise in start_event["exercises"]:
+            # Words use intra-character spacing; the wire string carries
+            # words separated by single spaces. Only K/M after gating.
+            assert exercise != ""
+            assert all(ch in {"K", "M", " "} for ch in exercise)
 
         symbol_events = [e for e in events if e["type"] == "symbol"]
-        assert len(symbol_events) == len(start_event["symbols"])
+        assert len(symbol_events) > 0
+        for ev in symbol_events:
+            assert ev["symbol"] in {"K", "M"}
+            assert isinstance(ev["exercise_index"], int)
+            assert 1 <= ev["exercise_index"] <= 5
+            assert isinstance(ev["word_index"], int)
+            assert ev["word_index"] >= 1
+        # Every exercise emits at least one symbol — indices cover 1..5.
+        assert {e["exercise_index"] for e in symbol_events} == {1, 2, 3, 4, 5}
 
         # Audio thread was driven once, with the configured WPM.
         assert len(patched_playback) == 1
@@ -303,7 +315,7 @@ async def test_start_action_runs_a_session(tmp_path, patched_playback):
 
 
 async def test_start_action_writes_koch_record_to_save_directory(tmp_path, patched_playback):
-    config_path = _write_test_config(tmp_path, ["K", "M"], duration=1.5)
+    config_path = _write_test_config(tmp_path, ["K", "M"])
     save_dir = tmp_path / "records"
     config_path.write_text(
         config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
@@ -320,7 +332,7 @@ async def test_start_action_writes_koch_record_to_save_directory(tmp_path, patch
         async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
             await asyncio.wait_for(ws.recv(), timeout=2.0)
             await ws.send(json.dumps({"action": "start"}))
-            events = await _drain_until(ws, lambda e: e["type"] == "session-end", timeout=10.0)
+            events = await _drain_until(ws, lambda e: e["type"] == "session-end", timeout=25.0)
 
         record_dir = save_dir / "koch-exercise"
         files = list(record_dir.glob("koch-exercise-*.json"))
@@ -328,20 +340,24 @@ async def test_start_action_writes_koch_record_to_save_directory(tmp_path, patch
 
         record = json.loads(files[0].read_text())
         assert record["mode"] == "koch-exercise"
-        assert record["schema_version"] == "1.1"
-        assert record["duration_seconds"] == 1.5
+        assert record["schema_version"] == "1.2"
+        assert "duration_seconds" not in record
         assert record["claimed_set"] == ["K", "M"]
-        symbol_events = [e for e in events if e["type"] == "symbol"]
-        assert [s["symbol"] for s in record["symbols"]] == [e["symbol"] for e in symbol_events]
-        assert record["audio"]["character_speed_wpm"] == 25
         assert isinstance(record["seed"], int)
+        assert len(record["exercises"]) == 5
+        symbol_events = [e for e in events if e["type"] == "symbol"]
+        assert len(record["symbols"]) == len(symbol_events)
+        for record_entry, event in zip(record["symbols"], symbol_events):
+            for key in ("symbol", "t_on", "t_off", "exercise_index", "word_index", "word"):
+                assert record_entry[key] == event[key]
+        assert record["audio"]["character_speed_wpm"] == 25
     finally:
         server.close()
         await server.wait_closed()
 
 
 async def test_stop_during_start_does_not_write_koch_record(tmp_path, patched_playback):
-    config_path = _write_test_config(tmp_path, ["K", "M"], duration=1.5)
+    config_path = _write_test_config(tmp_path, ["K", "M"])
     save_dir = tmp_path / "records"
     config_path.write_text(
         config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
@@ -371,11 +387,14 @@ async def test_stop_during_start_does_not_write_koch_record(tmp_path, patched_pl
 
 
 async def test_start_with_same_seed_replays_via_config_round_trip(tmp_path, patched_playback):
-    """Two consecutive starts with different seeds ⇒ different streams.
-    A session record can capture the seed; replaying is a session/
-    concern, but the seed exposed here is the one that would be used.
+    """Two consecutive starts draw fresh seeds.
+
+    A session record captures the seed so a future replay can reproduce
+    the exact exercise list. The round trip is a session/replay concern;
+    this test only asserts the seed plumbing is wired so each fresh
+    session is independently replayable.
     """
-    config_path = _write_test_config(tmp_path, ["K", "M"], duration=1.5)
+    config_path = _write_test_config(tmp_path, ["K", "M"])
     web_root = _make_web_root(tmp_path)
 
     server, port = await app.serve_app(
@@ -389,9 +408,9 @@ async def test_start_with_same_seed_replays_via_config_round_trip(tmp_path, patc
             await asyncio.wait_for(ws.recv(), timeout=2.0)  # claimed push
 
             await ws.send(json.dumps({"action": "start"}))
-            first = await _drain_until(ws, lambda e: e["type"] == "session-end")
+            first = await _drain_until(ws, lambda e: e["type"] == "session-end", timeout=25.0)
             await ws.send(json.dumps({"action": "start"}))
-            second = await _drain_until(ws, lambda e: e["type"] == "session-end")
+            second = await _drain_until(ws, lambda e: e["type"] == "session-end", timeout=25.0)
 
         seed_a = first[0]["seed"]
         seed_b = second[0]["seed"]
