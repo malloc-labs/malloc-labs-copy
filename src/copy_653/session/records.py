@@ -40,7 +40,7 @@ from typing import Any
 from copy_653 import __version__
 from copy_653.audio.parameters import AudioParameters
 
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 
 
 def _audio_snapshot(params: AudioParameters) -> dict[str, Any]:
@@ -77,15 +77,24 @@ def _format_filename_stamp(when: datetime) -> str:
 
 @dataclass(slots=True)
 class KochExerciseRecord:
-    """A completed Koch Exercises listening session."""
+    """A completed Koch Exercises listening session.
+
+    A session plays an ordered list of short pseudo-word exercises
+    drawn from the learner's claimed set. The truth recorded here is
+    the played symbol timeline: every entry in ``symbols`` carries its
+    ``exercise_index`` (1-based, indexing into ``exercises``),
+    ``word_index`` (1-based within the exercise), and ``word`` so
+    replay tools can reconstruct grouping without re-parsing the
+    exercise strings.
+    """
 
     started_at: datetime
     ended_at: datetime
     audio: AudioParameters
     claimed_set: tuple[str, ...]
-    duration_seconds: float
     seed: int
-    # Each entry: {"symbol": str, "t_on": float, "t_off": float}
+    exercises: list[str] = field(default_factory=list)
+    # Each entry: {"symbol", "t_on", "t_off", "exercise_index", "word_index", "word"}
     symbols: list[dict[str, Any]] = field(default_factory=list)
 
     mode: str = "koch-exercise"
@@ -99,8 +108,8 @@ class KochExerciseRecord:
             "ended_at": _format_iso8601_utc(self.ended_at),
             "audio": _audio_snapshot(self.audio),
             "claimed_set": list(self.claimed_set),
-            "duration_seconds": self.duration_seconds,
             "seed": self.seed,
+            "exercises": list(self.exercises),
             "symbols": list(self.symbols),
         }
 

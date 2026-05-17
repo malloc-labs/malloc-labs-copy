@@ -30,8 +30,14 @@ const KOCH_ORDER = [
 const PERMANENT = new Set(["K", "M"]);
 
 // Latest claimed-symbols payload from the engine.
-let claimedState    = { symbols: [], suggested_next: null };
-let sessionDuration = 30; // updated from session-start
+let claimedState     = { symbols: [], suggested_next: null };
+// Session shape: the engine sends the full ordered exercise list on
+// session-start. The UI holds it locally so it can label the post-session
+// timeline once truth unlocks; we never display the strings while the
+// learner is listening.
+let currentExercises = [];
+let currentExerciseIndex = 0;
+const EXERCISE_COUNT = 5;
 let sessionActive   = false;
 let sessionStartedAtMs = null;
 
@@ -105,7 +111,7 @@ function renderPrimed() {
         return;
     }
     primedEl.textContent =
-        `Primed: ${sessionDuration}s of ${claimedState.symbols.join(", ")} (uniform random)`;
+        `Primed: ${EXERCISE_COUNT} exercises of ${claimedState.symbols.join(", ")}`;
 }
 
 // ─── Timeline disclosure ──────────────────────────────────────────────────────
@@ -177,22 +183,38 @@ function appendEvent(event) {
     const li = document.createElement("li");
 
     if (event.type === "symbol") {
+        // Open a new exercise frame whenever the engine advances. The
+        // header itself stays hidden behind the timeline lock until
+        // session-end — see setTimelineLocked.
+        if (event.exercise_index !== currentExerciseIndex) {
+            currentExerciseIndex = event.exercise_index;
+            const header = document.createElement("li");
+            header.dataset.kind = "exercise-header";
+            const exerciseString = currentExercises[event.exercise_index - 1] || "";
+            header.textContent = `Exercise ${event.exercise_index}: ${exerciseString}`;
+            eventsEl.appendChild(header);
+            primedEl.textContent =
+                `Exercise ${currentExerciseIndex} of ${currentExercises.length}`;
+        }
         li.textContent  = formatSymbolReview(event);
         li.dataset.kind = "symbol";
+        li.dataset.exerciseIndex = String(event.exercise_index);
+        li.dataset.wordIndex = String(event.word_index);
 
     } else if (event.type === "session-start") {
-        sessionDuration = event.duration_seconds;
+        currentExercises = Array.isArray(event.exercises) ? event.exercises : [];
+        currentExerciseIndex = 0;
         sessionActive   = true;
         sessionStartedAtMs = Date.now();
 
         const meta = toggleBtn.querySelector(".timeline-meta");
         meta.textContent =
-            `seed ${event.seed} · ${event.symbols.length} symbols · ${event.duration_seconds}s`;
+            `seed ${event.seed} · ${currentExercises.length} exercises`;
 
         setTimelineLocked(true);
         setTimelineOpen(false);
         eventsEl.replaceChildren();
-        renderPrimed();
+        primedEl.textContent = `Exercise — of ${currentExercises.length}`;
         return;
 
     } else if (event.type === "session-end") {
@@ -204,6 +226,7 @@ function appendEvent(event) {
         clearBtn.disabled = false;
         sessionStartedAtMs = null;
         setTimelineLocked(false);
+        renderPrimed();
 
     } else if (event.type === "error") {
         const detail = event.detail ? `: ${event.detail}`
@@ -280,9 +303,12 @@ clearBtn.addEventListener("click", () => {
     const meta = toggleBtn.querySelector(".timeline-meta");
     meta.textContent = "—";
     sessionStartedAtMs = null;
+    currentExercises = [];
+    currentExerciseIndex = 0;
     setTimelineOpen(false);
     setTimelineLocked(true);
     clearBtn.disabled = true;
+    renderPrimed();
 });
 
 // ─── Init ─────────────────────────────────────────────────────────────────────

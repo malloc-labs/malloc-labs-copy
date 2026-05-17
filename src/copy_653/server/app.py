@@ -59,12 +59,21 @@ unsolicited on connect, and after every change::
      "hh_clear_enabled": false,
      "save_directory": "/home/learner/.local/share/copy_653"}
 
-During a Koch Exercise session::
+During a Koch Exercises session::
 
-    {"type": "session-start", "symbols": ["K","M","K"], "duration_seconds": 30, "seed": 12345}
-    {"type": "symbol", "symbol": "K", "t_on": 0.0,  "t_off": 0.18}
-    {"type": "symbol", "symbol": "M", "t_on": 0.42, "t_off": 0.6}
+    {"type": "session-start", "mode": "exercises",
+     "exercises": ["MK", "K MK", "KM K MMK"], "exercise_count": 3, "seed": 12345}
+    {"type": "symbol", "symbol": "M", "t_on": 0.0,  "t_off": 0.18,
+     "exercise_index": 1, "word_index": 1, "word": "mk"}
+    {"type": "symbol", "symbol": "K", "t_on": 0.42, "t_off": 0.6,
+     "exercise_index": 1, "word_index": 1, "word": "mk"}
     {"type": "session-end"}
+
+The ``exercises`` field carries the full per-session truth up front,
+but the UI is responsible for keeping it hidden until ``session-end``.
+``exercise_index`` and ``word_index`` are 1-based, so a UI can drive a
+live "Exercise N of M" indicator from each ``symbol`` event without
+threading session-start state through every handler.
 
 During a Word Detection session::
 

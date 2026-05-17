@@ -23,7 +23,7 @@ from typing import Any, Callable, Iterator
 from websockets.server import WebSocketServerProtocol
 
 from copy_653 import sequence
-from copy_653.audio import patterns, playback, synth, texture, timing
+from copy_653.audio import patterns, playback, texture, timing
 from copy_653.audio.parameters import AudioParameters
 from copy_653.audio.wav import encode_pcm16_wav
 from copy_653.config import (
@@ -41,6 +41,7 @@ from copy_653.config import (
     save_keyer_settings,
     save_save_directory,
 )
+from copy_653.server.exercises_audio import build_exercises_audio
 from copy_653.letters import (
     play_letter_sequence,
     play_morse_sequence,
@@ -130,15 +131,23 @@ async def _start_action(
     ws: WebSocketServerProtocol,
     config_path: Path,
 ) -> None:
-    """Generate a stream from the claimed set, play it, push timeline events.
+    """Play a short Koch Exercises session from the claimed set.
 
-    Reads the claimed symbol set, audio parameters, and session
-    duration fresh from the config file — a learner who edited
-    ``config.toml`` between actions sees the new values immediately.
+    The session is a fixed-count list of pseudo-word exercises produced
+    by :func:`copy_653.sequence.generate_copy_exercises`. At the early
+    Koch stages — where natural words are not available — grouping
+    (intra-character vs inter-word spacing) is the difficulty knob, not
+    speed; WPM and Farnsworth come from the audio config and are not
+    altered here.
+
+    Reads the claimed set and audio parameters fresh per call. Exercise
+    structure is fixed at the page level (5 exercises, up to 3 elements
+    each, words of 1–3 symbols) — not a session-config knob, so the
+    learner cannot accidentally tune themselves out of the listening
+    contract.
     """
     audio_params = load_audio_parameters(config_path)
     claimed = load_claimed_symbols(config_path)
-    duration = load_session_duration(config_path)
 
     if not claimed:
         # The default is KOCH_FIRST_PAIR; an empty claimed set means
@@ -147,34 +156,27 @@ async def _start_action(
         await _send_event(ws, {"type": "error", "reason": "no-claimed-symbols"})
         return
 
-    generated = sequence.generate(
+    result = sequence.generate_copy_exercises(
         claimed_set=claimed,
-        duration_seconds=duration,
-        params=audio_params,
+        exercise_count=5,
+        max_words=3,
+        min_word_length=1,
+        max_word_length=3,
     )
-
-    if not generated.symbols:
-        # Duration too short for any single claimed symbol.
-        await _send_event(
-            ws,
-            {"type": "error", "reason": "duration-too-short", "duration_seconds": duration},
-        )
-        return
-
-    symbols_list = list(generated.symbols)
-    timeline = synth.compute_timeline(symbols_list, audio_params)
+    exercises = list(result.exercises)
+    samples, timeline = build_exercises_audio(exercises, audio_params)
 
     await _send_event(
         ws,
         {
             "type": "session-start",
-            "symbols": symbols_list,
-            "duration_seconds": duration,
-            "seed": generated.seed,
+            "mode": "exercises",
+            "exercises": exercises,
+            "exercise_count": len(exercises),
+            "seed": result.seed,
         },
     )
 
-    samples = synth.synthesize_sequence(symbols_list, audio_params)
     audio_task = asyncio.create_task(asyncio.to_thread(playback.play, samples, audio_params))
 
     started_at = datetime.now(timezone.utc)
@@ -182,16 +184,21 @@ async def _start_action(
 
     try:
         cursor = 0.0
-        for symbol, t_on, t_off in timeline:
+        for symbol, t_on, t_off, exercise_index, word_index, word in timeline:
             wait = t_on - cursor
             if wait > 0:
                 await asyncio.sleep(wait)
             cursor = t_on
-            emitted_symbols.append({"symbol": symbol, "t_on": t_on, "t_off": t_off})
-            await _send_event(
-                ws,
-                {"type": "symbol", "symbol": symbol, "t_on": t_on, "t_off": t_off},
-            )
+            entry = {
+                "symbol": symbol,
+                "t_on": t_on,
+                "t_off": t_off,
+                "exercise_index": exercise_index,
+                "word_index": word_index,
+                "word": word,
+            }
+            emitted_symbols.append(entry)
+            await _send_event(ws, {"type": "symbol", **entry})
 
         # Wait for the audio thread to actually finish before declaring the
         # session ended — premature end-of-session would lie about what the
@@ -201,8 +208,8 @@ async def _start_action(
             config_path=config_path,
             audio_params=audio_params,
             claimed=claimed,
-            duration_seconds=duration,
-            seed=generated.seed,
+            seed=result.seed,
+            exercises=exercises,
             symbols=emitted_symbols,
             started_at=started_at,
         )

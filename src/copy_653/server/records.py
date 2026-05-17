@@ -118,8 +118,8 @@ def _write_koch_record(
     config_path: Path,
     audio_params: AudioParameters,
     claimed: tuple[str, ...],
-    duration_seconds: float,
     seed: int,
+    exercises: list[str],
     symbols: list[dict[str, Any]],
     started_at: datetime,
 ) -> None:
@@ -136,8 +136,8 @@ def _write_koch_record(
             ended_at=datetime.now(timezone.utc),
             audio=audio_params,
             claimed_set=claimed,
-            duration_seconds=duration_seconds,
             seed=seed,
+            exercises=exercises,
             symbols=symbols,
         )
         write_record(record, save_directory)
