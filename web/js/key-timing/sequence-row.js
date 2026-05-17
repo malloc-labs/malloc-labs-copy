@@ -1,0 +1,78 @@
+// Copy — Key timing page Koch sequence row.
+//
+// Renders the 41-symbol Koch row at the top of the page: each token is
+// claimed / next / available on Cadence, or uniformly available on
+// Freeplay (which lets every symbol preview-play regardless of the
+// curriculum gate). The "playing" pulse is set by the morse-repeat-
+// start/end events from the engine.
+//
+// Owns the claimedSymbolSet so the preview keydown handler in the page
+// controller can ask claimedSymbolHas(symbol) without reaching into
+// module-internal state.
+
+import { copyHistoryEl, sequenceRow } from "./dom.js";
+
+// Canonical Koch order — mirrors KOCH_ORDER in patterns.py.
+const KOCH_ORDER = [
+    "K", "M", "U", "R", "E", "S", "N", "A", "P", "T",
+    "L", "W", "I", ".", "J", "Z", "=", "F", "O", "Y",
+    ",", "V", "G", "5", "/", "Q", "9", "2", "H", "3",
+    "8", "B", "?", "4", "7", "C", "1", "D", "6", "0", "X",
+];
+
+let claimedSymbolSet = new Set();
+
+export function claimedSymbolHas(symbol) {
+    return claimedSymbolSet.has(symbol);
+}
+
+export function buildSequenceRow() {
+    sequenceRow.replaceChildren();
+    KOCH_ORDER.forEach((sym) => {
+        const token = document.createElement("span");
+        token.textContent = sym;
+        token.dataset.symbol = sym;
+        token.dataset.state = "available";
+        token.setAttribute("role", "listitem");
+        token.classList.add("seq-token");
+        sequenceRow.appendChild(token);
+    });
+}
+
+export function setSequenceTokenPlaying(symbol, playing) {
+    sequenceRow.querySelectorAll("[data-playing]").forEach((el) => {
+        delete el.dataset.playing;
+    });
+    if (!playing || !symbol) return;
+    const token = sequenceRow.querySelector(`[data-symbol="${CSS.escape(symbol)}"]`);
+    if (token) token.dataset.playing = "true";
+}
+
+export function renderSequence(state) {
+    const claimedSet = new Set(state.symbols);
+    claimedSymbolSet = claimedSet;
+    const next = state.suggested_next;
+    // Freeplay (no Copy section) renders every token uniformly so only
+    // the currently playing symbol stands out; the claimed / next /
+    // available tiering is a Cadence affordance tied to the curriculum.
+    const uniform = !copyHistoryEl;
+
+    KOCH_ORDER.forEach((sym) => {
+        const token = sequenceRow.querySelector(`[data-symbol="${CSS.escape(sym)}"]`);
+        if (!token) return;
+
+        if (uniform) {
+            token.dataset.state = "available";
+            token.title = sym;
+        } else if (claimedSet.has(sym)) {
+            token.dataset.state = "claimed";
+            token.title = `${sym} — known`;
+        } else if (sym === next) {
+            token.dataset.state = "next";
+            token.title = `${sym} — next in sequence`;
+        } else {
+            token.dataset.state = "available";
+            token.title = `${sym} — not yet known`;
+        }
+    });
+}
