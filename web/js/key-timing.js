@@ -5,46 +5,32 @@
 
 import "./developer-mode.js";
 import { noteSentSymbol, resetHHClearTracker } from "./hh-clear.js";
-import { buildExerciseBlock, buildExpectedSteps } from "./rhythm-review.js";
-import { formatMs, formatRatio, formatTimestamp, makeAccelLabel } from "./key-timing/utils.js";
+import { buildExpectedSteps } from "./rhythm-review.js";
+import {
+    formatMs,
+    formatRatio,
+    formatTimestamp,
+    kindForNote,
+    makeAccelLabel,
+} from "./key-timing/utils.js";
 import {
     clearSentEl,
     copyDiagnosticsEl,
-    copyHistoryArrowEl,
     copyHistoryEl,
     copyHistoryToggleEl,
     copyImiEl,
     copyPositionLabelEl,
     copySymbolEl,
-    diagAudioEl,
-    diagElementEl,
-    diagEventEl,
     diagGapEl,
     diagInputEl,
     diagLogEl,
-    diagRawEl,
-    diagRawLogEl,
     diagTimingEl,
     keyInputToggleEl,
-    keyPageActionsArrowEl,
-    keyPageActionsItemsEl,
-    keyPageActionsToggleEl,
     newSetEl,
-    rhythmReviewArrowEl,
-    rhythmReviewBodyEl,
-    rhythmReviewMetaEl,
-    rhythmReviewSymbolsEl,
-    rhythmReviewTabsEl,
     rhythmReviewToggleEl,
-    sentArrowEl,
-    sentBodyEl,
     sentHistoryEl,
     sentSymbolEl,
-    sentToggleEl,
-    sequenceArrowEl,
     sequenceRow,
-    sequenceToggleEl,
-    soundToggleEl,
     statusEl,
 } from "./key-timing/dom.js";
 import {
@@ -71,15 +57,33 @@ import {
     toggleSent,
     toggleSequence,
 } from "./key-timing/collapsibles.js";
+import {
+    BROWSER_MIDI_INPUT_MODE,
+    appendRawDiagnosticRow,
+    diagnosticText,
+    installDiagnosticsAccessors,
+    queueDiagElement,
+    queueDiagEvent,
+    recordDiagnostic,
+    updateInputDiagnostic,
+} from "./key-timing/diagnostics.js";
+import {
+    installReviewAccessors,
+    renderRhythmReview,
+    setSelectedReviewIndex,
+} from "./key-timing/review.js";
+import {
+    buildSequenceRow,
+    claimedSymbolHas,
+    renderSequence,
+    setSequenceTokenPlaying,
+} from "./key-timing/sequence-row.js";
 
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const wsUrl = `${wsProtocol}//${location.host}/ws`;
 
 const MAX_SENT_HISTORY = 48;
 const MAX_DIAGNOSTIC_ROWS = 24;
-const MAX_RAW_DIAGNOSTIC_ROWS = 32;
-const MAX_DIAGNOSTIC_EVENTS = 240;
-const BROWSER_MIDI_INPUT_MODE = "formed-elements";
 
 let keyConfig = null;
 let pendingGeneratedOns = [];
@@ -87,7 +91,6 @@ let pendingRawOns = [];
 let browserMidiAccess = null;
 let browserMidiInput = null;
 let activeSocket = null;
-let diagnosticEvents = [];
 let midiInputArmed = true;
 let lastSentEndedAt = null;
 // One bucket of sent events per exercise (index-aligned to
@@ -97,7 +100,6 @@ let lastSentEndedAt = null;
 // the explicit "clear" button and when the engine ships a new
 // exercise list.
 let sentEventsByExercise = [];
-let claimedSymbolSet = new Set();
 // Left-Alt held state, tracked via event.code so we can scope the
 // Cadence preview keybind to LeftAlt only (not RightAlt). Reset on blur
 // because the matching keyup may never arrive if focus is lost.
@@ -109,65 +111,20 @@ let leftAltDown = false;
 let lastNoteOffAt = null;
 let imiCueTimerId = null;
 
-// Canonical Koch order — mirrors KOCH_ORDER in patterns.py.
-const KOCH_ORDER = [
-    "K", "M", "U", "R", "E", "S", "N", "A", "P", "T",
-    "L", "W", "I", ".", "J", "Z", "=", "F", "O", "Y",
-    ",", "V", "G", "5", "/", "Q", "9", "2", "H", "3",
-    "8", "B", "?", "4", "7", "C", "1", "D", "6", "0", "X",
-];
+installDiagnosticsAccessors({
+    keyConfig: () => keyConfig,
+    midiInputArmed: () => midiInputArmed,
+});
+installReviewAccessors({
+    exercises: () => copyExercises,
+    sentEvents: () => sentEventsByExercise,
+    keyConfig: () => keyConfig,
+});
 
 
 function setStatus(state, text) {
     statusEl.dataset.status = state;
     statusEl.textContent = text;
-}
-
-function kindForNote(note) {
-    if (note === keyConfig?.dit_note) return "dit";
-    if (note === keyConfig?.dah_note) return "dah";
-    return null;
-}
-
-function recordDiagnostic(type, details = {}) {
-    diagnosticEvents.push({
-        at: new Date().toISOString(),
-        t_ms: Math.round(performance.now()),
-        type,
-        focus: focusLabel(),
-        ...details,
-    });
-
-    while (diagnosticEvents.length > MAX_DIAGNOSTIC_EVENTS) {
-        diagnosticEvents.shift();
-    }
-}
-
-function diagnosticText() {
-    const header = {
-        page: location.href,
-        copied_at: new Date().toISOString(),
-        user_agent: navigator.userAgent,
-        visibility: document.visibilityState,
-        focused: document.hasFocus(),
-        midi_input_armed: midiInputArmed,
-        key_config: keyConfig,
-        browser_midi_input_mode: BROWSER_MIDI_INPUT_MODE,
-    };
-    return [
-        JSON.stringify({ type: "diagnostic-header", ...header }),
-        ...diagnosticEvents.map((event) => JSON.stringify(event)),
-    ].join("\n");
-}
-
-function updateInputDiagnostic() {
-    keyInputToggleEl.textContent = midiInputArmed ? "input armed" : "arm input";
-    const current = diagInputEl.textContent || "";
-    if (midiInputArmed && current.includes(" / disarmed")) {
-        diagInputEl.textContent = current.replace(" / disarmed", "");
-    } else if (!midiInputArmed && !current.includes("disarmed")) {
-        diagInputEl.textContent = `${current || "browser MIDI"} / disarmed`;
-    }
 }
 
 function setMidiInputArmed(armed, reason) {
@@ -192,72 +149,6 @@ function renderNewSetLabel() {
     newSetEl.replaceChildren(makeAccelLabel("n", "ew"));
     newSetEl.title = "New exercise set (N)";
     newSetEl.setAttribute("aria-keyshortcuts", "N");
-}
-
-// Render the review as a tab bar (one tab per exercise) plus the
-// selected exercise's baseline block. Each block carries one column per
-// symbol (asymmetric green|amber|red zone group, fixed width per
-// column), and any sent symbols overlaid beneath as an up-arrow + glyph
-// at a continuous x-fraction. x=0 is a perfectly-timed leading gap
-// relative to the column's *baseline-expected* gap (not the engine's
-// runtime classification); x rises into amber/red as the gap stretches.
-// dit_ms_expected from key-input-start is the source of truth for the
-// ideal gap math.
-function renderRhythmReview() {
-    if (!rhythmReviewSymbolsEl || !rhythmReviewMetaEl) return;
-    // Freeplay has its own review pipeline (driven by the custom-input
-    // textbox); leave the section alone so freeplay-custom.js owns it.
-    if (!copyHistoryEl) return;
-    rhythmReviewSymbolsEl.replaceChildren();
-    if (rhythmReviewTabsEl) rhythmReviewTabsEl.replaceChildren();
-
-    const validIndices = copyExercises
-        .map((ex, idx) => (ex && ex.length > 0 ? idx : -1))
-        .filter((idx) => idx >= 0);
-    rhythmReviewMetaEl.textContent =
-        validIndices.length === 0
-            ? "no exercises"
-            : `${validIndices.length} ${validIndices.length === 1 ? "exercise" : "exercises"}`;
-
-    if (validIndices.length === 0) return;
-
-    if (!validIndices.includes(selectedReviewIndex)) {
-        selectedReviewIndex = validIndices[0];
-    }
-
-    if (rhythmReviewTabsEl) {
-        validIndices.forEach((exIdx, tabIdx) => {
-            const exercise = copyExercises[exIdx];
-            const tab = document.createElement("button");
-            tab.type = "button";
-            tab.className = "key-rhythm-review__tab";
-            tab.role = "tab";
-            tab.textContent = `${tabIdx + 1} / ${exercise}`;
-            tab.title = exercise;
-            const isSelected = exIdx === selectedReviewIndex;
-            tab.setAttribute("aria-selected", String(isSelected));
-            if (isSelected) tab.dataset.selected = "true";
-            tab.addEventListener("click", () => {
-                if (selectedReviewIndex === exIdx) return;
-                selectedReviewIndex = exIdx;
-                renderRhythmReview();
-            });
-            rhythmReviewTabsEl.appendChild(tab);
-        });
-    }
-
-    const ditMs = Number(keyConfig && keyConfig.dit_ms_expected) || 60;
-    const exercise = copyExercises[selectedReviewIndex];
-    const events = sentEventsByExercise[selectedReviewIndex] || [];
-    rhythmReviewSymbolsEl.appendChild(
-        buildExerciseBlock({
-            exercise,
-            title: `Exercise ${selectedReviewIndex + 1} / ${exercise}`,
-            ariaLabel: `Exercise ${selectedReviewIndex + 1} baseline`,
-            events,
-            ditMs,
-        }),
-    );
 }
 
 function updateCopyPositionLabel() {
@@ -311,95 +202,8 @@ function pageAcceptsMidiInput() {
     return document.visibilityState === "visible";
 }
 
-function focusLabel() {
-    const visibility = document.visibilityState;
-    const focus = document.hasFocus() ? "focused" : "blurred";
-    return `${visibility} / ${focus}`;
-}
-
-// rAF-batched diagnostic rendering. The MIDI handler runs on the same thread
-// as DOM mutations; doing per-event row inserts and textContent writes there
-// produces timing jitter that compounds with itself. Queue work synchronously
-// and flush in one animation frame so the main thread stays available for
-// the next MIDI message.
-const pendingRawDiagnosticRows = [];
-let pendingDiagRawText = null;
-let pendingDiagEventText = null;
-let pendingDiagElementText = null;
-let diagnosticRenderScheduled = false;
-
-function scheduleDiagnosticRender() {
-    if (diagnosticRenderScheduled) return;
-    diagnosticRenderScheduled = true;
-    requestAnimationFrame(flushDiagnosticRender);
-}
-
-function flushDiagnosticRender() {
-    diagnosticRenderScheduled = false;
-
-    if (pendingDiagRawText !== null) {
-        diagRawEl.textContent = pendingDiagRawText;
-        pendingDiagRawText = null;
-    }
-    if (pendingDiagEventText !== null) {
-        diagEventEl.textContent = pendingDiagEventText;
-        pendingDiagEventText = null;
-    }
-    if (pendingDiagElementText !== null) {
-        diagElementEl.textContent = pendingDiagElementText;
-        pendingDiagElementText = null;
-    }
-
-    if (pendingRawDiagnosticRows.length === 0) return;
-
-    const fragment = document.createDocumentFragment();
-    // Newest entry first; queue is in arrival order, so iterate reversed.
-    for (let i = pendingRawDiagnosticRows.length - 1; i >= 0; i -= 1) {
-        const entry = pendingRawDiagnosticRows[i];
-        const row = document.createElement("tr");
-        const timestampCell = document.createElement("td");
-        const eventCell = document.createElement("td");
-        const actionCell = document.createElement("td");
-        const focusCell = document.createElement("td");
-        timestampCell.textContent = entry.timestamp;
-        eventCell.textContent = entry.event;
-        actionCell.textContent = entry.action;
-        focusCell.textContent = entry.focus;
-        row.append(timestampCell, eventCell, actionCell, focusCell);
-        fragment.appendChild(row);
-    }
-    pendingRawDiagnosticRows.length = 0;
-    diagRawLogEl.prepend(fragment);
-    while (diagRawLogEl.children.length > MAX_RAW_DIAGNOSTIC_ROWS) {
-        diagRawLogEl.lastElementChild.remove();
-    }
-}
-
-function queueDiagEvent(text) {
-    pendingDiagEventText = text;
-    scheduleDiagnosticRender();
-}
-
-function queueDiagElement(text) {
-    pendingDiagElementText = text;
-    scheduleDiagnosticRender();
-}
-
-function appendRawDiagnosticRow(event, action, kind = null) {
-    const resolvedKind = kind || kindForNote(event.note) || "unknown";
-    const state = event.pressed ? "down" : "up";
-    pendingDiagRawText = `${resolvedKind} ${state} / note ${event.note} / ${action}`;
-    pendingRawDiagnosticRows.push({
-        timestamp: formatTimestamp(),
-        event: `${resolvedKind} ${state} / note ${event.note}`,
-        action,
-        focus: focusLabel(),
-    });
-    scheduleDiagnosticRender();
-}
-
 function handleFormedBrowserMidiEvent(event) {
-    const kind = kindForNote(event.note);
+    const kind = kindForNote(event.note, keyConfig);
     if (!kind || !keyConfig) {
         appendRawDiagnosticRow(event, "ignored / unmapped");
         recordDiagnostic("raw-midi", {
@@ -525,57 +329,6 @@ async function startBrowserMidi(socket) {
     }
 }
 
-function buildSequenceRow() {
-    sequenceRow.replaceChildren();
-    KOCH_ORDER.forEach((sym) => {
-        const token = document.createElement("span");
-        token.textContent = sym;
-        token.dataset.symbol = sym;
-        token.dataset.state = "available";
-        token.setAttribute("role", "listitem");
-        token.classList.add("seq-token");
-        sequenceRow.appendChild(token);
-    });
-}
-
-function setSequenceTokenPlaying(symbol, playing) {
-    sequenceRow.querySelectorAll("[data-playing]").forEach((el) => {
-        delete el.dataset.playing;
-    });
-    if (!playing || !symbol) return;
-    const token = sequenceRow.querySelector(`[data-symbol="${CSS.escape(symbol)}"]`);
-    if (token) token.dataset.playing = "true";
-}
-
-function renderSequence(state) {
-    const claimedSet = new Set(state.symbols);
-    claimedSymbolSet = claimedSet;
-    const next = state.suggested_next;
-    // Freeplay (no Copy section) renders every token uniformly so only
-    // the currently playing symbol stands out; the claimed / next /
-    // available tiering is a Cadence affordance tied to the curriculum.
-    const uniform = !copyHistoryEl;
-
-    KOCH_ORDER.forEach((sym) => {
-        const token = sequenceRow.querySelector(`[data-symbol="${CSS.escape(sym)}"]`);
-        if (!token) return;
-
-        if (uniform) {
-            token.dataset.state = "available";
-            token.title = sym;
-        } else if (claimedSet.has(sym)) {
-            token.dataset.state = "claimed";
-            token.title = `${sym} — known`;
-        } else if (sym === next) {
-            token.dataset.state = "next";
-            token.title = `${sym} — next in sequence`;
-        } else {
-            token.dataset.state = "available";
-            token.title = `${sym} — not yet known`;
-        }
-    });
-}
-
 function requestCopyExercises() {
     if (!copyHistoryEl) return;
     if (!activeSocket || activeSocket.readyState !== WebSocket.OPEN) return;
@@ -590,10 +343,6 @@ function requestCopyExercises() {
 }
 
 let selectedCopyIndex = 0;
-// Which exercise's baseline block the review section shows. Tracks the
-// current copy exercise by default; tab clicks override it without
-// affecting copy progress.
-let selectedReviewIndex = 0;
 let copyExercises = [];
 // Per-step expectation: { symbol, leading } where leading is "none", "word",
 // or "character" — same vocabulary the engine emits on sent-symbol events.
@@ -704,7 +453,7 @@ function renderCopyExercises(event) {
     const exercises = Array.isArray(event.exercises) ? event.exercises : [];
     copyHistoryEl.replaceChildren();
     selectedCopyIndex = 0;
-    selectedReviewIndex = 0;
+    setSelectedReviewIndex(0);
     copyExercises = exercises;
     sentEventsByExercise = exercises.map(() => []);
     updateExpectedCopySteps();
@@ -750,7 +499,7 @@ function selectCopyExercise(idx) {
     const items = copyHistoryEl.querySelectorAll(".key-copy-history__item");
     if (idx < 0 || idx >= items.length) return false;
     selectedCopyIndex = idx;
-    selectedReviewIndex = idx;
+    setSelectedReviewIndex(idx);
     items.forEach((item, i) => {
         if (i === idx) item.dataset.selected = "true";
         else delete item.dataset.selected;
@@ -791,7 +540,7 @@ function clearCopyExercises() {
     copySymbolEl.textContent = "—";
     copyHistoryEl.replaceChildren();
     selectedCopyIndex = 0;
-    selectedReviewIndex = 0;
+    setSelectedReviewIndex(0);
     copyExercises = [];
     sentEventsByExercise = [];
     updateExpectedCopySteps();
@@ -1136,7 +885,7 @@ window.addEventListener("keydown", (event) => {
     // Freeplay (no Copy section) opens up every symbol for preview;
     // Cadence still gates on the claimed set so the preview matches the
     // curriculum the Copy exercise is drawing from.
-    if (copyHistoryEl && !claimedSymbolSet.has(symbol)) return;
+    if (copyHistoryEl && !claimedSymbolHas(symbol)) return;
     event.preventDefault();
     if (event.repeat) return;
     activeSocket.send(JSON.stringify({ action: "play-morse-repeat", symbol }));
