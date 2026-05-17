@@ -31,6 +31,9 @@ const PERMANENT = new Set(["K", "M"]);
 
 // Latest claimed-symbols payload from the engine.
 let claimedState     = { symbols: [], suggested_next: null };
+// Mirror of claimed symbols as a Set for O(1) lookup by the
+// Left-Alt preview handler. Refreshed inside renderSequence.
+let claimedSymbolSet = new Set();
 // Session shape: the engine sends the full ordered exercise list on
 // session-start. The UI holds it locally so it can label the post-session
 // timeline once truth unlocks; we never display the strings while the
@@ -67,6 +70,7 @@ function buildSequenceRow() {
 function renderSequence(state) {
     claimedState = state;
     const claimedSet = new Set(state.symbols);
+    claimedSymbolSet = claimedSet;
     const next = state.suggested_next;
 
     KOCH_ORDER.forEach((sym) => {
@@ -174,9 +178,26 @@ function formatSymbolReview(event) {
     return `${formatClockTime(event.t_on)} ${event.symbol}${spoken}`;
 }
 
+function setSequenceTokenPlaying(symbol, playing) {
+    sequenceRow.querySelectorAll("[data-playing]").forEach((el) => {
+        delete el.dataset.playing;
+    });
+    if (!playing || !symbol) return;
+    const token = sequenceRow.querySelector(`[data-symbol="${CSS.escape(symbol)}"]`);
+    if (token) token.dataset.playing = "true";
+}
+
 function appendEvent(event) {
     if (event.type === "claimed-symbols") {
         renderSequence(event);
+        return;
+    }
+    if (event.type === "morse-repeat-start") {
+        setSequenceTokenPlaying(event.symbol, true);
+        return;
+    }
+    if (event.type === "morse-repeat-end") {
+        setSequenceTokenPlaying(event.symbol, false);
         return;
     }
 
@@ -309,6 +330,69 @@ clearBtn.addEventListener("click", () => {
     setTimelineLocked(true);
     clearBtn.disabled = true;
     renderPrimed();
+});
+
+// ─── Symbol preview (Left Alt + key) ──────────────────────────────────────────
+// Plays a claimed symbol's bare Morse three times through the engine so the
+// learner can refresh their ear between sessions. ``event.code`` is used
+// because Option+letter on macOS substitutes the character in ``event.key``;
+// LeftAlt is tracked separately because ``event.altKey`` does not
+// distinguish left from right.
+
+const PREVIEW_CODE_TO_SYMBOL = (() => {
+    const map = new Map();
+    for (let i = 0; i < 26; i++) {
+        map.set(`Key${String.fromCharCode(65 + i)}`, String.fromCharCode(65 + i));
+    }
+    for (let i = 0; i <= 9; i++) {
+        map.set(`Digit${i}`, String(i));
+    }
+    map.set("Period", ".");
+    map.set("Comma", ",");
+    map.set("Equal", "=");
+    return map;
+})();
+
+function symbolForPreviewCode(code, shiftKey) {
+    if (code === "Slash") return shiftKey ? "?" : "/";
+    return PREVIEW_CODE_TO_SYMBOL.get(code) || null;
+}
+
+let leftAltDown = false;
+
+window.addEventListener("keydown", (event) => {
+    if (event.code === "AltLeft") {
+        leftAltDown = true;
+        return;
+    }
+    if (!leftAltDown || !event.altKey) return;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    // Preview audio would collide with in-flight session playback.
+    if (sessionActive) return;
+    const target = event.target;
+    if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) return;
+    }
+    const symbol = symbolForPreviewCode(event.code, event.shiftKey);
+    if (!symbol) return;
+    // Only claimed symbols are previewable. The fixed DE listening
+    // anchor (spec §2.5) is deliberately ear-only and not available
+    // for active review here.
+    if (!claimedSymbolSet.has(symbol)) return;
+    event.preventDefault();
+    if (event.repeat) return;
+    socket.send(JSON.stringify({ action: "play-morse-repeat", symbol }));
+});
+
+window.addEventListener("keyup", (event) => {
+    if (event.code === "AltLeft") {
+        leftAltDown = false;
+    }
+});
+
+window.addEventListener("blur", () => {
+    leftAltDown = false;
 });
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
