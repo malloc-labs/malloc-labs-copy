@@ -6,64 +6,82 @@
 import "./developer-mode.js";
 import { noteSentSymbol, resetHHClearTracker } from "./hh-clear.js";
 import { buildExerciseBlock, buildExpectedSteps } from "./rhythm-review.js";
+import { formatMs, formatRatio, formatTimestamp, makeAccelLabel } from "./key-timing/utils.js";
+import {
+    clearSentEl,
+    copyDiagnosticsEl,
+    copyHistoryArrowEl,
+    copyHistoryEl,
+    copyHistoryToggleEl,
+    copyImiEl,
+    copyPositionLabelEl,
+    copySymbolEl,
+    diagAudioEl,
+    diagElementEl,
+    diagEventEl,
+    diagGapEl,
+    diagInputEl,
+    diagLogEl,
+    diagRawEl,
+    diagRawLogEl,
+    diagTimingEl,
+    keyInputToggleEl,
+    keyPageActionsArrowEl,
+    keyPageActionsItemsEl,
+    keyPageActionsToggleEl,
+    newSetEl,
+    rhythmReviewArrowEl,
+    rhythmReviewBodyEl,
+    rhythmReviewMetaEl,
+    rhythmReviewSymbolsEl,
+    rhythmReviewTabsEl,
+    rhythmReviewToggleEl,
+    sentArrowEl,
+    sentBodyEl,
+    sentHistoryEl,
+    sentSymbolEl,
+    sentToggleEl,
+    sequenceArrowEl,
+    sequenceRow,
+    sequenceToggleEl,
+    soundToggleEl,
+    statusEl,
+} from "./key-timing/dom.js";
+import {
+    isSoundEnabled,
+    setKeyConfig,
+    sidetone,
+    toggleSidetone,
+    updateAudioDiagnostic,
+} from "./key-timing/sidetone.js";
+import {
+    renderCopyHistoryToggleLabel,
+    renderKeyPageActionsToggleLabel,
+    renderRhythmReviewToggleLabel,
+    renderSentToggleLabel,
+    renderSequenceToggleLabel,
+    setCopyHistoryExpanded,
+    setKeyPageActionsExpanded,
+    setRhythmReviewExpanded,
+    setSentExpanded,
+    setSequenceExpanded,
+    toggleCopyHistory,
+    toggleKeyPageActions,
+    toggleRhythmReview,
+    toggleSent,
+    toggleSequence,
+} from "./key-timing/collapsibles.js";
 
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const wsUrl = `${wsProtocol}//${location.host}/ws`;
-
-const statusEl = document.querySelector(".status");
-const sequenceRow = document.getElementById("sequence-row");
-const sentSymbolEl = document.getElementById("sent-symbol");
-const sentHistoryEl = document.getElementById("sent-history");
-const rhythmReviewToggleEl = document.getElementById("key-rhythm-review-toggle");
-const rhythmReviewArrowEl = document.getElementById("key-rhythm-review-arrow");
-const rhythmReviewMetaEl = document.getElementById("key-rhythm-review-meta");
-const rhythmReviewBodyEl = document.getElementById("key-rhythm-review-body");
-const rhythmReviewSymbolsEl = document.getElementById("key-rhythm-review-symbols");
-const rhythmReviewTabsEl = document.getElementById("key-rhythm-review-tabs");
-const soundToggleEl = document.getElementById("key-sound-toggle");
-const clearSentEl = document.getElementById("key-clear-sent");
-const newSetEl = document.getElementById("key-new-set");
-const keyInputToggleEl = document.getElementById("key-input-toggle");
-const copyDiagnosticsEl = document.getElementById("copy-diagnostics");
-const diagInputEl = document.getElementById("diag-input");
-const diagAudioEl = document.getElementById("diag-audio");
-const diagEventEl = document.getElementById("diag-event");
-const diagRawEl = document.getElementById("diag-raw");
-const diagElementEl = document.getElementById("diag-element");
-const diagGapEl = document.getElementById("diag-gap");
-const diagTimingEl = document.getElementById("diag-timing");
-const diagLogEl = document.getElementById("diag-log");
-const diagRawLogEl = document.getElementById("diag-raw-log");
-// Copy section is Cadence-only; absent on the Freeplay page.
-const copySymbolEl = document.getElementById("copy-symbol");
-const copyImiEl = document.getElementById("copy-imi");
-const copyHistoryEl = document.getElementById("copy-history");
-const copyPositionLabelEl = document.getElementById("copy-position-label");
-const copyHistoryToggleEl = document.getElementById("copy-history-toggle");
-const copyHistoryArrowEl = document.getElementById("copy-history-arrow");
-// Cadence-only collapsible toggles. Absent on the Freeplay page —
-// every reference below must guard for null.
-const sequenceToggleEl = document.getElementById("sequence-toggle");
-const sequenceArrowEl = document.getElementById("sequence-arrow");
-const keyPageActionsToggleEl = document.getElementById("key-page-actions-toggle");
-const keyPageActionsArrowEl = document.getElementById("key-page-actions-arrow");
-const keyPageActionsItemsEl = document.getElementById("key-page-actions-items");
-const sentToggleEl = document.getElementById("sent-toggle");
-const sentArrowEl = document.getElementById("sent-arrow");
-const sentBodyEl = document.getElementById("key-sent-body");
-const cadenceSpeakerEl = document.getElementById("cadence-speaker");
 
 const MAX_SENT_HISTORY = 48;
 const MAX_DIAGNOSTIC_ROWS = 24;
 const MAX_RAW_DIAGNOSTIC_ROWS = 32;
 const MAX_DIAGNOSTIC_EVENTS = 240;
-const DEFAULT_TONE_HZ = 600;
-const DEFAULT_AMPLITUDE = 0.3;
-const DEFAULT_RAMP_SECONDS = 0.005;
 const BROWSER_MIDI_INPUT_MODE = "formed-elements";
 
 let keyConfig = null;
-let soundEnabled = false;
 let pendingGeneratedOns = [];
 let pendingRawOns = [];
 let browserMidiAccess = null;
@@ -103,26 +121,6 @@ const KOCH_ORDER = [
 function setStatus(state, text) {
     statusEl.dataset.status = state;
     statusEl.textContent = text;
-}
-
-function formatMs(value) {
-    if (!Number.isFinite(value)) return "—";
-    return `${Math.round(value)} ms`;
-}
-
-function formatRatio(value) {
-    if (!Number.isFinite(value)) return "—";
-    return `${value.toFixed(2)} dits`;
-}
-
-function formatTimestamp(date = new Date()) {
-    const time = date.toLocaleTimeString([], { hour12: false });
-    const milliseconds = date.getMilliseconds().toString().padStart(3, "0");
-    return `${time}.${milliseconds}`;
-}
-
-function clamp(value, min, max) {
-    return Math.min(Math.max(value, min), max);
 }
 
 function kindForNote(note) {
@@ -181,163 +179,6 @@ function setMidiInputArmed(armed, reason) {
     queueDiagEvent(armed ? "input armed" : `input disarmed / ${reason}`);
     updateInputDiagnostic();
     updateAudioDiagnostic();
-}
-
-class KeySidetone {
-    constructor() {
-        this.context = null;
-        this.oscillator = null;
-        this.gain = null;
-        this.activeKeys = new Set();
-        this.frequencyHz = DEFAULT_TONE_HZ;
-        this.amplitude = DEFAULT_AMPLITUDE;
-        this.rampSeconds = DEFAULT_RAMP_SECONDS;
-        this.browserBlocked = false;
-    }
-
-    configure(event) {
-        this.frequencyHz = Number(event.tone_frequency_hz) || this.frequencyHz;
-        this.amplitude = clamp(Number(event.amplitude) || this.amplitude, 0, 1);
-        this.rampSeconds = Math.max(
-            (Number(event.envelope_ramp_ms) || DEFAULT_RAMP_SECONDS * 1000) / 1000,
-            0.001,
-        );
-        if (this.oscillator) {
-            this.oscillator.frequency.setValueAtTime(
-                this.frequencyHz,
-                this.context.currentTime,
-            );
-        }
-        updateAudioDiagnostic();
-    }
-
-    ensureStarted() {
-        if (this.context) return;
-
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContext) {
-            diagAudioEl.textContent = "unsupported";
-            return;
-        }
-
-        this.context = new AudioContext();
-        this.gain = this.context.createGain();
-        this.gain.gain.setValueAtTime(0, this.context.currentTime);
-
-        this.oscillator = this.context.createOscillator();
-        this.oscillator.type = "sine";
-        this.oscillator.frequency.setValueAtTime(this.frequencyHz, this.context.currentTime);
-        this.oscillator.connect(this.gain);
-        this.gain.connect(this.context.destination);
-        this.oscillator.start();
-    }
-
-    async unlock() {
-        this.ensureStarted();
-        if (!this.context) {
-            updateAudioDiagnostic();
-            return false;
-        }
-        if (this.context.state === "running") {
-            this.browserBlocked = false;
-            updateAudioDiagnostic();
-            return true;
-        }
-
-        try {
-            await this.context.resume();
-            this.browserBlocked = this.context.state !== "running";
-            updateAudioDiagnostic();
-            return this.context.state === "running";
-        } catch {
-            this.browserBlocked = true;
-            updateAudioDiagnostic();
-            return false;
-        }
-    }
-
-    keyDown(note) {
-        if (!canUseAppSidetone()) return;
-        if (!this.context || this.context.state !== "running") {
-            this.browserBlocked = true;
-            updateAudioDiagnostic();
-            return;
-        }
-        this.activeKeys.add(note);
-        this.rampTo(this.amplitude);
-    }
-
-    keyUp(note) {
-        this.activeKeys.delete(note);
-        if (this.activeKeys.size === 0) {
-            this.rampTo(0);
-        }
-    }
-
-    mute() {
-        this.activeKeys.clear();
-        this.rampTo(0);
-    }
-
-    rampTo(value) {
-        if (!this.context || !this.gain) return;
-        const now = this.context.currentTime;
-        this.gain.gain.cancelScheduledValues(now);
-        this.gain.gain.setValueAtTime(this.gain.gain.value, now);
-        this.gain.gain.linearRampToValueAtTime(value, now + this.rampSeconds);
-        updateAudioDiagnostic();
-    }
-
-    stateLabel() {
-        if (keyConfig?.trinkey_buzzer_enabled) return "trinkey buzzer";
-        if (!soundEnabled || !this.context) return "click sound";
-        if (this.context.state === "suspended") return "click sound";
-        if (this.browserBlocked) return "blocked";
-        return this.activeKeys.size > 0 ? "tone" : "ready";
-    }
-}
-
-const sidetone = new KeySidetone();
-
-function canUseAppSidetone() {
-    return soundEnabled && !keyConfig?.trinkey_buzzer_enabled;
-}
-
-function updateAudioDiagnostic() {
-    diagAudioEl.textContent = sidetone.stateLabel();
-    renderSoundToggleLabel();
-    soundToggleEl.disabled = Boolean(keyConfig?.trinkey_buzzer_enabled);
-}
-
-function renderSoundToggleLabel() {
-    if (soundEnabled) {
-        soundToggleEl.replaceChildren(makeAccelLabel("m", "ute"));
-        soundToggleEl.title = "Mute sidetone (M)";
-        soundToggleEl.setAttribute("aria-keyshortcuts", "M");
-    } else {
-        soundToggleEl.replaceChildren(
-            document.createTextNode("enable "),
-            makeAccelLabel("s", "ound"),
-        );
-        soundToggleEl.title = "Enable sidetone (S)";
-        soundToggleEl.setAttribute("aria-keyshortcuts", "S");
-    }
-    if (cadenceSpeakerEl) {
-        cadenceSpeakerEl.dataset.state = soundEnabled ? "on" : "off";
-    }
-}
-
-function makeAccelLabel(accel, rest) {
-    const u = document.createElement("u");
-    u.textContent = accel;
-    const fragment = document.createDocumentFragment();
-    fragment.append(u, document.createTextNode(rest));
-    return fragment;
-}
-
-function toggleSidetone() {
-    if (soundToggleEl.disabled) return;
-    soundToggleEl.click();
 }
 
 function renderClearSentLabel() {
@@ -417,117 +258,6 @@ function renderRhythmReview() {
             ditMs,
         }),
     );
-}
-
-function setRhythmReviewExpanded(expanded) {
-    if (!rhythmReviewToggleEl || !rhythmReviewArrowEl || !rhythmReviewBodyEl) return;
-    rhythmReviewToggleEl.setAttribute("aria-expanded", String(expanded));
-    rhythmReviewArrowEl.textContent = expanded ? "▼" : "▶";
-    rhythmReviewBodyEl.hidden = !expanded;
-}
-
-function setCopyHistoryExpanded(expanded) {
-    if (!copyHistoryToggleEl || !copyHistoryArrowEl || !copyHistoryEl) return;
-    copyHistoryToggleEl.setAttribute("aria-expanded", String(expanded));
-    copyHistoryArrowEl.textContent = expanded ? "▼" : "▶";
-    copyHistoryEl.hidden = !expanded;
-}
-
-function setSequenceExpanded(expanded) {
-    if (!sequenceToggleEl || !sequenceArrowEl || !sequenceRow) return;
-    sequenceToggleEl.setAttribute("aria-expanded", String(expanded));
-    sequenceArrowEl.textContent = expanded ? "▼" : "▶";
-    sequenceRow.hidden = !expanded;
-}
-
-function setKeyPageActionsExpanded(expanded) {
-    if (!keyPageActionsToggleEl || !keyPageActionsArrowEl || !keyPageActionsItemsEl) return;
-    keyPageActionsToggleEl.setAttribute("aria-expanded", String(expanded));
-    keyPageActionsArrowEl.textContent = expanded ? "▼" : "▶";
-    keyPageActionsItemsEl.hidden = !expanded;
-}
-
-function setSentExpanded(expanded) {
-    if (!sentToggleEl || !sentArrowEl || !sentBodyEl) return;
-    sentToggleEl.setAttribute("aria-expanded", String(expanded));
-    sentArrowEl.textContent = expanded ? "▼" : "▶";
-    sentBodyEl.hidden = !expanded;
-}
-
-function toggleCopyHistory() {
-    if (!copyHistoryToggleEl) return;
-    const expanded = copyHistoryToggleEl.getAttribute("aria-expanded") === "true";
-    setCopyHistoryExpanded(!expanded);
-}
-
-function toggleRhythmReview() {
-    if (!rhythmReviewToggleEl) return;
-    const expanded = rhythmReviewToggleEl.getAttribute("aria-expanded") === "true";
-    setRhythmReviewExpanded(!expanded);
-}
-
-function toggleSequence() {
-    if (!sequenceToggleEl) return;
-    const expanded = sequenceToggleEl.getAttribute("aria-expanded") === "true";
-    setSequenceExpanded(!expanded);
-}
-
-function toggleKeyPageActions() {
-    if (!keyPageActionsToggleEl) return;
-    const expanded = keyPageActionsToggleEl.getAttribute("aria-expanded") === "true";
-    setKeyPageActionsExpanded(!expanded);
-}
-
-function toggleSent() {
-    if (!sentToggleEl) return;
-    const expanded = sentToggleEl.getAttribute("aria-expanded") === "true";
-    setSentExpanded(!expanded);
-}
-
-function renderCopyHistoryToggleLabel() {
-    const labelEl = document.getElementById("copy-history-label");
-    if (!labelEl || !copyHistoryToggleEl) return;
-    labelEl.replaceChildren(makeAccelLabel("e", ""));
-    copyHistoryToggleEl.title = "Show/hide exercises (E)";
-    copyHistoryToggleEl.setAttribute("aria-keyshortcuts", "E");
-}
-
-function renderRhythmReviewToggleLabel() {
-    const labelEl = document.getElementById("key-rhythm-review-label");
-    if (!labelEl || !rhythmReviewToggleEl) return;
-    labelEl.replaceChildren(makeAccelLabel("r", ""));
-    rhythmReviewToggleEl.title = "Review rhythm (R)";
-    rhythmReviewToggleEl.setAttribute("aria-keyshortcuts", "R");
-}
-
-function renderSequenceToggleLabel() {
-    const labelEl = document.getElementById("sequence-toggle-label");
-    if (!labelEl || !sequenceToggleEl) return;
-    labelEl.replaceChildren(makeAccelLabel("q", ""));
-    sequenceToggleEl.title = "Show/hide sequence (Q)";
-    sequenceToggleEl.setAttribute("aria-keyshortcuts", "Q");
-}
-
-function renderKeyPageActionsToggleLabel() {
-    const labelEl = document.getElementById("key-page-actions-label");
-    if (!labelEl || !keyPageActionsToggleEl) return;
-    labelEl.replaceChildren(makeAccelLabel("t", ""));
-    keyPageActionsToggleEl.title = "Show/hide top menu (T)";
-    keyPageActionsToggleEl.setAttribute("aria-keyshortcuts", "T");
-}
-
-function renderSentToggleLabel() {
-    const labelEl = document.getElementById("sent-toggle-label");
-    if (!labelEl || !sentToggleEl) return;
-    // Letters in "Sent" collide with M/S/E/N/T/C/R/Q so the accelerator
-    // is bound to an out-of-word X. Render as ``Sent (x)``.
-    labelEl.replaceChildren(
-        document.createTextNode("Sent ("),
-        makeAccelLabel("x", ""),
-        document.createTextNode(")"),
-    );
-    sentToggleEl.title = "Show/hide sent symbols (X)";
-    sentToggleEl.setAttribute("aria-keyshortcuts", "X");
 }
 
 function updateCopyPositionLabel() {
@@ -1137,6 +867,7 @@ function renderSentSymbol(event) {
 
 function renderKeyInputStart(event) {
     keyConfig = event;
+    setKeyConfig(event);
     // Fan-out: any page-specific listener needs ditMs to scale the
     // green/amber/red zones consistently with the cadence renderer.
     document.dispatchEvent(new CustomEvent("copy-653:key-input-start", {
@@ -1348,15 +1079,6 @@ copyDiagnosticsEl.addEventListener("click", async () => {
         copyDiagnosticsEl.textContent = previousText;
     }, 1200);
 });
-soundToggleEl.addEventListener("click", async () => {
-    if (soundEnabled) {
-        soundEnabled = false;
-        sidetone.mute();
-    } else {
-        soundEnabled = await sidetone.unlock();
-    }
-    updateAudioDiagnostic();
-});
 clearSentEl.addEventListener("click", clearSentSymbols);
 if (newSetEl) newSetEl.addEventListener("click", requestCopyExercises);
 if (rhythmReviewToggleEl) {
@@ -1438,10 +1160,10 @@ window.addEventListener("keydown", (event) => {
         if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) return;
     }
     const key = event.key.toLowerCase();
-    if (soundEnabled && key === "m") {
+    if (isSoundEnabled() && key === "m") {
         event.preventDefault();
         toggleSidetone();
-    } else if (!soundEnabled && key === "s") {
+    } else if (!isSoundEnabled() && key === "s") {
         event.preventDefault();
         toggleSidetone();
     } else if (key === "c") {
