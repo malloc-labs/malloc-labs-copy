@@ -10,36 +10,13 @@
     <script src="../js/theme.js"></script>
 </head>
 <body class="landing-body">
-    <button class="theme-btn" id="theme-toggle" aria-label="Switch theme">light</button>
+    <copy-theme-btn></copy-theme-btn>
     <main class="landing-shell exercises-shell cadence-shell">
-        <header class="landing-header">
-            <p class="eyebrow"><a href="index.html" class="back-link">Key</a></p>
-            <h1 class="landing-title">
-                <span class="landing-title__text">Freeplay <span class="status" data-status="connecting">connecting...</span></span>
-                <svg class="cadence-speaker" id="cadence-speaker" data-state="off" viewBox="0 0 32 32" role="img" aria-label="Sidetone state">
-                    <!-- IEEE 315 loudspeaker: rectangle body + trapezoidal cone -->
-                    <rect x="6" y="11" width="6" height="10"/>
-                    <polygon points="12,11 12,21 22,27 22,5"/>
-                </svg>
-            </h1>
-        </header>
-        <hr class="landing-rule">
+        <copy-header eyebrow="Key" title="Freeplay" speaker></copy-header>
 
-        <section class="key-page-actions" aria-label="Top menu">
-            <button type="button" class="key-page-actions__toggle" id="key-page-actions-toggle" aria-expanded="false" aria-controls="key-page-actions-items">
-                <span class="key-page-actions__label" id="key-page-actions-label"></span>
-                <span class="key-page-actions__arrow" id="key-page-actions-arrow" aria-hidden="true">▶</span>
-            </button>
-            <div class="key-page-actions__items" id="key-page-actions-items" hidden>
-                <button type="button" class="key-sound-toggle" id="key-sound-toggle">enable sound</button>
-                <button type="button" class="key-sound-toggle" id="key-clear-sent">clear</button>
-            </div>
-        </section>
+        <copy-top-menu></copy-top-menu>
 
-        <section class="koch-sequence" aria-label="Known symbol sequence">
-            <p class="sequence-label">Sequence</p>
-            <div class="sequence-row sequence-row--read-only" id="sequence-row" role="list"></div>
-        </section>
+        <copy-koch-sequence section-label="Known symbol sequence" read-only></copy-koch-sequence>
 
         <section class="key-custom-input" aria-label="Custom practice sequence">
             <button type="button" class="key-custom-input__toggle" id="freeplay-custom-toggle" aria-expanded="false" aria-controls="freeplay-custom-body">
@@ -55,105 +32,23 @@
             </div>
         </section>
 
-        <section class="key-sent" aria-label="Sent symbols">
-            <button type="button" class="key-sent__toggle" id="sent-toggle" aria-expanded="false" aria-controls="key-sent-body">
-                <span class="key-sent__label" id="sent-toggle-label"></span>
-                <span class="key-sent__arrow" id="sent-arrow" aria-hidden="true">▶</span>
-            </button>
-            <div class="key-sent__body" id="key-sent-body" hidden>
-                <div class="key-sent-current" aria-live="polite">
-                    <span class="key-sent-symbol" id="sent-symbol">—</span>
-                </div>
-                <ol class="key-sent-history" id="sent-history" aria-label="Recent sent symbols"></ol>
-            </div>
-        </section>
+        <copy-sent></copy-sent>
 
-        <section class="key-rhythm-review" aria-label="Rhythm review">
-            <button type="button" class="timeline-toggle key-rhythm-review__toggle" id="key-rhythm-review-toggle" aria-expanded="false" aria-controls="key-rhythm-review-body">
-                <span class="key-rhythm-review__label" id="key-rhythm-review-label"></span>
-                <span class="timeline-arrow" id="key-rhythm-review-arrow" aria-hidden="true">▶</span>
-                <span class="timeline-meta" id="key-rhythm-review-meta">no input</span>
-            </button>
-            <div class="timeline-body key-rhythm-review__body" id="key-rhythm-review-body" hidden>
-                <div class="key-rhythm-review__tabs" id="key-rhythm-review-tabs" role="tablist" aria-label="Custom sequence tabs"></div>
-                <div class="key-rhythm-review__symbols" id="key-rhythm-review-symbols" aria-label="Baseline rhythm for the custom sequence"></div>
-                <div class="key-rhythm-review__legend" aria-label="Perceptual timing-zone legend">
-                    <span><i class="key-rhythm-review__swatch key-rhythm-review__swatch--green"></i>Green Zone</span>
-                    <span><i class="key-rhythm-review__swatch key-rhythm-review__swatch--amber"></i>Amber Zone</span>
-                    <span><i class="key-rhythm-review__swatch key-rhythm-review__swatch--red"></i>Red Zone</span>
-                </div>
-            </div>
-        </section>
+        <copy-rhythm-review
+            meta="no input"
+            tabs-label="Custom sequence tabs"
+            symbols-label="Baseline rhythm for the custom sequence"
+        ></copy-rhythm-review>
 
-        <section class="key-diagnostics developer-only" aria-label="Key diagnostics">
-            <div class="key-diagnostics__header">
-                <p class="sequence-label">Diagnostics</p>
-                <div class="key-diagnostics-actions">
-                    <button type="button" class="key-sound-toggle" id="copy-diagnostics">copy diagnostics</button>
-                    <button type="button" class="key-sound-toggle" id="key-input-toggle">input armed</button>
-                </div>
-            </div>
-            <dl class="key-diagnostics-grid">
-                <div>
-                    <dt>MIDI input</dt>
-                    <dd id="diag-input">—</dd>
-                </div>
-                <div>
-                    <dt>Audio</dt>
-                    <dd id="diag-audio">waiting</dd>
-                </div>
-                <div>
-                    <dt>Last event</dt>
-                    <dd id="diag-event">—</dd>
-                </div>
-                <div>
-                    <dt>Last raw MIDI</dt>
-                    <dd id="diag-raw">—</dd>
-                </div>
-                <div>
-                    <dt>Last element</dt>
-                    <dd id="diag-element">—</dd>
-                </div>
-                <div>
-                    <dt>Last gap</dt>
-                    <dd id="diag-gap">—</dd>
-                </div>
-                <div>
-                    <dt>Timing</dt>
-                    <dd id="diag-timing">—</dd>
-                </div>
-            </dl>
-            <div class="key-diagnostics-table-wrap">
-                <table class="key-diagnostics-table">
-                    <caption>Raw MIDI</caption>
-                    <thead>
-                        <tr>
-                            <th scope="col">Timestamp</th>
-                            <th scope="col">Event</th>
-                            <th scope="col">Action</th>
-                            <th scope="col">Focus</th>
-                        </tr>
-                    </thead>
-                    <tbody id="diag-raw-log"></tbody>
-                </table>
-            </div>
-            <div class="key-diagnostics-table-wrap">
-                <table class="key-diagnostics-table">
-                    <caption>Decoded symbols</caption>
-                    <thead>
-                        <tr>
-                            <th scope="col">Timestamp</th>
-                            <th scope="col">Raw on</th>
-                            <th scope="col">Generated on</th>
-                            <th scope="col">Symbol</th>
-                            <th scope="col">Morse</th>
-                        </tr>
-                    </thead>
-                    <tbody id="diag-log"></tbody>
-                </table>
-            </div>
-        </section>
+        <copy-diagnostics></copy-diagnostics>
     </main>
+    <script type="module" src="../js/partials/diagnostics.js"></script>
+    <script type="module" src="../js/partials/header.js"></script>
+    <script type="module" src="../js/partials/koch-sequence.js"></script>
+    <script type="module" src="../js/partials/rhythm-review.js"></script>
+    <script type="module" src="../js/partials/sent.js"></script>
+    <script type="module" src="../js/partials/theme-btn.js"></script>
+    <script type="module" src="../js/partials/top-menu.js"></script>
     <script type="module" src="../js/key-timing.js"></script>
     <script type="module" src="../js/freeplay-custom.js"></script>
 </body>

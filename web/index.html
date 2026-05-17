@@ -12,13 +12,9 @@
     <script src="js/app-version.js" defer></script>
 </head>
 <body class="landing-body landing-body--index">
-    <button class="theme-btn" id="theme-toggle" aria-label="Switch theme">light</button>
+    <copy-theme-btn></copy-theme-btn>
     <main class="landing-shell">
-        <header class="landing-header">
-            <p class="landing-kicker">CW listening environment</p>
-            <h1 class="landing-title">Copy 653</h1>
-        </header>
-        <hr class="landing-rule">
+        <copy-landing-header kicker="CW listening environment" title="Copy 653"></copy-landing-header>
         <div class="morse-scroll" aria-hidden="true">
             <div class="morse-scroll__viewport">
                 <div class="morse-scroll__track" data-morse-scroll-track></div>
@@ -52,5 +48,7 @@
         <span class="footer-version" data-app-version hidden></span>
         <a href="settings/index.html" class="footer-link">Settings</a>
     </footer>
+    <script type="module" src="js/partials/landing-header.js"></script>
+    <script type="module" src="js/partials/theme-btn.js"></script>
 </body>
 </html>
