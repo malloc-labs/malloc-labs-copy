@@ -3,9 +3,32 @@ from copy_653.sequence.exercise_analysis import (
     apply_answers_to_entries,
     build_exercise_entries,
     build_generation_profile,
+    load_band_evidence,
+    record_claimed_set_key,
     spacing_weight_for_claimed_set,
     strip_fixed_anchor,
 )
+
+
+def _saved_exercise(burden_band: int, fraction: float, *, burden: int = 50) -> dict:
+    return {
+        "burden_band": burden_band,
+        "burden_score": burden,
+        "analysis": {
+            "saved": True,
+            "combined_fraction": fraction,
+            "band_state": "exact" if fraction >= 1.0 else "building",
+        },
+    }
+
+
+def _session(started_at: str, claimed_set_key: str, exercises: list[dict]) -> dict:
+    return {
+        "mode": "koch-exercise",
+        "started_at": started_at,
+        "generation": {"claimed_set_key": claimed_set_key},
+        "exercises": exercises,
+    }
 
 
 def test_strip_fixed_anchor_removes_only_leading_de():
@@ -127,6 +150,103 @@ def test_apply_answers_to_entries_merges_answer_analysis():
     assert updated[0]["analysis"]["band_state"] == "exact"
     assert updated[1]["answer"] == "DE K"
     assert updated[1]["analysis"]["symbol_correct_units"] == 1
+
+
+def test_record_claimed_set_key_prefers_generation_field():
+    record = {
+        "claimed_set": ["M", "K"],
+        "generation": {"claimed_set_key": "K M"},
+    }
+    assert record_claimed_set_key(record) == "K M"
+
+
+def test_record_claimed_set_key_derives_from_claimed_set_for_legacy_records():
+    assert record_claimed_set_key({"claimed_set": ["M", "K"]}) == "K M"
+    assert record_claimed_set_key({}) == ""
+
+
+def test_load_band_evidence_filters_by_key_and_orders_newest_first():
+    other = _session("2026-05-18T13:00:00Z", "K M U", [_saved_exercise(1, 1.0)])
+    older = _session("2026-05-18T13:05:00Z", "K M", [_saved_exercise(1, 0.5)])
+    newer = _session("2026-05-18T13:10:00Z", "K M", [_saved_exercise(1, 1.0)])
+
+    evidence = load_band_evidence([other, older, newer], claimed_set_key="K M")
+
+    assert evidence["claimed_set_key"] == "K M"
+    assert evidence["session_count"] == 2
+    assert evidence["sessions_used"] == 2
+    assert evidence["bands"][0]["burden_band"] == 1
+    # Newest first; the 1.0 from the newer session leads.
+    assert evidence["bands"][0]["recent_fractions"] == [1.0, 0.5]
+
+
+def test_load_band_evidence_strong_and_low_streaks_count_from_most_recent():
+    sessions = [
+        _session("2026-05-18T13:30:00Z", "K M", [_saved_exercise(1, 1.0)]),
+        _session("2026-05-18T13:20:00Z", "K M", [_saved_exercise(1, 0.96)]),
+        _session("2026-05-18T13:10:00Z", "K M", [_saved_exercise(1, 0.80)]),
+        _session("2026-05-18T13:00:00Z", "K M", [_saved_exercise(1, 1.0)]),
+    ]
+
+    evidence = load_band_evidence(sessions, claimed_set_key="K M")
+    band = evidence["bands"][0]
+    # Two strong runs (1.0, 0.96) then broken by 0.80.
+    assert band["strong_streak"] == 2
+    # No low run at the most recent observation.
+    assert band["low_streak"] == 0
+
+
+def test_load_band_evidence_low_streak_from_most_recent():
+    sessions = [
+        _session("2026-05-18T13:30:00Z", "K M", [_saved_exercise(1, 0.5)]),
+        _session("2026-05-18T13:20:00Z", "K M", [_saved_exercise(1, 0.65)]),
+        _session("2026-05-18T13:10:00Z", "K M", [_saved_exercise(1, 1.0)]),
+    ]
+
+    evidence = load_band_evidence(sessions, claimed_set_key="K M")
+    band = evidence["bands"][0]
+    assert band["low_streak"] == 2
+    assert band["strong_streak"] == 0
+
+
+def test_load_band_evidence_skips_sessions_without_saved_analysis():
+    saved = _session("2026-05-18T13:30:00Z", "K M", [_saved_exercise(1, 1.0)])
+    unsaved_exercise = {
+        "burden_band": 1,
+        "analysis": {"saved": False},
+    }
+    unsaved = _session("2026-05-18T13:35:00Z", "K M", [unsaved_exercise])
+
+    evidence = load_band_evidence([saved, unsaved], claimed_set_key="K M")
+
+    # Both sessions match the key, so session_count includes both.
+    assert evidence["session_count"] == 2
+    # Only the saved session contributes a fraction.
+    assert evidence["bands"][0]["recent_fractions"] == [1.0]
+
+
+def test_load_band_evidence_window_size_truncates_to_recent_sessions():
+    sessions = [
+        _session(f"2026-05-18T12:0{i}:00Z", "K M", [_saved_exercise(1, 1.0)]) for i in range(6)
+    ]
+
+    evidence = load_band_evidence(sessions, claimed_set_key="K M", window_size=3)
+
+    assert evidence["session_count"] == 6
+    assert evidence["sessions_used"] == 3
+    assert len(evidence["bands"][0]["recent_fractions"]) == 3
+
+
+def test_load_band_evidence_supports_legacy_records_without_generation():
+    legacy = {
+        "mode": "koch-exercise",
+        "started_at": "2026-05-18T13:30:00Z",
+        "claimed_set": ["M", "K"],
+        "exercises": [_saved_exercise(1, 1.0)],
+    }
+    evidence = load_band_evidence([legacy], claimed_set_key="K M")
+    assert evidence["session_count"] == 1
+    assert evidence["bands"][0]["recent_fractions"] == [1.0]
 
 
 def test_apply_answers_to_entries_dampens_repeated_exercise_evidence():

@@ -10,13 +10,26 @@ from __future__ import annotations
 
 from math import log1p
 import re
-from typing import Any
+from typing import Any, Callable
 
 from copy_653.sequence.copy_exercises import _score_copy_exercise
 
 FIXED_LISTENING_ANCHOR = "DE"
 ANALYSIS_VERSION = "koch-analysis-v1"
 GENERATION_PROFILE_VERSION = "koch-burden-v1"
+
+# Default size of the recent-session window the evidence loader walks.
+# The MOC recommends 5-10; 5 keeps the model responsive and avoids
+# ancient evidence dominating after a learner returns from a break.
+DEFAULT_EVIDENCE_WINDOW_SIZE = 5
+
+# Threshold a per-band combined_fraction must clear to count as a
+# "strong" run for gear-up purposes. Matches the band_state >= "strong"
+# cutoff in :func:`_band_state`.
+STRONG_FRACTION = 0.95
+# Threshold below which a band run counts as "low" for gear-down. Matches
+# the band_state == "low" cutoff in :func:`_band_state`.
+LOW_FRACTION = 0.70
 
 _SPACE_RE = re.compile(r"\s+")
 
@@ -279,3 +292,113 @@ def _repeat_weight(occurrence: int) -> float:
     if occurrence == 3:
         return 0.5
     return 0.35
+
+
+def record_claimed_set_key(record: dict[str, Any]) -> str:
+    """Return the claimed-set identity for a saved koch-exercise record.
+
+    Prefers ``generation.claimed_set_key`` (schema 2.0+); falls back to
+    sorting ``claimed_set`` for legacy schema 1.3 records that pre-date
+    the persisted key. Returns ``""`` when neither is present so a
+    malformed file does not crash the loader.
+    """
+    generation = record.get("generation")
+    if isinstance(generation, dict):
+        stored = generation.get("claimed_set_key")
+        if isinstance(stored, str):
+            return stored
+    claimed = record.get("claimed_set")
+    if isinstance(claimed, list):
+        return " ".join(sorted(str(s) for s in claimed))
+    return ""
+
+
+def load_band_evidence(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+    window_size: int = DEFAULT_EVIDENCE_WINDOW_SIZE,
+) -> dict[str, Any]:
+    """Aggregate per-band evidence over recent sessions for one claimed set.
+
+    ``records`` is the list of already-loaded koch-exercise record dicts
+    — the caller does the disk walk so this helper stays pure. Only
+    records whose claimed-set identity matches ``claimed_set_key``
+    contribute. The matching set is sorted by ``started_at`` descending
+    and truncated to ``window_size`` before aggregation.
+
+    For each burden band observed in the window, the helper records the
+    most-recent-first list of ``combined_fraction`` values along with
+    streaks of consecutive strong (>= 0.95) and low (< 0.70) runs from
+    the most recent observation. Streaks are the input the gear-up /
+    gear-down rule consumes; the raw fraction list is what the
+    diagnostic panel renders.
+
+    Sessions with no saved-answer analysis contribute nothing — an
+    unanswered session is exposure, not evidence.
+    """
+    matching: list[dict[str, Any]] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        if record.get("mode") != "koch-exercise":
+            continue
+        if record_claimed_set_key(record) != claimed_set_key:
+            continue
+        matching.append(record)
+    matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
+    window = matching[: max(0, window_size)]
+
+    band_entries: dict[int, list[tuple[float, str]]] = {}
+    for session in window:
+        exercises = session.get("exercises")
+        if not isinstance(exercises, list):
+            continue
+        for exercise in exercises:
+            if not isinstance(exercise, dict):
+                continue
+            analysis = exercise.get("analysis")
+            if not isinstance(analysis, dict) or analysis.get("saved") is not True:
+                continue
+            burden_band = exercise.get("burden_band")
+            if not isinstance(burden_band, int) or isinstance(burden_band, bool):
+                continue
+            fraction = analysis.get("combined_fraction")
+            if not isinstance(fraction, (int, float)) or isinstance(fraction, bool):
+                continue
+            state = analysis.get("band_state")
+            band_entries.setdefault(burden_band, []).append(
+                (float(fraction), str(state) if isinstance(state, str) else "")
+            )
+
+    bands: list[dict[str, Any]] = []
+    for band_index in sorted(band_entries):
+        entries = band_entries[band_index]
+        fractions = [f for f, _ in entries]
+        states = [s for _, s in entries]
+        bands.append(
+            {
+                "burden_band": band_index,
+                "recent_fractions": [round(f, 6) for f in fractions],
+                "recent_band_states": states,
+                "strong_streak": _streak(fractions, lambda v: v >= STRONG_FRACTION),
+                "low_streak": _streak(fractions, lambda v: v < LOW_FRACTION),
+            }
+        )
+
+    return {
+        "claimed_set_key": claimed_set_key,
+        "session_count": len(matching),
+        "window_size": window_size,
+        "sessions_used": len(window),
+        "bands": bands,
+    }
+
+
+def _streak(values: list[float], predicate: Callable[[float], bool]) -> int:
+    count = 0
+    for value in values:
+        if not predicate(value):
+            return count
+        count += 1
+    return count

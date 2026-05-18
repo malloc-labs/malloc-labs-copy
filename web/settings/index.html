@@ -203,6 +203,23 @@
                  role="tabpanel"
                  aria-labelledby="settings-tab-koch"
                  hidden>
+            <section class="settings-koch-rollup" id="settings-koch-rollup" hidden>
+                <h3 class="settings-koch-rollup__heading">
+                    Recent band evidence
+                    <span class="settings-koch-rollup__meta" id="settings-koch-rollup-meta"></span>
+                </h3>
+                <table class="settings-koch-rollup__table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Band</th>
+                            <th scope="col">Recent fractions (newest →)</th>
+                            <th scope="col">Strong streak</th>
+                            <th scope="col">Low streak</th>
+                        </tr>
+                    </thead>
+                    <tbody id="settings-koch-rollup-tbody"></tbody>
+                </table>
+            </section>
             <p class="settings-koch-meta" id="settings-koch-meta">Loading saved sessions…</p>
             <div class="settings-koch-table-wrap">
                 <table class="settings-koch-table">
@@ -241,5 +258,6 @@
     <script type="module" src="../js/settings.js"></script>
     <script type="module" src="../js/settings-tabs.js"></script>
     <script type="module" src="../js/settings-koch-table.js"></script>
+    <script type="module" src="../js/settings-koch-rollup.js"></script>
 </body>
 </html>

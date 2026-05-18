@@ -20,6 +20,11 @@ from websockets.datastructures import Headers
 
 from copy_653 import __version__
 from copy_653.config import load_save_directory
+from copy_653.sequence.exercise_analysis import (
+    DEFAULT_EVIDENCE_WINDOW_SIZE,
+    load_band_evidence,
+    record_claimed_set_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +86,18 @@ def _build_static_handler(web_root: Path, config_path: Path | None = None):
             filename_values = params.get("file") or params.get("filename") or []
             filename = filename_values[0] if filename_values else ""
             return _read_koch_exercise(config_path, filename)
+
+        if clean_path == "/api/koch-band-evidence":
+            params = parse_qs(parsed_path.query)
+            key_values = params.get("claimed_set_key") or []
+            window_values = params.get("window_size") or []
+            return _json_response(
+                _read_koch_band_evidence(
+                    config_path,
+                    claimed_set_key=key_values[0] if key_values else None,
+                    window_size_raw=window_values[0] if window_values else None,
+                )
+            )
 
         target = "index.html" if clean_path == "/" else clean_path.lstrip("/")
         resolved = (web_root / target).resolve()
@@ -188,6 +205,83 @@ def _list_koch_exercises(config_path: Path | None) -> dict[str, Any]:
 # optional -N collision suffix); this rejects path separators and anything
 # else that could escape the koch-exercise subdirectory.
 _KOCH_FILENAME_RE = re.compile(r"^koch-exercise-[0-9A-Za-z-]+\.json$")
+
+
+def _iter_koch_records(save_directory: Path) -> list[dict[str, Any]]:
+    """Load every parseable koch-exercise record under ``save_directory``.
+
+    Returns full record dicts (not just listing summaries) so callers
+    can pass them straight to :func:`load_band_evidence`. Files that
+    fail to parse or do not declare ``mode = "koch-exercise"`` are
+    skipped — a corrupt file should not 500 the diagnostic endpoints.
+    """
+    target_dir = save_directory / "koch-exercise"
+    records: list[dict[str, Any]] = []
+    if not target_dir.is_dir():
+        return records
+    for entry in target_dir.glob("koch-exercise-*.json"):
+        try:
+            data = json.loads(entry.read_text())
+        except (OSError, ValueError):
+            logger.exception("skipping unreadable koch-exercise record: %s", entry)
+            continue
+        if isinstance(data, dict) and data.get("mode") == "koch-exercise":
+            records.append(data)
+    return records
+
+
+def _read_koch_band_evidence(
+    config_path: Path | None,
+    *,
+    claimed_set_key: str | None,
+    window_size_raw: str | None,
+) -> dict[str, Any]:
+    """Return per-band evidence for the Settings rollup view.
+
+    When ``claimed_set_key`` is omitted the most recent saved record's
+    key is used — that is almost always the one the learner wants to
+    see, and it avoids the page needing a second round-trip to discover
+    which key is current. Records that fail to parse are skipped.
+    """
+    try:
+        save_directory = load_save_directory(config_path)
+    except Exception:
+        logger.exception("could not resolve save_directory for band-evidence read")
+        return {
+            "save_directory": "",
+            "claimed_set_key": claimed_set_key or "",
+            "session_count": 0,
+            "window_size": DEFAULT_EVIDENCE_WINDOW_SIZE,
+            "sessions_used": 0,
+            "bands": [],
+        }
+
+    records = _iter_koch_records(save_directory)
+    resolved_key = claimed_set_key
+    if not resolved_key:
+        latest = max(
+            records,
+            key=lambda r: str(r.get("started_at") or ""),
+            default=None,
+        )
+        resolved_key = record_claimed_set_key(latest) if latest else ""
+
+    window_size = DEFAULT_EVIDENCE_WINDOW_SIZE
+    if window_size_raw is not None:
+        try:
+            parsed = int(window_size_raw)
+        except (TypeError, ValueError):
+            parsed = window_size
+        if parsed > 0:
+            window_size = parsed
+
+    evidence = load_band_evidence(
+        records,
+        claimed_set_key=resolved_key,
+        window_size=window_size,
+    )
+    evidence["save_directory"] = str(save_directory)
+    return evidence
 
 
 def _read_koch_exercise(
