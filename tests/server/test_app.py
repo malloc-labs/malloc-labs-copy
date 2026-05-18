@@ -317,6 +317,123 @@ async def test_api_koch_exercises_lists_records_newest_first(tmp_path):
         await server.wait_closed()
 
 
+async def test_api_koch_exercise_returns_full_record(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    save_dir = tmp_path / "data"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    koch_dir = save_dir / "koch-exercise"
+    koch_dir.mkdir(parents=True)
+    record = {
+        "schema_version": "1.3",
+        "engine_version": "0.7.1",
+        "mode": "koch-exercise",
+        "started_at": "2026-05-15T10:00:00.000Z",
+        "ended_at": "2026-05-15T10:01:30.000Z",
+        "audio": {
+            "character_speed_wpm": 20,
+            "effective_speed_wpm": 10,
+            "tone_frequency_hz": 600,
+        },
+        "claimed_set": ["K", "M"],
+        "seed": 7,
+        "exercises": ["DE K", "DE M"],
+        "symbols": [],
+        "answers": ["DE K", "DE N"],
+    }
+    filename = "koch-exercise-20260515T100000Z.json"
+    (koch_dir / filename).write_text(json.dumps(record))
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        response = await asyncio.to_thread(
+            urllib.request.urlopen,
+            f"http://127.0.0.1:{port}/api/koch-exercise?file={filename}",
+        )
+        assert response.status == 200
+        assert response.headers["Content-Type"] == "application/json; charset=utf-8"
+        payload = json.loads(response.read())
+        assert payload["mode"] == "koch-exercise"
+        assert payload["exercises"] == ["DE K", "DE M"]
+        assert payload["answers"] == ["DE K", "DE N"]
+        assert payload["audio"]["character_speed_wpm"] == 20
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_api_koch_exercise_rejects_path_traversal(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    save_dir = tmp_path / "data"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        for bad in (
+            "../../etc/passwd",
+            "../config.toml",
+            "koch-exercise-/../../config.toml",
+            "anything.json",
+            "",
+        ):
+            url = f"http://127.0.0.1:{port}/api/koch-exercise?file={urllib.parse.quote(bad)}"
+            try:
+                await asyncio.to_thread(urllib.request.urlopen, url)
+                status = 200
+            except urllib.error.HTTPError as exc:  # type: ignore[attr-defined]
+                status = exc.code
+            assert status in (400, 404), (bad, status)
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_api_koch_exercise_missing_file_returns_404(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    save_dir = tmp_path / "data"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    (save_dir / "koch-exercise").mkdir(parents=True)
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        url = (
+            f"http://127.0.0.1:{port}/api/koch-exercise" "?file=koch-exercise-20990101T000000Z.json"
+        )
+        try:
+            await asyncio.to_thread(urllib.request.urlopen, url)
+            status = 200
+        except urllib.error.HTTPError as exc:  # type: ignore[attr-defined]
+            status = exc.code
+        assert status == 404
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
 async def test_api_koch_exercises_returns_empty_when_directory_missing(tmp_path):
     config_path = _write_test_config(tmp_path, ["K", "M"])
     save_dir = tmp_path / "data"
