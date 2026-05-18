@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 from websockets.datastructures import Headers
 
 from copy_653 import __version__
+from copy_653.config import load_save_directory
 
 logger = logging.getLogger(__name__)
 
@@ -41,13 +42,17 @@ def find_web_root() -> Path:
     )
 
 
-def _build_static_handler(web_root: Path):
+def _build_static_handler(web_root: Path, config_path: Path | None = None):
     """Return a ``process_request`` callable bound to ``web_root``.
 
     The callable is what websockets invokes for every incoming HTTP
     request before deciding whether to upgrade to WS. Returning
     ``None`` lets the WS handshake proceed; returning a 3-tuple
     answers the request as plain HTTP.
+
+    ``config_path`` is read fresh on each API call that needs the
+    learner's save directory (spec §6.3) — no caching, so a learner
+    who edits ``config.toml`` sees the change on the next request.
     """
 
     async def process_request(
@@ -66,6 +71,9 @@ def _build_static_handler(web_root: Path):
 
         if clean_path == "/api/version":
             return _json_response({"version": __version__})
+
+        if clean_path == "/api/koch-exercises":
+            return _json_response(_list_koch_exercises(config_path))
 
         target = "index.html" if clean_path == "/" else clean_path.lstrip("/")
         resolved = (web_root / target).resolve()
@@ -125,3 +133,45 @@ def _json_response(payload: dict[str, Any]) -> tuple[HTTPStatus, list[tuple[str,
         ],
         body,
     )
+
+
+def _list_koch_exercises(config_path: Path | None) -> dict[str, Any]:
+    """List saved koch-exercise records for the settings UI.
+
+    Reads the save directory fresh from disk (spec §6.3), enumerates
+    ``<save_dir>/koch-exercise/koch-exercise-*.json``, and returns each
+    record's started_at timestamp and claimed set. Files that fail to
+    parse are skipped — a corrupt or non-koch record should not 500 the
+    settings page. Order is newest first.
+    """
+    try:
+        save_directory = load_save_directory(config_path)
+    except Exception:
+        logger.exception("could not resolve save_directory for koch-exercise listing")
+        return {"save_directory": "", "records": []}
+
+    target_dir = save_directory / "koch-exercise"
+    records: list[dict[str, Any]] = []
+    if target_dir.is_dir():
+        for entry in sorted(target_dir.glob("koch-exercise-*.json")):
+            try:
+                data = json.loads(entry.read_text())
+            except (OSError, ValueError):
+                logger.exception("skipping unreadable koch-exercise record: %s", entry)
+                continue
+            if data.get("mode") != "koch-exercise":
+                continue
+            started_at = data.get("started_at")
+            claimed_set = data.get("claimed_set")
+            if not isinstance(started_at, str) or not isinstance(claimed_set, list):
+                continue
+            records.append(
+                {
+                    "filename": entry.name,
+                    "started_at": started_at,
+                    "claimed_set": [str(s) for s in claimed_set],
+                }
+            )
+
+    records.sort(key=lambda r: r["started_at"], reverse=True)
+    return {"save_directory": str(save_directory), "records": records}

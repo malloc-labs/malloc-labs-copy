@@ -236,7 +236,7 @@ async def serve_app(
     resolved_web_root = web_root if web_root is not None else find_web_root()
     resolved_anchors_dir = anchors_dir if anchors_dir is not None else find_anchors_dir()
 
-    process_request = _build_static_handler(resolved_web_root)
+    process_request = _build_static_handler(resolved_web_root, config_path=config_path)
 
     async def _connection(ws: WebSocketServerProtocol) -> None:
         await handler(

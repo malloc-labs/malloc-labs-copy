@@ -261,6 +261,88 @@ async def test_serves_index_and_pushes_initial_claimed_state(tmp_path):
         await server.wait_closed()
 
 
+async def test_api_koch_exercises_lists_records_newest_first(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    save_dir = tmp_path / "data"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    koch_dir = save_dir / "koch-exercise"
+    koch_dir.mkdir(parents=True)
+    older = {
+        "schema_version": "1.3",
+        "mode": "koch-exercise",
+        "started_at": "2026-05-15T09:00:00.000Z",
+        "ended_at": "2026-05-15T09:00:30.000Z",
+        "claimed_set": ["K", "M"],
+        "seed": 1,
+        "exercises": [],
+        "symbols": [],
+        "answers": [],
+    }
+    newer = dict(older)
+    newer["started_at"] = "2026-05-15T10:00:00.000Z"
+    newer["claimed_set"] = ["K", "M", "U"]
+    (koch_dir / "koch-exercise-20260515T090000Z.json").write_text(json.dumps(older))
+    (koch_dir / "koch-exercise-20260515T100000Z.json").write_text(json.dumps(newer))
+    # A non-koch file in the same directory must be ignored.
+    (koch_dir / "stray.txt").write_text("not json")
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        response = await asyncio.to_thread(
+            urllib.request.urlopen, f"http://127.0.0.1:{port}/api/koch-exercises"
+        )
+        assert response.status == 200
+        assert response.headers["Content-Type"] == "application/json; charset=utf-8"
+        payload = json.loads(response.read())
+        assert payload["save_directory"] == str(save_dir)
+        records = payload["records"]
+        assert len(records) == 2
+        # Newest first.
+        assert records[0]["started_at"] == "2026-05-15T10:00:00.000Z"
+        assert records[0]["claimed_set"] == ["K", "M", "U"]
+        assert records[0]["filename"] == "koch-exercise-20260515T100000Z.json"
+        assert records[1]["started_at"] == "2026-05-15T09:00:00.000Z"
+        assert records[1]["claimed_set"] == ["K", "M"]
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_api_koch_exercises_returns_empty_when_directory_missing(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    save_dir = tmp_path / "data"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        response = await asyncio.to_thread(
+            urllib.request.urlopen, f"http://127.0.0.1:{port}/api/koch-exercises"
+        )
+        payload = json.loads(response.read())
+        assert payload["save_directory"] == str(save_dir)
+        assert payload["records"] == []
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
 async def test_start_action_runs_a_session(tmp_path, patched_playback):
     config_path = _write_test_config(tmp_path, ["K", "M"])
     web_root = _make_web_root(tmp_path)
