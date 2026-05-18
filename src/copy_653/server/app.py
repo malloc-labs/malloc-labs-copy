@@ -27,6 +27,7 @@ Client → server, JSON over WS::
 
     {"action": "start"}
     {"action": "stop"}
+    {"action": "save-koch-answers", "answers": ["DE K", "DE MK", "..."]}
     {"action": "claim-symbol", "symbol": "U"}
     {"action": "unclaim-symbol", "symbol": "U"}
     {"action": "play-letter", "symbol": "K"}
@@ -67,6 +68,20 @@ During a Koch Exercises session::
     {"type": "symbol", "symbol": "E", "t_on": 0.34, "t_off": 0.38,
      "exercise_index": 1, "word_index": 1, "word": "de"}
     {"type": "session-end"}
+
+After the learner types their copy answers and clicks Save, the
+client sends ``save-koch-answers`` with an array parallel to the
+session's ``exercises``; the engine rewrites the same JSON record
+with an ``answers`` field merged in and acknowledges::
+
+    {"type": "koch-answers-saved", "answer_count": 5, "exercise_count": 5}
+
+A save with no pending record, an answers list of the wrong length,
+or a missing record file surfaces an ``error`` frame with reason
+``no-pending-koch-record``, ``answers-length-mismatch``, or
+``pending-koch-record-missing`` respectively. Only one save per
+session: the next save without an intervening ``session-end`` is
+rejected as ``no-pending-koch-record``.
 
 Every exercise opens with the fixed ``DE`` listening anchor (spec
 §2.5) — a deliberate structural framing, not a draw from the claimed

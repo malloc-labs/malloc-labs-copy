@@ -13,8 +13,7 @@ const statusEl     = document.querySelector(".status");
 const eventsEl     = document.getElementById("events");
 const answersEl    = document.getElementById("answers");
 const startBtn     = document.getElementById("start");
-const stopBtn      = document.getElementById("stop");
-const clearBtn     = document.getElementById("clear");
+const saveBtn      = document.getElementById("save-answers");
 const sequenceRow  = document.getElementById("sequence-row");
 const primedEl     = document.getElementById("primed");
 
@@ -203,6 +202,12 @@ function buildAnswerInputs(exercises) {
         input.autocomplete = "off";
         input.spellcheck = false;
         input.disabled = true;
+        // Any edit after a successful save returns Save to the
+        // unsaved "Save" affordance so the learner can write the
+        // updated answers back to the record.
+        input.addEventListener("input", () => {
+            if (saveBtn.dataset.state === "saved") setSaveState("ready");
+        });
 
         li.append(label, input);
         answersEl.appendChild(li);
@@ -214,6 +219,29 @@ function setAnswerInputsEnabled(enabled) {
         input.disabled = !enabled;
     });
 }
+
+function collectAnswers() {
+    return Array.from(answersEl.querySelectorAll(".answer-row__input"), (input) => input.value);
+}
+
+// Save button state machine: locked (session in flight / no review yet) →
+// ready (review unlocked, learner can save) → saved (server ack received,
+// no edits since) → ready (any input edit returns to "Save").
+function setSaveState(state) {
+    saveBtn.dataset.state = state;
+    if (state === "locked") {
+        saveBtn.disabled    = true;
+        saveBtn.textContent = "Save";
+    } else if (state === "ready") {
+        saveBtn.disabled    = false;
+        saveBtn.textContent = "Save";
+    } else if (state === "saved") {
+        saveBtn.disabled    = true;
+        saveBtn.textContent = "Saved";
+    }
+}
+
+setSaveState("locked");
 
 // ─── Status ───────────────────────────────────────────────────────────────────
 
@@ -293,6 +321,7 @@ function appendEvent(event) {
         currentExerciseIndex = 0;
         sessionActive   = true;
         sessionStartedAtMs = Date.now();
+        setStartButtonMode("active");
 
         const meta = toggleBtn.querySelector(".timeline-meta");
         meta.textContent =
@@ -303,6 +332,7 @@ function appendEvent(event) {
         setActiveTab("answers");
         eventsEl.replaceChildren();
         buildAnswerInputs(currentExercises);
+        setSaveState("locked");
         primedEl.textContent = `Exercise — of ${currentExercises.length}`;
         return;
 
@@ -310,13 +340,19 @@ function appendEvent(event) {
         sessionActive     = false;
         li.textContent    = "■ end";
         li.dataset.kind   = "end";
-        startBtn.disabled = false;
-        stopBtn.disabled  = true;
-        clearBtn.disabled = false;
+        setStartButtonMode("idle");
         sessionStartedAtMs = null;
         setTimelineLocked(false);
         setAnswerInputsEnabled(true);
+        // Only enable Save when there was actually a session to save
+        // answers for. A session-end with no exercises means abort
+        // before session-start — nothing to write.
+        setSaveState(currentExercises.length > 0 ? "ready" : "locked");
         renderPrimed();
+
+    } else if (event.type === "koch-answers-saved") {
+        setSaveState("saved");
+        return;
 
     } else if (event.type === "error") {
         const detail = event.detail ? `: ${event.detail}`
@@ -324,12 +360,23 @@ function appendEvent(event) {
                      : "";
         li.textContent    = `! ${event.reason}${detail}`;
         li.dataset.kind   = "error";
-        startBtn.disabled = false;
-        stopBtn.disabled  = true;
-        clearBtn.disabled = false;
-        sessionActive     = false;
-        sessionStartedAtMs = null;
-        setTimelineLocked(false);
+        // Session-related errors retire the in-flight state; an
+        // answers-save error leaves sessionActive untouched so the
+        // learner can fix the typed answers and retry.
+        const ANSWERS_ERRORS = new Set([
+            "no-pending-koch-record",
+            "invalid-answers",
+            "answers-length-mismatch",
+            "pending-koch-record-missing",
+        ]);
+        if (ANSWERS_ERRORS.has(event.reason)) {
+            setSaveState("ready");
+        } else {
+            setStartButtonMode("idle");
+            sessionActive     = false;
+            sessionStartedAtMs = null;
+            setTimelineLocked(false);
+        }
 
     } else {
         li.textContent = JSON.stringify(event);
@@ -345,7 +392,7 @@ function connect() {
 
     socket.addEventListener("open", () => {
         setStatus("connected", "connected");
-        startBtn.disabled = false;
+        setStartButtonMode("idle");
     });
 
     socket.addEventListener("message", (msg) => {
@@ -361,10 +408,9 @@ function connect() {
     socket.addEventListener("close", () => {
         setStatus("disconnected", "disconnected");
         startBtn.disabled = true;
-        stopBtn.disabled  = true;
-        clearBtn.disabled = true;
         sessionActive     = false;
         sessionStartedAtMs = null;
+        setSaveState("locked");
         setTimelineLocked(false);
     });
 
@@ -375,32 +421,56 @@ function connect() {
 
 // ─── Controls ─────────────────────────────────────────────────────────────────
 
-startBtn.addEventListener("click", () => {
-    if (!socket || socket.readyState !== WebSocket.OPEN) return;
-    socket.send(JSON.stringify({ action: "start" }));
-    startBtn.disabled = true;
-    stopBtn.disabled  = false;
-});
+// Start is a single toggle: idle → begin a new seeded session;
+// active → abort the in-flight session. ``data-mode`` mirrors the
+// state for CSS hooks without re-reading the button text.
+function setStartButtonMode(mode) {
+    startBtn.dataset.mode = mode;
+    if (mode === "idle") {
+        startBtn.disabled    = !socket || socket.readyState !== WebSocket.OPEN;
+        startBtn.textContent = "Start";
+    } else if (mode === "active") {
+        startBtn.disabled    = false;
+        startBtn.textContent = "Abort";
+    }
+}
 
-stopBtn.addEventListener("click", () => {
-    if (!socket || socket.readyState !== WebSocket.OPEN) return;
-    socket.send(JSON.stringify({ action: "stop" }));
-    stopBtn.disabled = true;
-});
-
-clearBtn.addEventListener("click", () => {
+function resetReviewSection() {
+    // A new Start (or its first ``session-start``) wipes the previous
+    // review: timeline meta, events list, answer inputs, save state.
+    // Discarding unsaved answers is intentional — see the design
+    // discussion that produced this flow.
     eventsEl.replaceChildren();
     answersEl.replaceChildren();
     const meta = toggleBtn.querySelector(".timeline-meta");
     meta.textContent = "—";
-    sessionStartedAtMs = null;
     currentExercises = [];
     currentExerciseIndex = 0;
     setActiveTab("answers");
     setTimelineOpen(false);
     setTimelineLocked(true);
-    clearBtn.disabled = true;
-    renderPrimed();
+    setSaveState("locked");
+}
+
+startBtn.addEventListener("click", () => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    if (startBtn.dataset.mode === "active") {
+        // Abort path: cancel the in-flight session. The engine will
+        // emit session-end, which flips the button back to "Start".
+        socket.send(JSON.stringify({ action: "stop" }));
+        startBtn.disabled = true;
+        return;
+    }
+    // Idle path: wipe review state and start a fresh seeded session.
+    resetReviewSection();
+    socket.send(JSON.stringify({ action: "start" }));
+    startBtn.disabled = true;
+});
+
+saveBtn.addEventListener("click", () => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    if (saveBtn.dataset.state !== "ready") return;
+    socket.send(JSON.stringify({ action: "save-koch-answers", answers: collectAnswers() }));
 });
 
 // ─── Symbol preview (Left Alt + key) ──────────────────────────────────────────

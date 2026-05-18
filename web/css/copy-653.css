@@ -1516,6 +1516,25 @@ copy-top-menu {
     cursor: not-allowed;
 }
 
+/* Save button row beneath the answer inputs. Lives inside the Answers
+ * tab panel — separated from the playback controls so the affordance
+ * pairs visually with the inputs it commits. Kept compact so the
+ * review section fits without forcing a page scroll. */
+.answers-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: var(--mr-space-2);
+}
+
+#save-answers {
+    font-size: var(--mr-size-small);
+    padding: var(--mr-space-1) var(--mr-space-3);
+}
+
+#save-answers[data-state="saved"] {
+    color: var(--mr-muted);
+}
+
 .symbol-truth-body {
     height: auto;
     min-height: 0;

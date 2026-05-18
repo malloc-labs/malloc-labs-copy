@@ -19,6 +19,7 @@ from copy_653.config import load_save_directory
 from copy_653.session import (
     CadenceSendRecord,
     KochExerciseRecord,
+    update_koch_answers,
     write_record,
 )
 
@@ -113,6 +114,17 @@ def _finalize_cadence_session(
         logger.exception("failed to write cadence-send record")
 
 
+def _save_koch_answers(path: Path, answers: list[str]) -> int:
+    """Merge learner-typed answers into an existing koch-exercise record.
+
+    Thin wrapper over :func:`update_koch_answers` that propagates the
+    expected-exercise count back to the caller so it can be echoed on
+    the success event. Errors propagate; the caller surfaces them as
+    WS ``error`` frames per spec §1.5.
+    """
+    return update_koch_answers(path, answers)
+
+
 def _write_koch_record(
     *,
     config_path: Path,
@@ -122,12 +134,16 @@ def _write_koch_record(
     exercises: list[str],
     symbols: list[dict[str, Any]],
     started_at: datetime,
-) -> None:
+) -> Path | None:
     """Persist a Koch Exercises session record (spec §5.1, §6.1).
 
-    Best-effort: a write failure is logged but does not interrupt the
-    ``session-end`` signal. Truth that fails to land on disk is still
-    truth the learner heard.
+    Best-effort: a write failure is logged and ``None`` is returned so
+    the ``session-end`` signal still fires. Truth that fails to land on
+    disk is still truth the learner heard.
+
+    On success returns the resolved path; the caller stashes it so a
+    later ``save-koch-answers`` can rewrite the same file with the
+    learner's typed answers.
     """
     try:
         save_directory = load_save_directory(config_path)
@@ -140,6 +156,7 @@ def _write_koch_record(
             exercises=exercises,
             symbols=symbols,
         )
-        write_record(record, save_directory)
+        return write_record(record, save_directory)
     except Exception:
         logger.exception("failed to write koch-exercise record")
+        return None

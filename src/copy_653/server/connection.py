@@ -44,6 +44,7 @@ from copy_653.server.actions import (
     _run_key_input_action,
     _run_letter_sequence,
     _run_morse_repeat,
+    _save_koch_answers_action,
     _save_test_message_action,
     _set_audio_settings_action,
     _start_action,
@@ -152,6 +153,10 @@ class ConnectionState:
     key_input_task: asyncio.Task[None] | None = None
     browser: BrowserKeyInputState | None = None
     cadence: _ActiveCadenceSession | None = None
+    # Path to the koch-exercise record written at the last session-end,
+    # awaiting a `save-koch-answers` rewrite. Cleared on a new `start`,
+    # on successful save, or when the connection closes.
+    pending_koch_record_path: Path | None = None
 
     def cadence_recorder(self, event: dict[str, Any]) -> None:
         """Forward an outbound key/sent event to the active Cadence record."""
@@ -165,23 +170,26 @@ class ConnectionState:
             self.cadence = None
 
 
-async def _run_start_session(
-    ws: WebSocketServerProtocol,
-    config_path: Path,
-) -> None:
+async def _run_start_session(state: ConnectionState) -> None:
     """Wrap a `start` action with the common invalid-config and
-    stop-was-requested handlers."""
+    stop-was-requested handlers.
+
+    On natural end, stashes the path of the freshly-written koch
+    record on ``state`` so a subsequent ``save-koch-answers`` can
+    rewrite the same file with learner answers.
+    """
     try:
-        await _start_action(ws, config_path)
+        record_path = await _start_action(state.ws, state.config_path)
+        state.pending_koch_record_path = record_path
     except ValueError as exc:
         await _send_event(
-            ws,
+            state.ws,
             {"type": "error", "reason": "invalid-config", "detail": str(exc)},
         )
     except asyncio.CancelledError:
         # Stop was requested — send session-end so the UI knows the
         # session is over (spec §1.5).
-        await _send_event(ws, {"type": "session-end"})
+        await _send_event(state.ws, {"type": "session-end"})
 
 
 # Bare-delegation actions: no per-slot supersede, no special state. The
@@ -238,11 +246,22 @@ async def handler(
 
             if action == "start":
                 await supersede(state.session_task)
-                state.session_task = asyncio.create_task(_run_start_session(ws, state.config_path))
+                # Discard the previous session's pending record handle —
+                # a fresh session means previous unsaved answers are
+                # gone by design (no warn-on-discard; see CLAUDE.md
+                # and the design discussion that produced this flow).
+                state.pending_koch_record_path = None
+                state.session_task = asyncio.create_task(_run_start_session(state))
             elif action == "stop":
                 # session-end is sent by _run_start_session's CancelledError handler.
                 if state.session_task is not None and not state.session_task.done():
                     state.session_task.cancel()
+            elif action == "save-koch-answers":
+                saved = await _save_koch_answers_action(ws, message, state.pending_koch_record_path)
+                if saved:
+                    # One save per pending record. A subsequent save
+                    # without a new session-end is a no-op error.
+                    state.pending_koch_record_path = None
             elif action == "request-copy-exercises":
                 # A fresh request closes any in-flight Cadence session
                 # before opening a new one — we never silently merge

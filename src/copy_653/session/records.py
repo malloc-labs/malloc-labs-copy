@@ -40,7 +40,7 @@ from typing import Any
 from copy_653 import __version__
 from copy_653.audio.parameters import AudioParameters
 
-SCHEMA_VERSION = "1.2"
+SCHEMA_VERSION = "1.3"
 
 
 def _audio_snapshot(params: AudioParameters) -> dict[str, Any]:
@@ -86,6 +86,12 @@ class KochExerciseRecord:
     ``word_index`` (1-based within the exercise), and ``word`` so
     replay tools can reconstruct grouping without re-parsing the
     exercise strings.
+
+    ``answers`` is parallel to ``exercises``: one learner-typed string
+    per exercise. Empty list at session-end (truth lands first); filled
+    by the ``save-koch-answers`` action when the learner clicks Save in
+    the review panel. The file is rewritten in place — schema 1.3
+    requires the field, even if empty.
     """
 
     started_at: datetime
@@ -96,6 +102,7 @@ class KochExerciseRecord:
     exercises: list[str] = field(default_factory=list)
     # Each entry: {"symbol", "t_on", "t_off", "exercise_index", "word_index", "word"}
     symbols: list[dict[str, Any]] = field(default_factory=list)
+    answers: list[str] = field(default_factory=list)
 
     mode: str = "koch-exercise"
 
@@ -111,6 +118,7 @@ class KochExerciseRecord:
             "seed": self.seed,
             "exercises": list(self.exercises),
             "symbols": list(self.symbols),
+            "answers": list(self.answers),
         }
 
 
@@ -160,6 +168,41 @@ class CadenceSendRecord:
         if self.selection is not None:
             payload["selection"] = dict(self.selection)
         return payload
+
+
+def update_koch_answers(path: Path, answers: list[str]) -> int:
+    """Rewrite an existing koch-exercise record with learner answers.
+
+    Reads the record at ``path``, sets its ``answers`` field, and
+    writes the result back atomically (same-directory temp file
+    followed by ``os.replace``). Returns the number of exercises in
+    the record so the caller can verify length agreement.
+
+    Raises :class:`ValueError` if the file is not a koch-exercise
+    record or if ``answers`` does not match the record's exercise
+    count. The caller is responsible for surfacing that error to the
+    UI; per the honesty contract (spec §1.5) we do not silently pad or
+    truncate.
+    """
+    data = json.loads(path.read_text())
+    if data.get("mode") != "koch-exercise":
+        raise ValueError(f"not a koch-exercise record: {path}")
+    expected = len(data.get("exercises", []))
+    if len(answers) != expected:
+        raise ValueError(
+            f"answers length {len(answers)} does not match exercises length {expected}"
+        )
+    data["answers"] = list(answers)
+    serialised = json.dumps(data, indent=2).encode("utf-8")
+    fd, tmp_path = tempfile.mkstemp(prefix=".record-", suffix=".json", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(serialised)
+        os.replace(tmp_path, path)
+    except Exception:
+        Path(tmp_path).unlink(missing_ok=True)
+        raise
+    return expected
 
 
 def write_record(

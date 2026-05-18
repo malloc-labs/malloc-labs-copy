@@ -14,6 +14,7 @@ from copy_653.session.records import (
     SCHEMA_VERSION,
     CadenceSendRecord,
     KochExerciseRecord,
+    update_koch_answers,
     write_record,
 )
 
@@ -150,8 +151,48 @@ def test_cadence_record_carries_exercises_sent_and_key_events(tmp_path: Path):
     }
 
 
-def test_schema_version_is_one_two():
-    assert SCHEMA_VERSION == "1.2"
+def test_schema_version_is_one_three():
+    assert SCHEMA_VERSION == "1.3"
+
+
+def test_koch_record_serialises_answers_field_always_present(tmp_path: Path):
+    """Schema 1.3 requires ``answers``. Empty list at session-end is fine."""
+    path = write_record(_koch_record(), tmp_path)
+    parsed = json.loads(path.read_text())
+    assert parsed["answers"] == []
+
+
+def test_koch_record_round_trips_filled_answers(tmp_path: Path):
+    record = _koch_record()
+    record.answers = ["alpha", "bravo"]
+    path = write_record(record, tmp_path)
+    parsed = json.loads(path.read_text())
+    assert parsed["answers"] == ["alpha", "bravo"]
+
+
+def test_update_koch_answers_rewrites_existing_file_in_place(tmp_path: Path):
+    path = write_record(_koch_record(), tmp_path)
+    expected = update_koch_answers(path, ["one", "two"])
+
+    parsed = json.loads(path.read_text())
+    assert parsed["answers"] == ["one", "two"]
+    # Length-of-exercises echoes back so the caller can confirm shape.
+    assert expected == len(parsed["exercises"]) == 2
+    # Truth fields are not disturbed.
+    assert parsed["symbols"][0]["symbol"] == "M"
+    assert parsed["seed"] == 12345
+
+
+def test_update_koch_answers_rejects_length_mismatch(tmp_path: Path):
+    path = write_record(_koch_record(), tmp_path)
+    with pytest.raises(ValueError, match="does not match exercises length"):
+        update_koch_answers(path, ["one"])  # record has 2 exercises
+
+
+def test_update_koch_answers_rejects_non_koch_record(tmp_path: Path):
+    path = write_record(_cadence_record(), tmp_path)
+    with pytest.raises(ValueError, match="not a koch-exercise record"):
+        update_koch_answers(path, ["x"])
 
 
 def test_cadence_selection_round_trips_when_present(tmp_path: Path):
