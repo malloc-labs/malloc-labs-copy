@@ -98,6 +98,8 @@ def build_exercise_entries(
 def apply_answers_to_entries(
     entries: list[dict[str, Any]],
     answers: list[str],
+    *,
+    claimed_set_size: int,
 ) -> list[dict[str, Any]]:
     """Return entries with saved answers and internal analysis merged in."""
     if len(answers) != len(entries):
@@ -123,10 +125,25 @@ def apply_answers_to_entries(
             burden_score=burden_score,
             burden_band=burden_band,
             gear=gear,
+            claimed_set_size=claimed_set_size,
             repeat_weight=_repeat_weight(seen_cores[core]),
         )
         updated.append(merged)
     return updated
+
+
+def spacing_weight_for_claimed_set(claimed_set_size: int) -> float:
+    """Spacing weight in [0.15, 0.5] decreasing with claimed-set size.
+
+    At small claimed sets symbol Levenshtein has few candidates to
+    discriminate (K vs M is the only confusion at size 2), so word-
+    boundary detection carries most of the listening evidence. As the
+    set grows, symbol misses become more diagnostic and spacing
+    proportionally less so.
+    """
+    if claimed_set_size <= 0:
+        return 0.5
+    return max(0.15, min(0.5, 1.0 / claimed_set_size))
 
 
 def analyse_answer(
@@ -137,12 +154,15 @@ def analyse_answer(
     burden_score: int,
     burden_band: int,
     gear: int,
+    claimed_set_size: int,
     repeat_weight: float = 1.0,
 ) -> dict[str, Any]:
     """Compare one saved answer to one played exercise.
 
     Symbol evidence ignores spaces first so a missed or added space does
-    not poison the whole line. Spacing evidence is tracked separately.
+    not poison the whole line. Spacing evidence is tracked separately
+    and weighted relative to claimed-set size — see
+    :func:`spacing_weight_for_claimed_set`.
     """
     core = strip_fixed_anchor(played)
     answer_core = strip_fixed_anchor(answer)
@@ -158,8 +178,16 @@ def analyse_answer(
     spacing_correct = len(truth_boundaries & answer_boundaries)
 
     symbol_fraction = _fraction(symbol_correct, symbol_available)
-    spacing_fraction = _fraction(spacing_correct, spacing_available, default=1.0)
-    combined = (symbol_fraction * 0.85) + (spacing_fraction * 0.15)
+    spacing_weight = spacing_weight_for_claimed_set(claimed_set_size)
+    if spacing_available > 0:
+        spacing_fraction = _fraction(spacing_correct, spacing_available)
+        combined = ((1.0 - spacing_weight) * symbol_fraction) + (spacing_weight * spacing_fraction)
+    else:
+        # Single-word exercise — no boundary evidence to combine. Crediting a
+        # phantom 1.0 here would inflate the score for free; the spec demands
+        # an honest scalar so we use symbol evidence alone.
+        spacing_fraction = 1.0
+        combined = symbol_fraction
     bounded_repeat_weight = min(1.0, max(0.0, repeat_weight))
     burden_weight = 1.0 + log1p(max(0, burden_score))
     position_weight = 1.0 + ((max(1, exercise_index) - 1) * 0.10)
@@ -175,6 +203,8 @@ def analyse_answer(
         "symbol_edit_distance": symbol_distance,
         "spacing_correct_units": spacing_correct,
         "spacing_available_units": spacing_available,
+        "spacing_weight": round(spacing_weight, 3),
+        "claimed_set_size": claimed_set_size,
         "repeat_weight": round(bounded_repeat_weight, 3),
         "combined_fraction": round(combined, 6),
         "evidence": round(evidence, 6),

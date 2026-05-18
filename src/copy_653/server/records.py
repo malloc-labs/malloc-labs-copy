@@ -9,6 +9,7 @@ exceptions; see the spec §6.1 rationale.
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -125,6 +126,41 @@ def _save_koch_answers(path: Path, answers: list[str]) -> int:
     return update_koch_answers(path, answers)
 
 
+def _next_koch_run_index(save_directory: Path, claimed_set_key: str) -> int:
+    """Return the next run index for sessions at this claimed-set key.
+
+    Scans ``<save_directory>/koch-exercise/`` and counts records that
+    share the same normalised claimed-set identity. Legacy records that
+    pre-date ``generation.claimed_set_key`` fall back to deriving the
+    key from ``claimed_set`` so the count is consistent across the
+    schema bump.
+    """
+    target_dir = save_directory / "koch-exercise"
+    if not target_dir.is_dir():
+        return 1
+    count = 0
+    for entry in target_dir.glob("koch-exercise-*.json"):
+        try:
+            data = json.loads(entry.read_text())
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict) or data.get("mode") != "koch-exercise":
+            continue
+        generation = data.get("generation")
+        key: str | None = None
+        if isinstance(generation, dict):
+            stored = generation.get("claimed_set_key")
+            if isinstance(stored, str):
+                key = stored
+        if key is None:
+            claimed = data.get("claimed_set")
+            if isinstance(claimed, list):
+                key = " ".join(sorted(str(s) for s in claimed))
+        if key == claimed_set_key:
+            count += 1
+    return count + 1
+
+
 def _write_koch_record(
     *,
     config_path: Path,
@@ -148,13 +184,19 @@ def _write_koch_record(
     """
     try:
         save_directory = load_save_directory(config_path)
+        enriched = dict(generation)
+        if "run_index" not in enriched:
+            enriched["run_index"] = _next_koch_run_index(
+                save_directory,
+                str(enriched.get("claimed_set_key", "")),
+            )
         record = KochExerciseRecord(
             started_at=started_at,
             ended_at=datetime.now(timezone.utc),
             audio=audio_params,
             claimed_set=claimed,
             seed=seed,
-            generation=generation,
+            generation=enriched,
             exercises=exercises,
             symbols=symbols,
         )

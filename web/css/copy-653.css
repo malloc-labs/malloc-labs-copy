@@ -1664,9 +1664,10 @@ copy-top-menu {
 }
 
 .settings-koch-dialog {
-    width: min(96vw, 1120px);
-    max-width: 1120px;
+    width: min(96vw, 1280px);
+    max-width: 1280px;
     max-height: min(86vh, 900px);
+    margin: auto;
     padding: 0;
     border: var(--mr-border-rule);
     background: var(--mr-bg);
@@ -1796,6 +1797,7 @@ copy-top-menu {
 .settings-koch-detail__exercises-table th:nth-child(11),
 .settings-koch-detail__exercises-table td:nth-child(11) {
     width: 5rem;
+    white-space: nowrap;
 }
 
 .settings-koch-detail__missing {

@@ -188,7 +188,13 @@ def update_koch_answers(path: Path, answers: list[str]) -> int:
     exercises = data.get("exercises", [])
     if not isinstance(exercises, list) or not all(isinstance(ex, dict) for ex in exercises):
         raise ValueError(f"invalid koch-exercise exercises shape: {path}")
-    data["exercises"] = apply_answers_to_entries(list(exercises), list(answers))
+    claimed_set = data.get("claimed_set", [])
+    claimed_set_size = len(claimed_set) if isinstance(claimed_set, list) else 0
+    data["exercises"] = apply_answers_to_entries(
+        list(exercises),
+        list(answers),
+        claimed_set_size=claimed_set_size,
+    )
     serialised = json.dumps(data, indent=2).encode("utf-8")
     fd, tmp_path = tempfile.mkstemp(prefix=".record-", suffix=".json", dir=path.parent)
     try:

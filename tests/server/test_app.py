@@ -581,6 +581,8 @@ async def test_start_action_writes_koch_record_to_save_directory(tmp_path, patch
         assert isinstance(record["seed"], int)
         assert record["generation"]["profile_version"] == "koch-burden-v1"
         assert record["generation"]["candidate_count"] == 20
+        assert record["generation"]["claimed_set_key"] == "K M"
+        assert record["generation"]["run_index"] == 1
         assert len(record["exercises"]) == 5
         # Truth lands at session-end with unsaved per-exercise analysis;
         # the learner fills answers via save-koch-answers.
