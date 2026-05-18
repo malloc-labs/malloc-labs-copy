@@ -1562,6 +1562,78 @@ copy-top-menu {
    10. Settings page — timing form
    ───────────────────────────────────────────────────────────────────────────── */
 
+.settings-tabs {
+    display: flex;
+    gap: var(--mr-space-2);
+    margin-top: var(--mr-space-4);
+}
+
+.settings-tab {
+    padding: var(--mr-space-1) var(--mr-space-3);
+    border: var(--mr-border-rule);
+    background: none;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    cursor: pointer;
+    opacity: 0.7;
+    transition: color 0.1s ease, border-color 0.1s ease, opacity 0.1s ease;
+}
+
+.settings-tab:hover {
+    color: var(--mr-text);
+    opacity: 1;
+}
+
+.settings-tab[data-selected="true"] {
+    color: var(--mr-text);
+    border-color: var(--mr-anchor);
+    opacity: 1;
+}
+
+.settings-panel[hidden] {
+    display: none;
+}
+
+/* Koch tab — saved-sessions table. Mirrors the key-diagnostics-table
+ * visual (monospace, rule-line dividers) so it reads as native to the
+ * rest of the design system without inventing a new table style. */
+.settings-koch-meta {
+    margin: var(--mr-space-4) 0 var(--mr-space-2);
+    color: var(--mr-muted);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+}
+
+.settings-koch-table-wrap {
+    overflow-x: auto;
+}
+
+.settings-koch-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+}
+
+.settings-koch-table th,
+.settings-koch-table td {
+    border-top: var(--mr-border-rule);
+    padding: var(--mr-space-2);
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+
+.settings-koch-table th {
+    color: var(--mr-muted);
+    font-weight: 400;
+}
+
+.settings-koch-table td {
+    color: var(--mr-text);
+}
+
 .settings-form {
     display: flex;
     flex-direction: column;

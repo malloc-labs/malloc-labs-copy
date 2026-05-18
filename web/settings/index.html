@@ -14,6 +14,37 @@
     <main class="landing-shell">
         <copy-landing-header eyebrow="Copy 653" eyebrow-href="../index.html" title="Settings"></copy-landing-header>
 
+        <nav class="settings-tabs" role="tablist" aria-label="Settings sections">
+            <button type="button"
+                    class="settings-tab"
+                    role="tab"
+                    id="settings-tab-app"
+                    aria-controls="settings-panel-app"
+                    aria-selected="true"
+                    data-selected="true"
+                    data-tab="app">App</button>
+            <button type="button"
+                    class="settings-tab"
+                    role="tab"
+                    id="settings-tab-koch"
+                    aria-controls="settings-panel-koch"
+                    aria-selected="false"
+                    data-selected="false"
+                    data-tab="koch">Koch Exercises</button>
+            <button type="button"
+                    class="settings-tab"
+                    role="tab"
+                    id="settings-tab-key"
+                    aria-controls="settings-panel-key"
+                    aria-selected="false"
+                    data-selected="false"
+                    data-tab="key">Key Exercises</button>
+        </nav>
+
+        <section class="settings-panel"
+                 id="settings-panel-app"
+                 role="tabpanel"
+                 aria-labelledby="settings-tab-app">
         <form class="settings-form" id="audio-settings-form">
             <details class="settings-section">
                 <summary>Words Per Minute</summary>
@@ -165,9 +196,39 @@
                 <span class="settings-status" id="settings-status" data-status="connecting">connecting</span>
             </div>
         </form>
+        </section>
+
+        <section class="settings-panel"
+                 id="settings-panel-koch"
+                 role="tabpanel"
+                 aria-labelledby="settings-tab-koch"
+                 hidden>
+            <p class="settings-koch-meta" id="settings-koch-meta">Loading saved sessions…</p>
+            <div class="settings-koch-table-wrap">
+                <table class="settings-koch-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">#</th>
+                            <th scope="col">Date &amp; time</th>
+                            <th scope="col">Claimed symbols</th>
+                        </tr>
+                    </thead>
+                    <tbody id="settings-koch-tbody"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="settings-panel"
+                 id="settings-panel-key"
+                 role="tabpanel"
+                 aria-labelledby="settings-tab-key"
+                 hidden>
+        </section>
     </main>
     <script type="module" src="../js/partials/landing-header.js"></script>
     <script type="module" src="../js/partials/theme-btn.js"></script>
     <script type="module" src="../js/settings.js"></script>
+    <script type="module" src="../js/settings-tabs.js"></script>
+    <script type="module" src="../js/settings-koch-table.js"></script>
 </body>
 </html>
