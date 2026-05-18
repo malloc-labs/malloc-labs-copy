@@ -38,7 +38,6 @@ repos:
   rev: 26.1.0
   hooks:
   - id: black
-    language_version: python3.12
     args: [--line-length, '100']
 
   # Python linting with Ruff
