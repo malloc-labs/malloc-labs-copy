@@ -350,17 +350,165 @@ async def test_start_action_writes_koch_record_to_save_directory(tmp_path, patch
 
         record = json.loads(files[0].read_text())
         assert record["mode"] == "koch-exercise"
-        assert record["schema_version"] == "1.2"
+        assert record["schema_version"] == "1.3"
         assert "duration_seconds" not in record
         assert record["claimed_set"] == ["K", "M"]
         assert isinstance(record["seed"], int)
         assert len(record["exercises"]) == 5
+        # Truth lands at session-end with an empty answers list; the
+        # learner fills it via save-koch-answers.
+        assert record["answers"] == []
         symbol_events = [e for e in events if e["type"] == "symbol"]
         assert len(record["symbols"]) == len(symbol_events)
         for record_entry, event in zip(record["symbols"], symbol_events):
             for key in ("symbol", "t_on", "t_off", "exercise_index", "word_index", "word"):
                 assert record_entry[key] == event[key]
         assert record["audio"]["character_speed_wpm"] == 25
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_save_koch_answers_merges_into_record(tmp_path, patched_playback):
+    """End-to-end: session-end leaves answers empty; save-koch-answers
+    rewrites the same file with the typed answers and acks."""
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    save_dir = tmp_path / "records"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+            await ws.send(json.dumps({"action": "start"}))
+            await _drain_until(ws, lambda e: e["type"] == "session-end", timeout=25.0)
+
+            answers = ["DE K", "DE MK", "DE KMK", "DE M", "DE KK"]
+            await ws.send(json.dumps({"action": "save-koch-answers", "answers": answers}))
+            ack = await asyncio.wait_for(ws.recv(), timeout=5.0)
+
+        ack_event = json.loads(ack)
+        assert ack_event["type"] == "koch-answers-saved"
+        assert ack_event["answer_count"] == 5
+        assert ack_event["exercise_count"] == 5
+
+        record_dir = save_dir / "koch-exercise"
+        files = list(record_dir.glob("koch-exercise-*.json"))
+        assert len(files) == 1
+        record = json.loads(files[0].read_text())
+        assert record["answers"] == answers
+        # Truth fields are untouched by the rewrite.
+        assert len(record["symbols"]) > 0
+        assert len(record["exercises"]) == 5
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_save_koch_answers_rejects_length_mismatch(tmp_path, patched_playback):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    save_dir = tmp_path / "records"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+            await ws.send(json.dumps({"action": "start"}))
+            await _drain_until(ws, lambda e: e["type"] == "session-end", timeout=25.0)
+
+            # Only 3 answers for 5 exercises — should be rejected.
+            await ws.send(json.dumps({"action": "save-koch-answers", "answers": ["a", "b", "c"]}))
+            ack = await asyncio.wait_for(ws.recv(), timeout=5.0)
+
+        ack_event = json.loads(ack)
+        assert ack_event["type"] == "error"
+        assert ack_event["reason"] == "answers-length-mismatch"
+
+        # File should still have an empty answers list — the rejected
+        # save must not have rewritten anything.
+        record_dir = save_dir / "koch-exercise"
+        files = list(record_dir.glob("koch-exercise-*.json"))
+        assert len(files) == 1
+        record = json.loads(files[0].read_text())
+        assert record["answers"] == []
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_save_koch_answers_without_pending_record_errors(tmp_path):
+    """Save before any session has completed surfaces a clear error."""
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+            await ws.send(json.dumps({"action": "save-koch-answers", "answers": []}))
+            ack = await asyncio.wait_for(ws.recv(), timeout=5.0)
+
+        ack_event = json.loads(ack)
+        assert ack_event["type"] == "error"
+        assert ack_event["reason"] == "no-pending-koch-record"
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_save_koch_answers_is_one_shot_per_session(tmp_path, patched_playback):
+    """A second save without an intervening session-end is rejected —
+    the pending record is cleared after the first successful save."""
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    save_dir = tmp_path / "records"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+            await ws.send(json.dumps({"action": "start"}))
+            await _drain_until(ws, lambda e: e["type"] == "session-end", timeout=25.0)
+
+            answers = ["a", "b", "c", "d", "e"]
+            await ws.send(json.dumps({"action": "save-koch-answers", "answers": answers}))
+            first = json.loads(await asyncio.wait_for(ws.recv(), timeout=5.0))
+            assert first["type"] == "koch-answers-saved"
+
+            await ws.send(json.dumps({"action": "save-koch-answers", "answers": answers}))
+            second = json.loads(await asyncio.wait_for(ws.recv(), timeout=5.0))
+            assert second["type"] == "error"
+            assert second["reason"] == "no-pending-koch-record"
     finally:
         server.close()
         await server.wait_closed()

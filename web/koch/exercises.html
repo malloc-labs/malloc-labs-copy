@@ -25,9 +25,10 @@
         <copy-koch-sequence section-label="Koch symbol sequence"></copy-koch-sequence>
 
         <section class="controls" aria-label="Listening controls">
-            <button type="button" id="start" disabled>Start</button>
-            <button type="button" id="stop" disabled>Stop</button>
-            <button type="button" id="clear" disabled>Clear</button>
+            <!-- Single toggle: idle → "Start" (begin a new seeded session);
+                 active → "Abort" (cancel the in-flight session). A new Start
+                 wipes the review section by design — see web/js/main.js. -->
+            <button type="button" id="start" disabled data-mode="idle">Start</button>
         </section>
         <p class="primed" id="primed">Primed: —</p>
         <section class="timeline" aria-label="Truth">
@@ -63,6 +64,9 @@
                      role="tabpanel"
                      aria-labelledby="timeline-tab-answers">
                     <ol id="answers" class="answers-list"></ol>
+                    <div class="answers-actions">
+                        <button type="button" id="save-answers" disabled>Save</button>
+                    </div>
                 </div>
                 <div class="timeline-panel"
                      id="timeline-panel-truth"

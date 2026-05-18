@@ -51,7 +51,7 @@ from copy_653.midi import (
     MidiNoteEvent,
     iter_midi_note_events,
 )
-from copy_653.server.records import _ActiveCadenceSession, _write_koch_record
+from copy_653.server.records import _ActiveCadenceSession, _save_koch_answers, _write_koch_record
 from copy_653.server.test_message_audio import build_marconi_test_message
 from copy_653.server.validation import (
     _audio_params_from_settings_message,
@@ -128,7 +128,7 @@ async def _push_key_note_event(
 async def _start_action(
     ws: WebSocketServerProtocol,
     config_path: Path,
-) -> None:
+) -> Path | None:
     """Play a short Koch Exercises session from the claimed set.
 
     The session is a fixed-count list of pseudo-word exercises produced
@@ -143,6 +143,11 @@ async def _start_action(
     each, words of 1–3 symbols) — not a session-config knob, so the
     learner cannot accidentally tune themselves out of the listening
     contract.
+
+    Returns the path of the written koch-exercise record on natural
+    end, or ``None`` on early-exit paths (no claimed symbols, failed
+    write). The caller stashes the path so a later
+    ``save-koch-answers`` can rewrite the file with learner answers.
     """
     audio_params = load_audio_parameters(config_path)
     claimed = load_claimed_symbols(config_path)
@@ -152,7 +157,7 @@ async def _start_action(
         # the learner has actively cleared their config. Honest refusal
         # rather than synthesising silence (spec §1.5).
         await _send_event(ws, {"type": "error", "reason": "no-claimed-symbols"})
-        return
+        return None
 
     result = sequence.generate_copy_exercises(
         claimed_set=claimed,
@@ -206,7 +211,7 @@ async def _start_action(
         # session ended — premature end-of-session would lie about what the
         # learner is hearing (§1.5).
         await audio_task
-        _write_koch_record(
+        record_path = _write_koch_record(
             config_path=config_path,
             audio_params=audio_params,
             claimed=claimed,
@@ -216,6 +221,7 @@ async def _start_action(
             started_at=started_at,
         )
         await _send_event(ws, {"type": "session-end"})
+        return record_path
 
     except asyncio.CancelledError:
         # Stop was requested. Signal PortAudio to abort the current stream
@@ -230,6 +236,61 @@ async def _start_action(
             pass  # No audio device or sounddevice not installed — ignore
         audio_task.cancel()
         raise  # Re-raise so _run_session's handler sends session-end
+
+
+async def _save_koch_answers_action(
+    ws: WebSocketServerProtocol,
+    message: dict[str, Any],
+    pending_path: Path | None,
+) -> bool:
+    """Merge learner-typed answers into the most recently written
+    koch-exercise record.
+
+    Returns ``True`` on success so the caller can clear the pending
+    path — a saved record cannot be saved again until the next session
+    produces a new one. Returns ``False`` on validation or write
+    failure (the error is already surfaced as a WS event).
+
+    Validation lives here, not in the persistence layer, so the WS
+    surface stays consistent: every learner-facing failure is an
+    ``error`` event with a stable ``reason`` token. The
+    ``answers`` list must be parallel to the record's ``exercises``;
+    length mismatch is rejected per spec §1.5 rather than silently
+    padded.
+    """
+    if pending_path is None:
+        await _send_event(ws, {"type": "error", "reason": "no-pending-koch-record"})
+        return False
+
+    raw_answers = message.get("answers")
+    if not isinstance(raw_answers, list) or not all(isinstance(a, str) for a in raw_answers):
+        await _send_event(ws, {"type": "error", "reason": "invalid-answers"})
+        return False
+
+    try:
+        exercise_count = _save_koch_answers(pending_path, list(raw_answers))
+    except ValueError as exc:
+        await _send_event(
+            ws,
+            {"type": "error", "reason": "answers-length-mismatch", "detail": str(exc)},
+        )
+        return False
+    except FileNotFoundError:
+        # The file existed when we recorded the pending path but is
+        # gone now — likely a learner with two tabs racing, or a
+        # cleanup script. Surface honestly.
+        await _send_event(ws, {"type": "error", "reason": "pending-koch-record-missing"})
+        return False
+
+    await _send_event(
+        ws,
+        {
+            "type": "koch-answers-saved",
+            "answer_count": len(raw_answers),
+            "exercise_count": exercise_count,
+        },
+    )
+    return True
 
 
 async def _claim_symbol_action(
