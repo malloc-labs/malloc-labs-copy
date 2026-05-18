@@ -486,6 +486,186 @@ async def test_api_koch_exercises_returns_empty_when_directory_missing(tmp_path)
         await server.wait_closed()
 
 
+async def test_api_koch_band_evidence_returns_recent_per_band_rollup(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    save_dir = tmp_path / "data"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    koch_dir = save_dir / "koch-exercise"
+    koch_dir.mkdir(parents=True)
+
+    def _exercise(burden_band: int, fraction: float) -> dict:
+        return {
+            "index": burden_band,
+            "burden_band": burden_band,
+            "burden_score": 50,
+            "analysis": {
+                "version": "koch-analysis-v1",
+                "saved": True,
+                "combined_fraction": fraction,
+                "band_state": "exact" if fraction >= 1.0 else "low",
+            },
+        }
+
+    def _record(stamp: str, key: str, fraction: float) -> dict:
+        return {
+            "schema_version": "2.0",
+            "mode": "koch-exercise",
+            "started_at": stamp,
+            "claimed_set": key.split(),
+            "generation": {"claimed_set_key": key},
+            "exercises": [_exercise(1, fraction)],
+            "symbols": [],
+        }
+
+    (koch_dir / "koch-exercise-20260518T130000Z.json").write_text(
+        json.dumps(_record("2026-05-18T13:00:00.000Z", "K M", 1.0))
+    )
+    (koch_dir / "koch-exercise-20260518T140000Z.json").write_text(
+        json.dumps(_record("2026-05-18T14:00:00.000Z", "K M", 1.0))
+    )
+    # An unrelated claimed set must not contribute to the K M rollup.
+    (koch_dir / "koch-exercise-20260518T150000Z.json").write_text(
+        json.dumps(_record("2026-05-18T15:00:00.000Z", "K M U", 0.5))
+    )
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        # No query param: endpoint picks the most-recent saved session's
+        # claimed_set_key (here "K M U"), which has only the one record.
+        response = await asyncio.to_thread(
+            urllib.request.urlopen, f"http://127.0.0.1:{port}/api/koch-band-evidence"
+        )
+        payload = json.loads(response.read())
+        assert payload["claimed_set_key"] == "K M U"
+        assert payload["session_count"] == 1
+
+        # Explicit key: K M has two strong sessions for band 1.
+        response = await asyncio.to_thread(
+            urllib.request.urlopen,
+            f"http://127.0.0.1:{port}/api/koch-band-evidence?claimed_set_key=K%20M",
+        )
+        payload = json.loads(response.read())
+        assert payload["claimed_set_key"] == "K M"
+        assert payload["session_count"] == 2
+        assert payload["sessions_used"] == 2
+        assert payload["bands"][0]["burden_band"] == 1
+        assert payload["bands"][0]["recent_fractions"] == [1.0, 1.0]
+        assert payload["bands"][0]["strong_streak"] == 2
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_api_koch_band_history_returns_chronological_grid(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    save_dir = tmp_path / "data"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    koch_dir = save_dir / "koch-exercise"
+    koch_dir.mkdir(parents=True)
+
+    def _record(stamp: str, run_index: int, gear: int) -> dict:
+        return {
+            "schema_version": "2.0",
+            "mode": "koch-exercise",
+            "started_at": stamp,
+            "claimed_set": ["K", "M"],
+            "generation": {
+                "claimed_set_key": "K M",
+                "run_index": run_index,
+                "bands": [{"index": 1, "gear": gear}],
+            },
+            "exercises": [
+                {
+                    "index": 1,
+                    "burden_band": 1,
+                    "gear": gear,
+                    "analysis": {
+                        "version": "koch-analysis-v1",
+                        "saved": True,
+                        "combined_fraction": 1.0,
+                        "band_state": "exact",
+                    },
+                }
+            ],
+            "symbols": [],
+        }
+
+    (koch_dir / "koch-exercise-20260518T130000Z.json").write_text(
+        json.dumps(_record("2026-05-18T13:00:00.000Z", 1, 0))
+    )
+    (koch_dir / "koch-exercise-20260518T140000Z.json").write_text(
+        json.dumps(_record("2026-05-18T14:00:00.000Z", 2, 1))
+    )
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        response = await asyncio.to_thread(
+            urllib.request.urlopen,
+            f"http://127.0.0.1:{port}/api/koch-band-history?claimed_set_key=K%20M",
+        )
+        payload = json.loads(response.read())
+        assert payload["claimed_set_key"] == "K M"
+        assert payload["session_count"] == 2
+        # Sessions are chronological — oldest first — so the grid renders
+        # left-to-right newest-on-the-right.
+        assert [s["run_index"] for s in payload["sessions"]] == [1, 2]
+        # The gear change at session 2 is detected.
+        assert len(payload["gear_changes"]) == 1
+        assert payload["gear_changes"][0]["burden_band"] == 1
+        assert payload["gear_changes"][0]["previous_gear"] == 0
+        assert payload["gear_changes"][0]["current_gear"] == 1
+        # Current gears come from the latest session's generation profile.
+        assert payload["current_gears"] == {"1": 1}
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_api_koch_band_evidence_empty_when_no_records(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    save_dir = tmp_path / "data"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        response = await asyncio.to_thread(
+            urllib.request.urlopen, f"http://127.0.0.1:{port}/api/koch-band-evidence"
+        )
+        payload = json.loads(response.read())
+        assert payload["claimed_set_key"] == ""
+        assert payload["session_count"] == 0
+        assert payload["bands"] == []
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
 async def test_start_action_runs_a_session(tmp_path, patched_playback):
     config_path = _write_test_config(tmp_path, ["K", "M"])
     web_root = _make_web_root(tmp_path)
@@ -581,6 +761,8 @@ async def test_start_action_writes_koch_record_to_save_directory(tmp_path, patch
         assert isinstance(record["seed"], int)
         assert record["generation"]["profile_version"] == "koch-burden-v1"
         assert record["generation"]["candidate_count"] == 20
+        assert record["generation"]["claimed_set_key"] == "K M"
+        assert record["generation"]["run_index"] == 1
         assert len(record["exercises"]) == 5
         # Truth lands at session-end with unsaved per-exercise analysis;
         # the learner fills answers via save-koch-answers.

@@ -8,6 +8,7 @@ from copy_653 import sequence
 from copy_653.sequence.copy_exercises import (
     DEFAULT_CANDIDATE_MULTIPLIER,
     _score_copy_exercise,
+    _slot_range,
 )
 
 KMU = ("K", "M", "U")
@@ -213,6 +214,64 @@ def test_default_exercises_have_at_most_two_groups():
     result = sequence.generate_copy_exercises(claimed_set=KMU, exercise_count=5, seed=42)
     for exercise in result.exercises:
         assert len(exercise.split(" ")) <= 2, exercise
+
+
+def test_slot_range_gear_zero_covers_full_band():
+    # Default behaviour: each slot draws from its own quintile band.
+    assert _slot_range(0, 5, 20, 0) == (0, 4)
+    assert _slot_range(2, 5, 20, 0) == (8, 12)
+    assert _slot_range(4, 5, 20, 0) == (16, 20)
+
+
+def test_slot_range_gear_one_uses_upper_half_of_same_band():
+    assert _slot_range(0, 5, 20, 1) == (2, 4)
+    assert _slot_range(2, 5, 20, 1) == (10, 12)
+
+
+def test_slot_range_gear_two_shifts_to_next_band():
+    # Slot 0 at gear 2 should pull from band 1's full range; slot 2 should
+    # pull from band 3.
+    assert _slot_range(0, 5, 20, 2) == (4, 8)
+    assert _slot_range(2, 5, 20, 2) == (12, 16)
+
+
+def test_slot_range_gear_two_clamps_at_top_band_to_gear_one():
+    # No band above slot 4, so gear 2 falls back to gear 1 behaviour.
+    assert _slot_range(4, 5, 20, 2) == _slot_range(4, 5, 20, 1) == (18, 20)
+
+
+def test_generator_gears_shift_scores_upward():
+    # Gear 2 across the board should produce a score profile no lower
+    # than the gear-0 baseline at every slot — each slot is drawing
+    # from at least its own band.
+    baseline = sequence.generate_copy_exercises(claimed_set=KMU, exercise_count=5, seed=2026)
+    shifted = sequence.generate_copy_exercises(
+        claimed_set=KMU, exercise_count=5, seed=2026, gears=[2, 2, 2, 2, 1]
+    )
+    # The last slot at gear 1 is the upper half of band 4; slots 0-3 at
+    # gear 2 pull from bands 1-4 respectively. Pairwise the shifted
+    # scores should be >= the baseline at every slot (gear 0 may pull
+    # the easy end of its band; the shifted ramp cannot pull below it).
+    for base_score, shifted_score in zip(baseline.scores, shifted.scores):
+        assert shifted_score >= base_score
+
+
+def test_generator_gears_ignored_when_none():
+    # gears=None should behave exactly like the previous default.
+    a = sequence.generate_copy_exercises(claimed_set=KMU, exercise_count=5, seed=7, gears=None)
+    b = sequence.generate_copy_exercises(claimed_set=KMU, exercise_count=5, seed=7)
+    assert a.exercises == b.exercises
+
+
+def test_generator_gears_clamped_to_supported_range():
+    # Gear 99 is treated as gear 2; gear -3 as gear 0.
+    high = sequence.generate_copy_exercises(
+        claimed_set=KMU, exercise_count=5, seed=11, gears=[99, 99, 99, 99, 99]
+    )
+    two = sequence.generate_copy_exercises(
+        claimed_set=KMU, exercise_count=5, seed=11, gears=[2, 2, 2, 2, 2]
+    )
+    assert high.exercises == two.exercises
 
 
 def test_degenerate_single_symbol_set_does_not_crash():

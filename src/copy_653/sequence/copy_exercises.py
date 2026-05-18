@@ -85,6 +85,41 @@ class CopyExercises:
     candidate_count: int = 0
 
 
+def _slot_range(
+    band_index: int,
+    exercise_count: int,
+    candidate_count: int,
+    gear: int,
+) -> tuple[int, int]:
+    """Return the ``(lo, hi)`` slice into the sorted candidate pool
+    that slot ``band_index`` should draw from at this gear.
+
+    The slot's own band is at ``band_index``. Gear 2 redirects the
+    draw to ``band_index + 1`` — except at the top slot, where there
+    is nowhere to escalate and gear 2 quietly falls back to gear 1
+    (upper half of the slot's own band). Gear 1 always halves whatever
+    band has been resolved.
+    """
+    if gear == 2 and band_index < exercise_count - 1:
+        source_band = band_index + 1
+        lo = source_band * candidate_count // exercise_count
+        hi = (source_band + 1) * candidate_count // exercise_count
+    else:
+        lo = band_index * candidate_count // exercise_count
+        hi = (band_index + 1) * candidate_count // exercise_count
+        if gear >= 1 and hi - lo > 1:
+            # Gear 1, or gear 2 capped at the top band: upper half.
+            lo = (lo + hi) // 2
+
+    # ``lo == hi`` cannot happen given the candidate_count >=
+    # exercise_count check upstream, but be defensive so we never
+    # hand an empty slice to rng.choice.
+    if lo == hi:
+        lo = min(band_index, candidate_count - 1)
+        hi = lo + 1
+    return lo, hi
+
+
 def _score_copy_exercise(exercise: str) -> int:
     """Abstract-burden score: higher means heavier off-screen copy load.
 
@@ -122,6 +157,7 @@ def generate_copy_exercises(
     max_word_length: int = DEFAULT_MAX_WORD_LENGTH,
     candidate_count: int | None = None,
     seed: int | None = None,
+    gears: list[int] | None = None,
 ) -> CopyExercises:
     """Generate ``exercise_count`` sentence-shaped exercises.
 
@@ -159,6 +195,19 @@ def generate_copy_exercises(
         Optional explicit seed. If ``None``, a fresh 64-bit seed is
         drawn from :func:`secrets.randbits` and recorded in the
         result.
+    gears:
+        Optional per-slot gear shift, parallel to ``exercise_count``.
+        Entry ``i`` controls how slot ``i`` selects from the sorted
+        candidate pool:
+
+        * ``0`` (default) — pick from slot ``i``'s own quantile band.
+        * ``1`` — pick from the upper half of slot ``i``'s band.
+        * ``2`` — pick from the next-higher band's full range. At the
+          top slot, gear 2 falls back to gear 1 behaviour because
+          there is nowhere to escalate to.
+
+        Higher gears are clamped to 2 — values 3+ are reserved for
+        generator-parameter changes that are not yet implemented.
 
     Raises
     ------
@@ -224,14 +273,12 @@ def generate_copy_exercises(
     # more entries; with the default 20/5 every band has exactly 4.
     picks: list[tuple[int, str]] = []
     for band_index in range(exercise_count):
-        lo = band_index * candidate_count // exercise_count
-        hi = (band_index + 1) * candidate_count // exercise_count
-        # ``lo == hi`` cannot happen given the candidate_count >=
-        # exercise_count check above, but be defensive: fall back to
-        # the nearest in-range index so we never skip a slot.
-        if lo == hi:
-            lo = min(band_index, candidate_count - 1)
-            hi = lo + 1
+        gear = 0
+        if gears is not None and band_index < len(gears):
+            raw_gear = gears[band_index]
+            if isinstance(raw_gear, int) and not isinstance(raw_gear, bool):
+                gear = max(0, min(2, raw_gear))
+        lo, hi = _slot_range(band_index, exercise_count, candidate_count, gear)
         score, _idx, exercise = rng.choice(scored[lo:hi])
         picks.append((score, exercise))
 

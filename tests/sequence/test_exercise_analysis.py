@@ -1,10 +1,38 @@
 from copy_653.sequence.exercise_analysis import (
+    MAX_GEAR,
     analyse_answer,
     apply_answers_to_entries,
     build_exercise_entries,
     build_generation_profile,
+    latest_gears_for_claimed_set,
+    load_band_evidence,
+    load_band_history,
+    record_claimed_set_key,
+    resolve_gears,
+    spacing_weight_for_claimed_set,
     strip_fixed_anchor,
 )
+
+
+def _saved_exercise(burden_band: int, fraction: float, *, burden: int = 50) -> dict:
+    return {
+        "burden_band": burden_band,
+        "burden_score": burden,
+        "analysis": {
+            "saved": True,
+            "combined_fraction": fraction,
+            "band_state": "exact" if fraction >= 1.0 else "building",
+        },
+    }
+
+
+def _session(started_at: str, claimed_set_key: str, exercises: list[dict]) -> dict:
+    return {
+        "mode": "koch-exercise",
+        "started_at": started_at,
+        "generation": {"claimed_set_key": claimed_set_key},
+        "exercises": exercises,
+    }
 
 
 def test_strip_fixed_anchor_removes_only_leading_de():
@@ -49,6 +77,7 @@ def test_analyse_answer_counts_partial_and_blank_saved_answers():
         burden_score=52,
         burden_band=2,
         gear=0,
+        claimed_set_size=2,
     )
     blank = analyse_answer(
         played="DE KMK",
@@ -57,12 +86,15 @@ def test_analyse_answer_counts_partial_and_blank_saved_answers():
         burden_score=52,
         burden_band=2,
         gear=0,
+        claimed_set_size=2,
     )
 
     assert partial["saved"] is True
     assert partial["symbol_correct_units"] == 2
     assert partial["symbol_available_units"] == 3
-    assert partial["band_state"] == "building"
+    # 2/3 symbols correct, no word boundaries to evaluate — the combined
+    # fraction is just the symbol fraction (0.667), which lands in "low".
+    assert partial["band_state"] == "low"
     assert blank["symbol_correct_units"] == 0
     assert blank["symbol_available_units"] == 3
     assert blank["band_state"] == "low"
@@ -76,18 +108,47 @@ def test_analyse_answer_tracks_spacing_separately_from_symbols():
         burden_score=58,
         burden_band=1,
         gear=0,
+        claimed_set_size=2,
     )
 
     assert analysis["symbol_correct_units"] == 3
     assert analysis["symbol_available_units"] == 3
     assert analysis["spacing_correct_units"] == 0
     assert analysis["spacing_available_units"] == 1
+    # At claimed_set_size=2, spacing weight is 0.5; missing every boundary
+    # halves the combined fraction even with perfect symbols.
+    assert analysis["spacing_weight"] == 0.5
+    assert analysis["band_state"] == "low"
+
+
+def test_spacing_weight_for_claimed_set_decays_with_size():
+    assert spacing_weight_for_claimed_set(1) == 0.5
+    assert spacing_weight_for_claimed_set(2) == 0.5
+    assert spacing_weight_for_claimed_set(4) == 0.25
+    assert spacing_weight_for_claimed_set(10) == 0.15
+    assert spacing_weight_for_claimed_set(40) == 0.15
+
+
+def test_analyse_answer_spacing_weight_shrinks_at_larger_claimed_sets():
+    analysis = analyse_answer(
+        played="DE KM K",
+        answer="DE KMK",
+        exercise_index=1,
+        burden_score=58,
+        burden_band=1,
+        gear=0,
+        claimed_set_size=10,
+    )
+    # Same input as the small-set case but with size=10: spacing weight
+    # drops to 0.15 so a single-boundary miss leaves the combined fraction
+    # at 0.85, which is "steady".
+    assert analysis["spacing_weight"] == 0.15
     assert analysis["band_state"] == "steady"
 
 
 def test_apply_answers_to_entries_merges_answer_analysis():
     entries = build_exercise_entries(["DE KM", "DE K M"], scores=[32, 42])
-    updated = apply_answers_to_entries(entries, ["DE KM", "DE K"])
+    updated = apply_answers_to_entries(entries, ["DE KM", "DE K"], claimed_set_size=2)
 
     assert updated[0]["answer"] == "DE KM"
     assert updated[0]["analysis"]["band_state"] == "exact"
@@ -95,9 +156,316 @@ def test_apply_answers_to_entries_merges_answer_analysis():
     assert updated[1]["analysis"]["symbol_correct_units"] == 1
 
 
+def test_record_claimed_set_key_prefers_generation_field():
+    record = {
+        "claimed_set": ["M", "K"],
+        "generation": {"claimed_set_key": "K M"},
+    }
+    assert record_claimed_set_key(record) == "K M"
+
+
+def test_record_claimed_set_key_derives_from_claimed_set_for_legacy_records():
+    assert record_claimed_set_key({"claimed_set": ["M", "K"]}) == "K M"
+    assert record_claimed_set_key({}) == ""
+
+
+def test_load_band_evidence_filters_by_key_and_orders_newest_first():
+    other = _session("2026-05-18T13:00:00Z", "K M U", [_saved_exercise(1, 1.0)])
+    older = _session("2026-05-18T13:05:00Z", "K M", [_saved_exercise(1, 0.5)])
+    newer = _session("2026-05-18T13:10:00Z", "K M", [_saved_exercise(1, 1.0)])
+
+    evidence = load_band_evidence([other, older, newer], claimed_set_key="K M")
+
+    assert evidence["claimed_set_key"] == "K M"
+    assert evidence["session_count"] == 2
+    assert evidence["sessions_used"] == 2
+    assert evidence["bands"][0]["burden_band"] == 1
+    # Newest first; the 1.0 from the newer session leads.
+    assert evidence["bands"][0]["recent_fractions"] == [1.0, 0.5]
+
+
+def test_load_band_evidence_strong_and_low_streaks_count_from_most_recent():
+    sessions = [
+        _session("2026-05-18T13:30:00Z", "K M", [_saved_exercise(1, 1.0)]),
+        _session("2026-05-18T13:20:00Z", "K M", [_saved_exercise(1, 0.96)]),
+        _session("2026-05-18T13:10:00Z", "K M", [_saved_exercise(1, 0.80)]),
+        _session("2026-05-18T13:00:00Z", "K M", [_saved_exercise(1, 1.0)]),
+    ]
+
+    evidence = load_band_evidence(sessions, claimed_set_key="K M")
+    band = evidence["bands"][0]
+    # Two strong runs (1.0, 0.96) then broken by 0.80.
+    assert band["strong_streak"] == 2
+    # No low run at the most recent observation.
+    assert band["low_streak"] == 0
+
+
+def test_load_band_evidence_strong_streak_resets_when_gear_changes():
+    # Three strong runs at gear 0, then one strong run at gear 1.
+    # The streak at the current gear (1) is 1 — the prior gear-0
+    # successes do not roll forward.
+    def _at_gear(started_at: str, gear: int, fraction: float) -> dict:
+        return {
+            "mode": "koch-exercise",
+            "started_at": started_at,
+            "generation": {
+                "claimed_set_key": "K M",
+                "bands": [{"index": 1, "gear": gear}],
+            },
+            "exercises": [_saved_exercise(1, fraction)],
+        }
+
+    sessions = [
+        _at_gear("2026-05-18T13:00:00Z", 0, 1.0),
+        _at_gear("2026-05-18T13:10:00Z", 0, 1.0),
+        _at_gear("2026-05-18T13:20:00Z", 0, 1.0),
+        _at_gear("2026-05-18T13:30:00Z", 1, 1.0),
+    ]
+    evidence = load_band_evidence(sessions, claimed_set_key="K M")
+    band = evidence["bands"][0]
+    # All four runs are strong, but the streak resets at the gear shift.
+    assert band["strong_streak"] == 1
+    # The fraction list still surfaces every observation so the rollup
+    # and lifetime panels can render the full recent history.
+    assert band["recent_fractions"] == [1.0, 1.0, 1.0, 1.0]
+
+
+def test_load_band_evidence_low_streak_resets_when_gear_changes():
+    # Two low runs at gear 1, then back to gear 0 with one more low run.
+    # The streak at the current gear (0) is 1.
+    def _at_gear(started_at: str, gear: int, fraction: float) -> dict:
+        return {
+            "mode": "koch-exercise",
+            "started_at": started_at,
+            "generation": {
+                "claimed_set_key": "K M",
+                "bands": [{"index": 1, "gear": gear}],
+            },
+            "exercises": [_saved_exercise(1, fraction)],
+        }
+
+    sessions = [
+        _at_gear("2026-05-18T13:00:00Z", 1, 0.5),
+        _at_gear("2026-05-18T13:10:00Z", 1, 0.5),
+        _at_gear("2026-05-18T13:20:00Z", 0, 0.5),
+    ]
+    evidence = load_band_evidence(sessions, claimed_set_key="K M")
+    band = evidence["bands"][0]
+    assert band["low_streak"] == 1
+
+
+def test_load_band_evidence_low_streak_from_most_recent():
+    sessions = [
+        _session("2026-05-18T13:30:00Z", "K M", [_saved_exercise(1, 0.5)]),
+        _session("2026-05-18T13:20:00Z", "K M", [_saved_exercise(1, 0.65)]),
+        _session("2026-05-18T13:10:00Z", "K M", [_saved_exercise(1, 1.0)]),
+    ]
+
+    evidence = load_band_evidence(sessions, claimed_set_key="K M")
+    band = evidence["bands"][0]
+    assert band["low_streak"] == 2
+    assert band["strong_streak"] == 0
+
+
+def test_load_band_evidence_skips_sessions_without_saved_analysis():
+    saved = _session("2026-05-18T13:30:00Z", "K M", [_saved_exercise(1, 1.0)])
+    unsaved_exercise = {
+        "burden_band": 1,
+        "analysis": {"saved": False},
+    }
+    unsaved = _session("2026-05-18T13:35:00Z", "K M", [unsaved_exercise])
+
+    evidence = load_band_evidence([saved, unsaved], claimed_set_key="K M")
+
+    # Both sessions match the key, so session_count includes both.
+    assert evidence["session_count"] == 2
+    # Only the saved session contributes a fraction.
+    assert evidence["bands"][0]["recent_fractions"] == [1.0]
+
+
+def test_load_band_evidence_window_size_truncates_to_recent_sessions():
+    sessions = [
+        _session(f"2026-05-18T12:0{i}:00Z", "K M", [_saved_exercise(1, 1.0)]) for i in range(6)
+    ]
+
+    evidence = load_band_evidence(sessions, claimed_set_key="K M", window_size=3)
+
+    assert evidence["session_count"] == 6
+    assert evidence["sessions_used"] == 3
+    assert len(evidence["bands"][0]["recent_fractions"]) == 3
+
+
+def test_load_band_evidence_supports_legacy_records_without_generation():
+    legacy = {
+        "mode": "koch-exercise",
+        "started_at": "2026-05-18T13:30:00Z",
+        "claimed_set": ["M", "K"],
+        "exercises": [_saved_exercise(1, 1.0)],
+    }
+    evidence = load_band_evidence([legacy], claimed_set_key="K M")
+    assert evidence["session_count"] == 1
+    assert evidence["bands"][0]["recent_fractions"] == [1.0]
+
+
+def test_latest_gears_returns_empty_when_no_matching_record():
+    sessions = [
+        _session("2026-05-18T13:00:00Z", "K M U", [_saved_exercise(1, 1.0)]),
+    ]
+    sessions[0]["generation"]["bands"] = [{"index": 1, "gear": 2}]
+    assert latest_gears_for_claimed_set(sessions, claimed_set_key="K M") == {}
+
+
+def test_latest_gears_reads_most_recent_session():
+    older = _session("2026-05-18T13:00:00Z", "K M", [_saved_exercise(1, 1.0)])
+    older["generation"]["bands"] = [{"index": 1, "gear": 0}, {"index": 2, "gear": 0}]
+    newer = _session("2026-05-18T14:00:00Z", "K M", [_saved_exercise(1, 1.0)])
+    newer["generation"]["bands"] = [{"index": 1, "gear": 1}, {"index": 2, "gear": 2}]
+
+    gears = latest_gears_for_claimed_set([older, newer], claimed_set_key="K M")
+    assert gears == {1: 1, 2: 2}
+
+
+def test_resolve_gears_advances_after_strong_streak():
+    evidence = {
+        "bands": [
+            {"burden_band": 1, "strong_streak": 3, "low_streak": 0},
+            {"burden_band": 2, "strong_streak": 2, "low_streak": 0},
+        ],
+    }
+    resolved = resolve_gears(evidence, current_gears={1: 0, 2: 0})
+    # Band 1 met the 3-strong threshold and advances; band 2 holds.
+    assert resolved == {1: 1, 2: 0}
+
+
+def test_resolve_gears_drops_after_low_streak():
+    evidence = {
+        "bands": [
+            {"burden_band": 1, "strong_streak": 0, "low_streak": 2},
+            {"burden_band": 2, "strong_streak": 0, "low_streak": 1},
+        ],
+    }
+    resolved = resolve_gears(evidence, current_gears={1: 2, 2: 1})
+    assert resolved == {1: 1, 2: 1}
+
+
+def test_resolve_gears_caps_at_max_gear():
+    evidence = {"bands": [{"burden_band": 1, "strong_streak": 10, "low_streak": 0}]}
+    resolved = resolve_gears(evidence, current_gears={1: MAX_GEAR})
+    assert resolved == {1: MAX_GEAR}
+
+
+def test_resolve_gears_floors_at_zero():
+    evidence = {"bands": [{"burden_band": 1, "strong_streak": 0, "low_streak": 5}]}
+    resolved = resolve_gears(evidence, current_gears={1: 0})
+    assert resolved == {1: 0}
+
+
+def test_resolve_gears_preserves_bands_absent_from_evidence():
+    # Band 2 produced no recent evidence (e.g. unsaved sessions); its
+    # previous gear is kept rather than reset.
+    evidence = {"bands": [{"burden_band": 1, "strong_streak": 3, "low_streak": 0}]}
+    resolved = resolve_gears(evidence, current_gears={1: 0, 2: 1})
+    assert resolved == {1: 1, 2: 1}
+
+
+def _history_session(
+    started_at: str,
+    run_index: int,
+    gears: list[int],
+    fractions: list[float],
+) -> dict:
+    return {
+        "mode": "koch-exercise",
+        "started_at": started_at,
+        "generation": {
+            "claimed_set_key": "K M",
+            "run_index": run_index,
+            "bands": [{"index": i + 1, "gear": gears[i]} for i in range(len(gears))],
+        },
+        "exercises": [
+            {
+                "index": i + 1,
+                "burden_band": i + 1,
+                "gear": gears[i],
+                "analysis": {
+                    "saved": True,
+                    "combined_fraction": fractions[i],
+                    "band_state": "exact" if fractions[i] >= 1.0 else "low",
+                },
+            }
+            for i in range(len(fractions))
+        ],
+    }
+
+
+def test_load_band_history_returns_sessions_in_chronological_order():
+    sessions = [
+        _history_session("2026-05-18T15:30:00Z", 2, [0, 0], [1.0, 1.0]),
+        _history_session("2026-05-18T15:00:00Z", 1, [0, 0], [1.0, 1.0]),
+    ]
+    history = load_band_history(sessions, claimed_set_key="K M")
+    # Sorted oldest-first regardless of input order.
+    assert [s["run_index"] for s in history["sessions"]] == [1, 2]
+
+
+def test_load_band_history_detects_gear_change_events():
+    sessions = [
+        _history_session("2026-05-18T15:00:00Z", 1, [0, 0], [1.0, 1.0]),
+        _history_session("2026-05-18T15:30:00Z", 2, [0, 0], [1.0, 1.0]),
+        _history_session("2026-05-18T16:00:00Z", 3, [0, 0], [1.0, 1.0]),
+        _history_session("2026-05-18T16:30:00Z", 4, [1, 1], [1.0, 1.0]),
+    ]
+    history = load_band_history(sessions, claimed_set_key="K M")
+    events = history["gear_changes"]
+    # Two changes at session 4 (one per band) — order: by run_index, then band.
+    assert len(events) == 2
+    assert all(e["run_index"] == 4 for e in events)
+    assert {e["burden_band"] for e in events} == {1, 2}
+    assert events[0]["previous_gear"] == 0
+    assert events[0]["current_gear"] == 1
+
+
+def test_load_band_history_current_gears_from_latest_session():
+    sessions = [
+        _history_session("2026-05-18T15:00:00Z", 1, [0, 0], [1.0, 1.0]),
+        _history_session("2026-05-18T15:30:00Z", 2, [1, 2], [1.0, 1.0]),
+    ]
+    history = load_band_history(sessions, claimed_set_key="K M")
+    assert history["current_gears"] == {1: 1, 2: 2}
+
+
+def test_load_band_history_falls_back_to_chronological_run_index_for_legacy():
+    # Schema 1.3 records have no generation.run_index — chronological
+    # fallback indices keep the grid renderable.
+    legacy = {
+        "mode": "koch-exercise",
+        "started_at": "2026-05-18T15:00:00Z",
+        "claimed_set": ["M", "K"],
+        "exercises": [
+            {
+                "burden_band": 1,
+                "analysis": {"saved": True, "combined_fraction": 1.0, "band_state": "exact"},
+            }
+        ],
+    }
+    history = load_band_history([legacy], claimed_set_key="K M")
+    assert history["sessions"] == [{"run_index": 1, "started_at": "2026-05-18T15:00:00Z"}]
+
+
+def test_load_band_history_marks_missing_fraction_when_session_unsaved():
+    unsaved_session = _history_session("2026-05-18T15:00:00Z", 1, [0], [1.0])
+    unsaved_session["exercises"][0]["analysis"]["saved"] = False
+    history = load_band_history([unsaved_session], claimed_set_key="K M")
+    band = history["bands"][0]
+    # Gear is still recorded (the session ran the band at that gear),
+    # but the fraction is None so the grid renders it as missing.
+    assert band["entries"][0]["fraction"] is None
+    assert band["entries"][0]["gear"] == 0
+
+
 def test_apply_answers_to_entries_dampens_repeated_exercise_evidence():
     entries = build_exercise_entries(["DE KM", "DE KM", "DE KM"], scores=[32, 32, 32])
-    updated = apply_answers_to_entries(entries, ["DE KM", "DE KM", "DE KM"])
+    updated = apply_answers_to_entries(entries, ["DE KM", "DE KM", "DE KM"], claimed_set_size=2)
 
     assert updated[0]["analysis"]["repeat_weight"] == 1.0
     assert updated[1]["analysis"]["repeat_weight"] == 0.7
