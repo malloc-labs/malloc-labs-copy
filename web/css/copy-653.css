@@ -1800,6 +1800,15 @@ copy-top-menu {
     white-space: nowrap;
 }
 
+.settings-koch-detail__exercises-summary td {
+    border-top: var(--mr-border-rule);
+    color: var(--mr-anchor);
+}
+
+.settings-koch-detail__exercises-summary td:first-child {
+    color: var(--mr-anchor);
+}
+
 .settings-koch-detail__missing {
     color: var(--mr-muted);
 }

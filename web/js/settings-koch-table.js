@@ -110,8 +110,10 @@ function buildExercisesList(record) {
     table.appendChild(thead);
 
     const body = document.createElement("tbody");
-    exercises.forEach((rawExercise, idx) => {
-        const exercise = normalizeExerciseEntry(rawExercise, legacyAnswers[idx], idx);
+    const normalised = exercises.map((rawExercise, idx) =>
+        normalizeExerciseEntry(rawExercise, legacyAnswers[idx], idx),
+    );
+    normalised.forEach((exercise, idx) => {
         const analysis = exercise.analysis || {};
         const tr = document.createElement("tr");
 
@@ -150,6 +152,13 @@ function buildExercisesList(record) {
         body.appendChild(tr);
     });
     table.appendChild(body);
+
+    const summary = buildSummaryRow(normalised);
+    if (summary) {
+        const tfoot = document.createElement("tfoot");
+        tfoot.appendChild(summary);
+        table.appendChild(tfoot);
+    }
     wrap.appendChild(table);
 
     if (!hasSavedAnswerData(record)) {
@@ -159,6 +168,63 @@ function buildExercisesList(record) {
         wrap.appendChild(note);
     }
     return wrap;
+}
+
+function buildSummaryRow(exercises) {
+    const saved = exercises.filter((exercise) => {
+        const analysis = exercise && typeof exercise === "object" ? exercise.analysis : null;
+        return analysis && analysis.saved === true;
+    });
+    if (saved.length === 0) return null;
+
+    let burdenTotal = 0;
+    let burdenWeightedFraction = 0;
+    let symbolCorrect = 0;
+    let symbolAvailable = 0;
+    let spacingCorrect = 0;
+    let spacingAvailable = 0;
+    let strongBands = 0;
+
+    saved.forEach((exercise) => {
+        const analysis = exercise.analysis || {};
+        const burden = Number.isFinite(exercise.burden_score) ? exercise.burden_score : 0;
+        const fraction = Number.isFinite(analysis.combined_fraction) ? analysis.combined_fraction : 0;
+        burdenTotal += burden;
+        burdenWeightedFraction += fraction * burden;
+        if (Number.isFinite(analysis.symbol_correct_units)) {
+            symbolCorrect += analysis.symbol_correct_units;
+        }
+        if (Number.isFinite(analysis.symbol_available_units)) {
+            symbolAvailable += analysis.symbol_available_units;
+        }
+        if (Number.isFinite(analysis.spacing_correct_units)) {
+            spacingCorrect += analysis.spacing_correct_units;
+        }
+        if (Number.isFinite(analysis.spacing_available_units)) {
+            spacingAvailable += analysis.spacing_available_units;
+        }
+        // "Strong" = combined_fraction ≥ 0.95 — the same threshold the
+        // gear-up rule consumes. Surfacing the count next to the
+        // weighted mean makes the link to that rule explicit.
+        if (fraction >= 0.95) strongBands += 1;
+    });
+
+    const weightedMean = burdenTotal > 0 ? burdenWeightedFraction / burdenTotal : 0;
+
+    const tr = document.createElement("tr");
+    tr.className = "settings-koch-detail__exercises-summary";
+    appendCell(tr, "Σ");
+    appendCell(tr, "");
+    appendCell(tr, "");
+    appendCell(tr, "");
+    appendCell(tr, burdenTotal);
+    appendCell(tr, unitPair(symbolCorrect, symbolAvailable));
+    appendCell(tr, unitPair(spacingCorrect, spacingAvailable));
+    appendCell(tr, "");
+    appendCell(tr, Number(weightedMean.toFixed(3)));
+    appendCell(tr, `${strongBands}/${saved.length} strong`);
+    appendCell(tr, "");
+    return tr;
 }
 
 function normalizeExerciseEntry(raw, legacyAnswer, idx) {
