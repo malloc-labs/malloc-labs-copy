@@ -17,6 +17,10 @@ from copy_653.session.records import (
     update_koch_answers,
     write_record,
 )
+from copy_653.sequence.cadence_analysis import (
+    build_cadence_exercise_entries,
+    build_cadence_generation_profile,
+)
 from copy_653.sequence.exercise_analysis import build_exercise_entries, build_generation_profile
 
 
@@ -68,7 +72,7 @@ def _koch_record(started_at: datetime | None = None) -> KochExerciseRecord:
     )
 
 
-def _cadence_record(selection: dict | None = None) -> CadenceSendRecord:
+def _cadence_record() -> CadenceSendRecord:
     started = datetime(2026, 5, 15, 19, 30, 45, 123_000, tzinfo=timezone.utc)
     ended = datetime(2026, 5, 15, 19, 31, 15, 456_000, tzinfo=timezone.utc)
     return CadenceSendRecord(
@@ -76,6 +80,7 @@ def _cadence_record(selection: dict | None = None) -> CadenceSendRecord:
         ended_at=ended,
         audio=_audio(),
         claimed_set=("K", "M", "U"),
+        seed=12345,
         request={
             "exercise_count": 1,
             "min_words": 1,
@@ -83,8 +88,12 @@ def _cadence_record(selection: dict | None = None) -> CadenceSendRecord:
             "min_word_length": 2,
             "max_word_length": 2,
         },
-        seed=12345,
-        exercises=["km"],
+        generation=build_cadence_generation_profile(
+            claimed_set=("K", "M", "U"),
+            candidate_count=20,
+            exercise_count=1,
+        ),
+        exercises=build_cadence_exercise_entries(["KM"], scores=[32]),
         sent=[
             {
                 "symbol": "K",
@@ -95,10 +104,13 @@ def _cadence_record(selection: dict | None = None) -> CadenceSendRecord:
             }
         ],
         key_events=[
-            {"kind": "dit", "note": 1, "pressed": True, "timestamp": 1.024},
-            {"kind": "dit", "note": 1, "pressed": False, "timestamp": 1.110},
+            {"kind": "dah", "note": 2, "pressed": True, "timestamp": 1.024},
+            {"kind": "dah", "note": 2, "pressed": False, "timestamp": 1.204, "duration_ms": 180.0},
+            {"kind": "dit", "note": 1, "pressed": True, "timestamp": 1.264},
+            {"kind": "dit", "note": 1, "pressed": False, "timestamp": 1.324, "duration_ms": 60.0},
+            {"kind": "dah", "note": 2, "pressed": True, "timestamp": 1.384},
+            {"kind": "dah", "note": 2, "pressed": False, "timestamp": 1.564, "duration_ms": 180.0},
         ],
-        selection=selection,
     )
 
 
@@ -151,12 +163,15 @@ def test_cadence_record_carries_exercises_sent_and_key_events(tmp_path: Path):
         "min_word_length": 2,
         "max_word_length": 2,
     }
-    assert parsed["exercises"] == ["km"]
+    assert parsed["generation"]["profile_version"] == "cadence-burden-v1"
+    assert parsed["generation"]["candidate_count"] == 20
+    assert parsed["exercises"][0]["target"] == "KM"
+    assert parsed["exercises"][0]["analysis"]["saved"] is True
     assert parsed["sent"][0]["symbol"] == "K"
     assert parsed["sent"][0]["leading_gap"] == "none"
     assert parsed["key_events"][0] == {
-        "kind": "dit",
-        "note": 1,
+        "kind": "dah",
+        "note": 2,
         "pressed": True,
         "timestamp": 1.024,
     }
@@ -214,15 +229,7 @@ def test_update_koch_answers_rejects_non_koch_record(tmp_path: Path):
         update_koch_answers(path, ["x"])
 
 
-def test_cadence_selection_round_trips_when_present(tmp_path: Path):
-    selection = {"candidate_count": 20, "scores": [23, 42, 61, 69, 133]}
-    path = write_record(_cadence_record(selection=selection), tmp_path)
-    parsed = json.loads(path.read_text())
-
-    assert parsed["selection"] == selection
-
-
-def test_cadence_selection_absent_when_not_provided(tmp_path: Path):
+def test_cadence_record_never_carries_selection(tmp_path: Path):
     path = write_record(_cadence_record(), tmp_path)
     parsed = json.loads(path.read_text())
 
@@ -300,7 +307,12 @@ def test_active_cadence_session_filters_relevant_events():
         claimed=("K", "M"),
         request={"exercise_count": 1},
         seed=42,
-        exercises=["k"],
+        generation=build_cadence_generation_profile(
+            claimed_set=("K", "M"),
+            candidate_count=20,
+            exercise_count=1,
+        ),
+        exercises=build_cadence_exercise_entries(["K"], scores=[20]),
     )
 
     # Relevant events accumulate.

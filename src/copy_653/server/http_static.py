@@ -26,7 +26,12 @@ from copy_653.sequence.exercise_analysis import (
     load_band_history,
     record_claimed_set_key,
 )
-from copy_653.server.records import _iter_koch_records
+from copy_653.sequence.cadence_analysis import (
+    DEFAULT_EVIDENCE_WINDOW_SIZE as CADENCE_EVIDENCE_WINDOW_SIZE,
+    load_band_evidence as load_cadence_band_evidence,
+    record_claimed_set_key as cadence_record_claimed_set_key,
+)
+from copy_653.server.records import _iter_cadence_records, _iter_koch_records
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +113,27 @@ def _build_static_handler(web_root: Path, config_path: Path | None = None):
                 _read_koch_band_history(
                     config_path,
                     claimed_set_key=key_values[0] if key_values else None,
+                )
+            )
+
+        if clean_path == "/api/cadence-sends":
+            return _json_response(_list_cadence_sends(config_path))
+
+        if clean_path == "/api/cadence-send":
+            params = parse_qs(parsed_path.query)
+            filename_values = params.get("file") or params.get("filename") or []
+            filename = filename_values[0] if filename_values else ""
+            return _read_cadence_send(config_path, filename)
+
+        if clean_path == "/api/cadence-band-evidence":
+            params = parse_qs(parsed_path.query)
+            key_values = params.get("claimed_set_key") or []
+            window_values = params.get("window_size") or []
+            return _json_response(
+                _read_cadence_band_evidence(
+                    config_path,
+                    claimed_set_key=key_values[0] if key_values else None,
+                    window_size_raw=window_values[0] if window_values else None,
                 )
             )
 
@@ -217,6 +243,7 @@ def _list_koch_exercises(config_path: Path | None) -> dict[str, Any]:
 # optional -N collision suffix); this rejects path separators and anything
 # else that could escape the koch-exercise subdirectory.
 _KOCH_FILENAME_RE = re.compile(r"^koch-exercise-[0-9A-Za-z-]+\.json$")
+_CADENCE_FILENAME_RE = re.compile(r"^cadence-send-[0-9A-Za-z-]+\.json$")
 
 
 def _read_koch_band_evidence(
@@ -349,6 +376,122 @@ def _read_koch_exercise(
         logger.exception("failed to read koch-exercise record: %s", resolved)
         return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"read failed")
     if not isinstance(data, dict) or data.get("mode") != "koch-exercise":
+        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+
+    return _json_response(data)
+
+
+def _list_cadence_sends(config_path: Path | None) -> dict[str, Any]:
+    """List saved cadence-send records for the settings UI."""
+    try:
+        save_directory = load_save_directory(config_path)
+    except Exception:
+        logger.exception("could not resolve save_directory for cadence-send listing")
+        return {"save_directory": "", "records": []}
+
+    target_dir = save_directory / "cadence-send"
+    records: list[dict[str, Any]] = []
+    if target_dir.is_dir():
+        for entry in sorted(target_dir.glob("cadence-send-*.json")):
+            try:
+                data = json.loads(entry.read_text())
+            except (OSError, ValueError):
+                logger.exception("skipping unreadable cadence-send record: %s", entry)
+                continue
+            if data.get("mode") != "cadence-send":
+                continue
+            started_at = data.get("started_at")
+            claimed_set = data.get("claimed_set")
+            exercises = data.get("exercises")
+            if (
+                not isinstance(started_at, str)
+                or not isinstance(claimed_set, list)
+                or not isinstance(exercises, list)
+            ):
+                continue
+            records.append(
+                {
+                    "filename": entry.name,
+                    "started_at": started_at,
+                    "claimed_set": [str(s) for s in claimed_set],
+                    "exercise_count": len(exercises),
+                }
+            )
+
+    records.sort(key=lambda r: r["started_at"], reverse=True)
+    return {"save_directory": str(save_directory), "records": records}
+
+
+def _read_cadence_band_evidence(
+    config_path: Path | None,
+    *,
+    claimed_set_key: str | None,
+    window_size_raw: str | None,
+) -> dict[str, Any]:
+    try:
+        save_directory = load_save_directory(config_path)
+    except Exception:
+        logger.exception("could not resolve save_directory for cadence evidence read")
+        return {
+            "save_directory": "",
+            "claimed_set_key": claimed_set_key or "",
+            "session_count": 0,
+            "window_size": CADENCE_EVIDENCE_WINDOW_SIZE,
+            "sessions_used": 0,
+            "bands": [],
+        }
+
+    records = _iter_cadence_records(save_directory)
+    resolved_key = claimed_set_key
+    if not resolved_key:
+        latest = max(records, key=lambda r: str(r.get("started_at") or ""), default=None)
+        resolved_key = cadence_record_claimed_set_key(latest) if latest else ""
+
+    window_size = CADENCE_EVIDENCE_WINDOW_SIZE
+    if window_size_raw is not None:
+        try:
+            parsed = int(window_size_raw)
+        except (TypeError, ValueError):
+            parsed = window_size
+        if parsed > 0:
+            window_size = parsed
+
+    evidence = load_cadence_band_evidence(
+        records,
+        claimed_set_key=resolved_key,
+        window_size=window_size,
+    )
+    evidence["save_directory"] = str(save_directory)
+    return evidence
+
+
+def _read_cadence_send(
+    config_path: Path | None, filename: str
+) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
+    if not filename or not _CADENCE_FILENAME_RE.fullmatch(filename):
+        return _http_response(HTTPStatus.BAD_REQUEST, b"invalid filename")
+
+    try:
+        save_directory = load_save_directory(config_path)
+    except Exception:
+        logger.exception("could not resolve save_directory for cadence-send read")
+        return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"save directory unavailable")
+
+    target_dir = (save_directory / "cadence-send").resolve()
+    resolved = (target_dir / filename).resolve()
+    try:
+        resolved.relative_to(target_dir)
+    except ValueError:
+        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+    if not resolved.is_file():
+        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+
+    try:
+        data = json.loads(resolved.read_text())
+    except (OSError, ValueError):
+        logger.exception("failed to read cadence-send record: %s", resolved)
+        return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"read failed")
+    if not isinstance(data, dict) or data.get("mode") != "cadence-send":
         return _http_response(HTTPStatus.NOT_FOUND, b"not found")
 
     return _json_response(data)

@@ -53,6 +53,8 @@ from copy_653.midi import (
 )
 from copy_653.server.records import (
     _ActiveCadenceSession,
+    _next_cadence_run_index,
+    _resolve_cadence_session_gears,
     _resolve_session_gears,
     _save_koch_answers,
     _write_koch_record,
@@ -74,6 +76,11 @@ from copy_653.server.wire_events import (
     _send_event,
     _sent_symbol_event,
 )
+from copy_653.sequence.cadence_analysis import (
+    build_cadence_exercise_entries,
+    build_cadence_generation_profile,
+)
+from copy_653.sequence.copy_exercises import DEFAULT_EXERCISE_COUNT
 from copy_653.sequence.exercise_analysis import build_exercise_entries, build_generation_profile
 
 logger = logging.getLogger(__name__)
@@ -424,10 +431,18 @@ async def _request_copy_exercises_action(
         await _send_event(ws, {"type": "error", "reason": "no-claimed-symbols"})
         return None
 
+    exercise_count = overrides["exercise_count"] or DEFAULT_EXERCISE_COUNT
+    save_directory = load_save_directory(config_path)
+    claimed_set_key = " ".join(sorted(claimed))
+    gears = _resolve_cadence_session_gears(
+        save_directory, claimed_set_key, exercise_count=exercise_count
+    )
+
     kwargs: dict[str, Any] = {"claimed_set": claimed}
     for name, value in overrides.items():
         if value is not None:
             kwargs[name] = value
+    kwargs["gears"] = gears
 
     try:
         result = sequence.generate_copy_exercises(**kwargs)
@@ -452,17 +467,25 @@ async def _request_copy_exercises_action(
     # validation, before defaulting) so the record reflects intent
     # rather than the engine's fallbacks.
     request_payload = {k: v for k, v in overrides.items() if v is not None}
+    generation = build_cadence_generation_profile(
+        claimed_set=claimed,
+        candidate_count=result.candidate_count,
+        exercise_count=len(result.exercises),
+        gears=gears,
+    )
+    generation["run_index"] = _next_cadence_run_index(save_directory, claimed_set_key)
     return _ActiveCadenceSession(
         started_at=datetime.now(timezone.utc),
         audio=load_audio_parameters(config_path),
         claimed=claimed,
         request=request_payload,
         seed=result.seed,
-        exercises=list(result.exercises),
-        selection={
-            "candidate_count": result.candidate_count,
-            "scores": list(result.scores),
-        },
+        generation=generation,
+        exercises=build_cadence_exercise_entries(
+            list(result.exercises),
+            scores=result.scores,
+            gears=gears,
+        ),
     )
 
 

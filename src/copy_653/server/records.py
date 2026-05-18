@@ -17,6 +17,12 @@ from typing import Any
 
 from copy_653.audio.parameters import AudioParameters
 from copy_653.config import load_save_directory
+from copy_653.sequence.cadence_analysis import (
+    latest_gears_for_claimed_set as latest_cadence_gears_for_claimed_set,
+    load_band_evidence as load_cadence_band_evidence,
+    record_claimed_set_key as cadence_record_claimed_set_key,
+    resolve_gears as resolve_cadence_gears,
+)
 from copy_653.sequence.exercise_analysis import (
     latest_gears_for_claimed_set,
     load_band_evidence,
@@ -41,8 +47,8 @@ class _ActiveCadenceSession:
         "claimed",
         "request",
         "seed",
+        "generation",
         "exercises",
-        "selection",
         "sent",
         "key_events",
     )
@@ -55,16 +61,16 @@ class _ActiveCadenceSession:
         claimed: tuple[str, ...],
         request: dict[str, Any],
         seed: int,
-        exercises: list[str],
-        selection: dict[str, Any] | None = None,
+        generation: dict[str, Any],
+        exercises: list[dict[str, Any]],
     ) -> None:
         self.started_at = started_at
         self.audio = audio
         self.claimed = claimed
         self.request = request
         self.seed = seed
+        self.generation = generation
         self.exercises = exercises
-        self.selection = selection
         self.sent: list[dict[str, Any]] = []
         self.key_events: list[dict[str, Any]] = []
 
@@ -82,14 +88,17 @@ class _ActiveCadenceSession:
                 }
             )
         elif kind == "key-event":
-            self.key_events.append(
-                {
-                    "kind": payload["kind"],
-                    "note": payload["note"],
-                    "pressed": payload["pressed"],
-                    "timestamp": payload["timestamp"],
-                }
-            )
+            entry = {
+                "kind": payload["kind"],
+                "note": payload["note"],
+                "pressed": payload["pressed"],
+                "timestamp": payload["timestamp"],
+            }
+            if "duration_ms" in payload:
+                entry["duration_ms"] = payload["duration_ms"]
+            if "ratio_dits" in payload:
+                entry["ratio_dits"] = payload["ratio_dits"]
+            self.key_events.append(entry)
 
 
 def _finalize_cadence_session(
@@ -110,10 +119,10 @@ def _finalize_cadence_session(
             claimed_set=session.claimed,
             request=session.request,
             seed=session.seed,
+            generation=session.generation,
             exercises=session.exercises,
             sent=session.sent,
             key_events=session.key_events,
-            selection=session.selection,
         )
         write_record(record, save_directory)
     except Exception:
@@ -150,6 +159,23 @@ def _iter_koch_records(save_directory: Path) -> list[dict[str, Any]]:
             logger.exception("skipping unreadable koch-exercise record: %s", entry)
             continue
         if isinstance(data, dict) and data.get("mode") == "koch-exercise":
+            records.append(data)
+    return records
+
+
+def _iter_cadence_records(save_directory: Path) -> list[dict[str, Any]]:
+    """Load every parseable cadence-send record under ``save_directory``."""
+    target_dir = save_directory / "cadence-send"
+    records: list[dict[str, Any]] = []
+    if not target_dir.is_dir():
+        return records
+    for entry in target_dir.glob("cadence-send-*.json"):
+        try:
+            data = json.loads(entry.read_text())
+        except (OSError, ValueError):
+            logger.exception("skipping unreadable cadence-send record: %s", entry)
+            continue
+        if isinstance(data, dict) and data.get("mode") == "cadence-send":
             records.append(data)
     return records
 
@@ -194,6 +220,24 @@ def _resolve_session_gears(
     evidence = load_band_evidence(records, claimed_set_key=claimed_set_key)
     current_gears = latest_gears_for_claimed_set(records, claimed_set_key=claimed_set_key)
     resolved = resolve_gears(evidence, current_gears=current_gears)
+    return [resolved.get(i + 1, 0) for i in range(exercise_count)]
+
+
+def _next_cadence_run_index(save_directory: Path, claimed_set_key: str) -> int:
+    count = 0
+    for data in _iter_cadence_records(save_directory):
+        if cadence_record_claimed_set_key(data) == claimed_set_key:
+            count += 1
+    return count + 1
+
+
+def _resolve_cadence_session_gears(
+    save_directory: Path, claimed_set_key: str, exercise_count: int
+) -> list[int]:
+    records = _iter_cadence_records(save_directory)
+    evidence = load_cadence_band_evidence(records, claimed_set_key=claimed_set_key)
+    current_gears = latest_cadence_gears_for_claimed_set(records, claimed_set_key=claimed_set_key)
+    resolved = resolve_cadence_gears(evidence, current_gears=current_gears)
     return [resolved.get(i + 1, 0) for i in range(exercise_count)]
 
 
