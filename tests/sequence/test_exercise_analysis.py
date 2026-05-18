@@ -200,6 +200,60 @@ def test_load_band_evidence_strong_and_low_streaks_count_from_most_recent():
     assert band["low_streak"] == 0
 
 
+def test_load_band_evidence_strong_streak_resets_when_gear_changes():
+    # Three strong runs at gear 0, then one strong run at gear 1.
+    # The streak at the current gear (1) is 1 — the prior gear-0
+    # successes do not roll forward.
+    def _at_gear(started_at: str, gear: int, fraction: float) -> dict:
+        return {
+            "mode": "koch-exercise",
+            "started_at": started_at,
+            "generation": {
+                "claimed_set_key": "K M",
+                "bands": [{"index": 1, "gear": gear}],
+            },
+            "exercises": [_saved_exercise(1, fraction)],
+        }
+
+    sessions = [
+        _at_gear("2026-05-18T13:00:00Z", 0, 1.0),
+        _at_gear("2026-05-18T13:10:00Z", 0, 1.0),
+        _at_gear("2026-05-18T13:20:00Z", 0, 1.0),
+        _at_gear("2026-05-18T13:30:00Z", 1, 1.0),
+    ]
+    evidence = load_band_evidence(sessions, claimed_set_key="K M")
+    band = evidence["bands"][0]
+    # All four runs are strong, but the streak resets at the gear shift.
+    assert band["strong_streak"] == 1
+    # The fraction list still surfaces every observation so the rollup
+    # and lifetime panels can render the full recent history.
+    assert band["recent_fractions"] == [1.0, 1.0, 1.0, 1.0]
+
+
+def test_load_band_evidence_low_streak_resets_when_gear_changes():
+    # Two low runs at gear 1, then back to gear 0 with one more low run.
+    # The streak at the current gear (0) is 1.
+    def _at_gear(started_at: str, gear: int, fraction: float) -> dict:
+        return {
+            "mode": "koch-exercise",
+            "started_at": started_at,
+            "generation": {
+                "claimed_set_key": "K M",
+                "bands": [{"index": 1, "gear": gear}],
+            },
+            "exercises": [_saved_exercise(1, fraction)],
+        }
+
+    sessions = [
+        _at_gear("2026-05-18T13:00:00Z", 1, 0.5),
+        _at_gear("2026-05-18T13:10:00Z", 1, 0.5),
+        _at_gear("2026-05-18T13:20:00Z", 0, 0.5),
+    ]
+    evidence = load_band_evidence(sessions, claimed_set_key="K M")
+    band = evidence["bands"][0]
+    assert band["low_streak"] == 1
+
+
 def test_load_band_evidence_low_streak_from_most_recent():
     sessions = [
         _session("2026-05-18T13:30:00Z", "K M", [_saved_exercise(1, 0.5)]),

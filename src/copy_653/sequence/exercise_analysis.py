@@ -363,8 +363,9 @@ def load_band_evidence(
     matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
     window = matching[: max(0, window_size)]
 
-    band_entries: dict[int, list[tuple[float, str]]] = {}
+    band_entries: dict[int, list[tuple[float, str, int]]] = {}
     for session in window:
+        session_gears = _gears_from_generation(session.get("generation"))
         exercises = session.get("exercises")
         if not isinstance(exercises, list):
             continue
@@ -381,22 +382,32 @@ def load_band_evidence(
             if not isinstance(fraction, (int, float)) or isinstance(fraction, bool):
                 continue
             state = analysis.get("band_state")
+            gear = session_gears.get(burden_band)
+            if gear is None:
+                raw_gear = exercise.get("gear", 0)
+                gear = (
+                    raw_gear if isinstance(raw_gear, int) and not isinstance(raw_gear, bool) else 0
+                )
             band_entries.setdefault(burden_band, []).append(
-                (float(fraction), str(state) if isinstance(state, str) else "")
+                (
+                    float(fraction),
+                    str(state) if isinstance(state, str) else "",
+                    gear,
+                )
             )
 
     bands: list[dict[str, Any]] = []
     for band_index in sorted(band_entries):
         entries = band_entries[band_index]
-        fractions = [f for f, _ in entries]
-        states = [s for _, s in entries]
+        fractions = [f for f, _, _ in entries]
+        states = [s for _, s, _ in entries]
         bands.append(
             {
                 "burden_band": band_index,
                 "recent_fractions": [round(f, 6) for f in fractions],
                 "recent_band_states": states,
-                "strong_streak": _streak(fractions, lambda v: v >= STRONG_FRACTION),
-                "low_streak": _streak(fractions, lambda v: v < LOW_FRACTION),
+                "strong_streak": _streak_at_current_gear(entries, lambda v: v >= STRONG_FRACTION),
+                "low_streak": _streak_at_current_gear(entries, lambda v: v < LOW_FRACTION),
             }
         )
 
@@ -413,6 +424,32 @@ def _streak(values: list[float], predicate: Callable[[float], bool]) -> int:
     count = 0
     for value in values:
         if not predicate(value):
+            return count
+        count += 1
+    return count
+
+
+def _streak_at_current_gear(
+    entries: list[tuple[float, str, int]],
+    predicate: Callable[[float], bool],
+) -> int:
+    """Streak of consecutive entries that match ``predicate`` AND share
+    the gear of the most recent entry.
+
+    A gear shift breaks the streak — the new gear has to earn its own
+    streak from scratch. This makes "three strong runs" mean three
+    strong runs *at the gear the band is currently running*, so the
+    next advance reflects sustained performance at the new difficulty
+    rather than counting prior easier runs.
+    """
+    count = 0
+    current_gear: int | None = None
+    for fraction, _state, gear in entries:
+        if current_gear is None:
+            current_gear = gear
+        elif gear != current_gear:
+            return count
+        if not predicate(fraction):
             return count
         count += 1
     return count

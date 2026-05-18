@@ -1967,7 +1967,7 @@ copy-top-menu {
 }
 
 .settings-koch-lifetime__cell--gear-change {
-    border-left: 2px solid var(--mr-anchor);
+    border-left: 3px solid var(--mr-text);
 }
 
 .settings-koch-lifetime__cell--missing {
