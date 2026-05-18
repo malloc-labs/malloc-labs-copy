@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.7.1...v0.7.2) (2026-05-18)
+
+
+### Bug Fixes
+
+* **settings:** make Koch sessions table rows expandable ([#93](https://github.com/malloc-labs/malloc-labs-copy/issues/93)) ([013ddfd](https://github.com/malloc-labs/malloc-labs-copy/commit/013ddfd71ed176f1289760df27324e12d5a8b9ed))
+
 ## [0.7.1](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.7.0...v0.7.1) (2026-05-18)
 
 
