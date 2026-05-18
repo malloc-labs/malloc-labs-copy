@@ -123,6 +123,7 @@ def _audio_settings_event_from_params(
         "receiver_bed": params.receiver_bed,
         "cadence_variation": params.cadence_variation,
         "trinkey_buzzer_enabled": keyer_settings.trinkey_buzzer_enabled,
+        "keyer_mode": keyer_settings.keyer_mode,
         "hh_clear_enabled": developer_settings.hh_clear_enabled,
         "save_directory": str(save_directory),
     }

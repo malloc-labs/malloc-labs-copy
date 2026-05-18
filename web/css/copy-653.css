@@ -2101,6 +2101,51 @@ copy-top-menu {
     max-width: none;
 }
 
+.settings-field__label {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-anchor);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.settings-field__radios {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--mr-space-3);
+}
+
+.settings-field__radio {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--mr-space-2);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-text);
+    letter-spacing: 0;
+    text-transform: none;
+    cursor: pointer;
+}
+
+.settings-field__radio input {
+    width: auto;
+    margin: 0;
+}
+
+.settings-field__inline-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--mr-space-3);
+}
+
+.settings-field__status {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+}
+
 .settings-test {
     display: grid;
     gap: var(--mr-space-3);

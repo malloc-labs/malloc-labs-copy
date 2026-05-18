@@ -108,6 +108,15 @@ class KeyerSettings:
     dit_note: int = 1
     dah_note: int = 2
     straight_note: int = 0
+    keyer_mode: str = "iambic_a"
+
+
+# Supported firmware keyer modes Copy can request via MIDI Program Change.
+# The integers are the PC numbers from vail-adapter/keyers.cpp `allKeyers[]`.
+KEYER_MODE_PROGRAM_NUMBERS: dict[str, int] = {
+    "iambic_a": 7,
+    "ultimatic": 5,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -281,6 +290,7 @@ def load_keyer_settings(path: Path | None = None) -> KeyerSettings:
         dit_note=_key_midi_note(key_table.get("dit_note"), "dit_note", default=1),
         dah_note=_key_midi_note(key_table.get("dah_note"), "dah_note", default=2),
         straight_note=_key_midi_note(key_table.get("straight_note"), "straight_note", default=0),
+        keyer_mode=_key_keyer_mode(key_table.get("keyer_mode"), default="iambic_a"),
     )
 
 
@@ -327,6 +337,21 @@ def _key_midi_note(value: Any, field: str, *, default: int) -> int:
     return value
 
 
+def _key_keyer_mode(value: Any, *, default: str) -> str:
+    if value is None:
+        return default
+    if not isinstance(value, str):
+        raise ValueError(
+            "[midi.key].keyer_mode must be one of " f"{sorted(KEYER_MODE_PROGRAM_NUMBERS)}"
+        )
+    if value not in KEYER_MODE_PROGRAM_NUMBERS:
+        raise ValueError(
+            "[midi.key].keyer_mode must be one of "
+            f"{sorted(KEYER_MODE_PROGRAM_NUMBERS)}, got {value!r}"
+        )
+    return value
+
+
 def save_keyer_settings(
     *,
     trinkey_buzzer_enabled: bool,
@@ -334,6 +359,7 @@ def save_keyer_settings(
     dit_note: int | None = None,
     dah_note: int | None = None,
     straight_note: int | None = None,
+    keyer_mode: str | None = None,
     path: Path | None = None,
 ) -> KeyerSettings:
     """Persist physical key input settings, preserving other tables."""
@@ -364,6 +390,7 @@ def save_keyer_settings(
             "straight_note",
             default=current.straight_note,
         ),
+        keyer_mode=_key_keyer_mode(keyer_mode, default=current.keyer_mode),
     )
 
     key_table["trinkey_buzzer_enabled"] = settings.trinkey_buzzer_enabled
@@ -371,6 +398,7 @@ def save_keyer_settings(
     key_table["dit_note"] = settings.dit_note
     key_table["dah_note"] = settings.dah_note
     key_table["straight_note"] = settings.straight_note
+    key_table["keyer_mode"] = settings.keyer_mode
 
     _write_toml_atomic(data, config_path)
     return settings

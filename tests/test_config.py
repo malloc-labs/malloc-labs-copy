@@ -362,6 +362,40 @@ def test_save_keyer_settings_preserves_other_tables(tmp_path: Path):
     assert load_claimed_symbols(config_file) == ("K", "M")
 
 
+def test_load_keyer_settings_defaults_keyer_mode_to_iambic_a(tmp_path: Path):
+    assert load_keyer_settings(tmp_path / "missing.toml").keyer_mode == "iambic_a"
+
+
+def test_load_keyer_settings_reads_keyer_mode(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(textwrap.dedent("""
+        [midi.key]
+        keyer_mode = "ultimatic"
+        """))
+
+    assert load_keyer_settings(config_file).keyer_mode == "ultimatic"
+
+
+def test_load_keyer_settings_rejects_unknown_keyer_mode(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[midi.key]\nkeyer_mode = "iambic_b"\n')
+
+    with pytest.raises(ValueError, match="keyer_mode"):
+        load_keyer_settings(config_file)
+
+
+def test_save_keyer_settings_persists_keyer_mode(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    saved = save_keyer_settings(
+        trinkey_buzzer_enabled=False,
+        keyer_mode="ultimatic",
+        path=config_file,
+    )
+
+    assert saved.keyer_mode == "ultimatic"
+    assert load_keyer_settings(config_file).keyer_mode == "ultimatic"
+
+
 # ---------- claimed symbols --------------------------------------------
 
 
