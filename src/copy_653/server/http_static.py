@@ -10,10 +10,11 @@ from __future__ import annotations
 import json
 import logging
 import mimetypes
+import re
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from websockets.datastructures import Headers
 
@@ -74,6 +75,12 @@ def _build_static_handler(web_root: Path, config_path: Path | None = None):
 
         if clean_path == "/api/koch-exercises":
             return _json_response(_list_koch_exercises(config_path))
+
+        if clean_path == "/api/koch-exercise":
+            params = parse_qs(parsed_path.query)
+            filename_values = params.get("file") or params.get("filename") or []
+            filename = filename_values[0] if filename_values else ""
+            return _read_koch_exercise(config_path, filename)
 
         target = "index.html" if clean_path == "/" else clean_path.lstrip("/")
         resolved = (web_root / target).resolve()
@@ -175,3 +182,49 @@ def _list_koch_exercises(config_path: Path | None) -> dict[str, Any]:
 
     records.sort(key=lambda r: r["started_at"], reverse=True)
     return {"save_directory": str(save_directory), "records": records}
+
+
+# Files written by the engine match koch-exercise-<UTC-stamp>.json (with
+# optional -N collision suffix); this rejects path separators and anything
+# else that could escape the koch-exercise subdirectory.
+_KOCH_FILENAME_RE = re.compile(r"^koch-exercise-[0-9A-Za-z-]+\.json$")
+
+
+def _read_koch_exercise(
+    config_path: Path | None, filename: str
+) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
+    """Return the full JSON record for one koch-exercise file.
+
+    Validates ``filename`` strictly against the engine's write pattern
+    before resolving — a request for ``../foo.json`` or any path with a
+    separator is refused without touching the filesystem. The file is
+    resolved under ``<save_directory>/koch-exercise/`` and a final
+    ``relative_to`` check guards against symlink shenanigans.
+    """
+    if not filename or not _KOCH_FILENAME_RE.fullmatch(filename):
+        return _http_response(HTTPStatus.BAD_REQUEST, b"invalid filename")
+
+    try:
+        save_directory = load_save_directory(config_path)
+    except Exception:
+        logger.exception("could not resolve save_directory for koch-exercise read")
+        return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"save directory unavailable")
+
+    target_dir = (save_directory / "koch-exercise").resolve()
+    resolved = (target_dir / filename).resolve()
+    try:
+        resolved.relative_to(target_dir)
+    except ValueError:
+        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+    if not resolved.is_file():
+        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+
+    try:
+        data = json.loads(resolved.read_text())
+    except (OSError, ValueError):
+        logger.exception("failed to read koch-exercise record: %s", resolved)
+        return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"read failed")
+    if not isinstance(data, dict) or data.get("mode") != "koch-exercise":
+        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+
+    return _json_response(data)
