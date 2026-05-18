@@ -70,7 +70,6 @@ from copy_653.server.wire_events import (
     _send_event,
     _sent_symbol_event,
 )
-from copy_653.server.word_detection_audio import build_word_detection_audio
 
 logger = logging.getLogger(__name__)
 
@@ -234,89 +233,6 @@ async def _start_action(
         raise  # Re-raise so _run_session's handler sends session-end
 
 
-async def _start_word_detection_action(
-    ws: WebSocketServerProtocol,
-    config_path: Path,
-) -> None:
-    """Generate a focus-letter word stream, play it, and push word-aware timeline events."""
-
-    audio_params = load_audio_parameters(config_path)
-    claimed = load_claimed_symbols(config_path)
-    duration = load_session_duration(config_path)
-
-    if not claimed:
-        await _send_event(ws, {"type": "error", "reason": "no-claimed-symbols"})
-        return
-
-    generated = sequence.generate_word_detection(
-        focus_set=claimed,
-        duration_seconds=duration,
-        params=audio_params,
-    )
-
-    if not generated.words:
-        await _send_event(
-            ws,
-            {"type": "error", "reason": "duration-too-short", "duration_seconds": duration},
-        )
-        return
-
-    word_list = [entry.word for entry in generated.words]
-    samples, timeline = build_word_detection_audio(
-        word_list,
-        generated.focus_set,
-        audio_params,
-    )
-
-    await _send_event(
-        ws,
-        {
-            "type": "session-start",
-            "mode": "word-detection",
-            "words": word_list,
-            "word_count": len(word_list),
-            "symbols": [symbol.symbol for symbol in generated.symbols],
-            "focus_symbols": list(generated.focus_set),
-            "duration_seconds": duration,
-            "seed": generated.seed,
-            "lexicon_schema_version": generated.lexicon_schema_version,
-            "ranking": generated.ranking,
-        },
-    )
-
-    audio_task = asyncio.create_task(asyncio.to_thread(playback.play, samples, audio_params))
-
-    try:
-        cursor = 0.0
-        for symbol, t_on, t_off, word_index, word in timeline:
-            wait = t_on - cursor
-            if wait > 0:
-                await asyncio.sleep(wait)
-            cursor = t_on
-            await _send_event(
-                ws,
-                {
-                    "type": "symbol",
-                    "symbol": symbol,
-                    "t_on": t_on,
-                    "t_off": t_off,
-                    "word_index": word_index,
-                    "word": word,
-                },
-            )
-
-        await audio_task
-        await _send_event(ws, {"type": "session-end", "mode": "word-detection"})
-
-    except asyncio.CancelledError:
-        try:
-            import sounddevice as sd
-
-            sd.stop()
-        except Exception:
-            pass
-        audio_task.cancel()
-        raise
 
 
 async def _claim_symbol_action(

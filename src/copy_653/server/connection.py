@@ -47,7 +47,6 @@ from copy_653.server.actions import (
     _save_test_message_action,
     _set_audio_settings_action,
     _start_action,
-    _start_word_detection_action,
     _unclaim_symbol_action,
 )
 from copy_653.server.records import _ActiveCadenceSession, _finalize_cadence_session
@@ -169,15 +168,11 @@ class ConnectionState:
 async def _run_start_session(
     ws: WebSocketServerProtocol,
     config_path: Path,
-    action: str,
 ) -> None:
-    """Wrap a `start` / `start-word-detection` action with the common
-    invalid-config and stop-was-requested handlers."""
+    """Wrap a `start` action with the common invalid-config and
+    stop-was-requested handlers."""
     try:
-        if action == "start-word-detection":
-            await _start_word_detection_action(ws, config_path)
-        else:
-            await _start_action(ws, config_path)
+        await _start_action(ws, config_path)
     except ValueError as exc:
         await _send_event(
             ws,
@@ -241,10 +236,10 @@ async def handler(
                 await bare(state, message)
                 continue
 
-            if action in {"start", "start-word-detection"}:
+            if action == "start":
                 await supersede(state.session_task)
                 state.session_task = asyncio.create_task(
-                    _run_start_session(ws, state.config_path, action)
+                    _run_start_session(ws, state.config_path)
                 )
             elif action == "stop":
                 # session-end is sent by _run_start_session's CancelledError handler.

@@ -26,7 +26,6 @@ Wire protocol (v0)
 Client → server, JSON over WS::
 
     {"action": "start"}
-    {"action": "start-word-detection"}
     {"action": "stop"}
     {"action": "claim-symbol", "symbol": "U"}
     {"action": "unclaim-symbol", "symbol": "U"}
@@ -77,12 +76,6 @@ front, but the UI is responsible for keeping it hidden until
 so a UI can drive a live "Exercise N of M" indicator from each
 ``symbol`` event without threading session-start state through every
 handler.
-
-During a Word Detection session::
-
-    {"type": "session-start", "mode": "word-detection", "words": ["lak"], "word_count": 1, ...}
-    {"type": "symbol", "symbol": "L", "t_on": 3.29, "t_off": 3.54, "word_index": 1, "word": "lak"}
-    {"type": "session-end", "mode": "word-detection"}
 
 During a Letters playback (Koch hub → Letters page)::
 
