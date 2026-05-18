@@ -15,6 +15,7 @@
 const root = document.getElementById("settings-koch-rollup");
 const tbody = document.getElementById("settings-koch-rollup-tbody");
 const metaEl = document.getElementById("settings-koch-rollup-meta");
+const historyLink = document.getElementById("settings-koch-history-link");
 
 const STRONG_FRACTION = 0.95;
 const LOW_FRACTION = 0.70;
@@ -88,6 +89,7 @@ async function loadRollup() {
         const bands = Array.isArray(data.bands) ? data.bands : [];
         if (bands.length === 0 || !data.claimed_set_key) {
             root.hidden = true;
+            if (historyLink) historyLink.hidden = true;
             return;
         }
         const key = data.claimed_set_key;
@@ -100,10 +102,15 @@ async function loadRollup() {
             ` (window ${windowSize})`;
         renderBands(bands);
         root.hidden = false;
+        if (historyLink) {
+            historyLink.hidden = false;
+            historyLink.dataset.claimedSetKey = key;
+        }
     } catch (err) {
         // Diagnostic panel — failure here should not stop the rest of
         // the Koch tab from rendering. Hide quietly.
         root.hidden = true;
+        if (historyLink) historyLink.hidden = true;
     }
 }
 

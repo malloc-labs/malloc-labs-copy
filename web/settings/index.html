@@ -207,6 +207,10 @@
                 <h3 class="settings-koch-rollup__heading">
                     Recent band evidence
                     <span class="settings-koch-rollup__meta" id="settings-koch-rollup-meta"></span>
+                    <button type="button"
+                            class="settings-koch-rollup__history-link"
+                            id="settings-koch-history-link"
+                            hidden>Full history →</button>
                 </h3>
                 <table class="settings-koch-rollup__table">
                     <thead>
@@ -233,6 +237,18 @@
                     <tbody id="settings-koch-tbody"></tbody>
                 </table>
             </div>
+            <dialog class="settings-koch-dialog" id="settings-koch-lifetime-dialog">
+                <form method="dialog" class="settings-koch-dialog__bar">
+                    <h2 class="settings-koch-dialog__title" id="settings-koch-lifetime-title">
+                        Lifetime
+                    </h2>
+                    <button type="submit"
+                            class="settings-koch-dialog__close"
+                            aria-label="Close lifetime view">Close</button>
+                </form>
+                <div class="settings-koch-dialog__body"
+                     id="settings-koch-lifetime-body"></div>
+            </dialog>
             <dialog class="settings-koch-dialog" id="settings-koch-dialog">
                 <form method="dialog" class="settings-koch-dialog__bar">
                     <h2 class="settings-koch-dialog__title" id="settings-koch-dialog-title">
@@ -259,5 +275,6 @@
     <script type="module" src="../js/settings-tabs.js"></script>
     <script type="module" src="../js/settings-koch-table.js"></script>
     <script type="module" src="../js/settings-koch-rollup.js"></script>
+    <script type="module" src="../js/settings-koch-lifetime.js"></script>
 </body>
 </html>

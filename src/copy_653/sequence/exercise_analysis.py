@@ -418,6 +418,34 @@ def _streak(values: list[float], predicate: Callable[[float], bool]) -> int:
     return count
 
 
+def _gears_from_generation(generation: Any) -> dict[int, int]:
+    """Extract ``{index: gear}`` from a generation profile dict.
+
+    Defensive against shape drift — anything that does not match the
+    expected ``{"bands": [{"index": int, "gear": int}, ...]}`` shape
+    is silently skipped.
+    """
+    if not isinstance(generation, dict):
+        return {}
+    bands = generation.get("bands")
+    if not isinstance(bands, list):
+        return {}
+    out: dict[int, int] = {}
+    for entry in bands:
+        if not isinstance(entry, dict):
+            continue
+        idx = entry.get("index")
+        gear = entry.get("gear", 0)
+        if (
+            isinstance(idx, int)
+            and not isinstance(idx, bool)
+            and isinstance(gear, int)
+            and not isinstance(gear, bool)
+        ):
+            out[idx] = gear
+    return out
+
+
 def latest_gears_for_claimed_set(
     records: list[dict[str, Any]],
     *,
@@ -443,23 +471,139 @@ def latest_gears_for_claimed_set(
     if not matching:
         return {}
     matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
-    latest = matching[0]
-    generation = latest.get("generation")
-    if not isinstance(generation, dict):
-        return {}
-    bands = generation.get("bands")
-    if not isinstance(bands, list):
-        return {}
-    out: dict[int, int] = {}
-    for entry in bands:
-        if not isinstance(entry, dict):
+    return _gears_from_generation(matching[0].get("generation"))
+
+
+def load_band_history(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+) -> dict[str, Any]:
+    """Chronological per-band history for one claimed-set key.
+
+    Unlike :func:`load_band_evidence`, this returns the *complete*
+    matching history (no window cap) and reports gear-change events so
+    a lifetime view can show how each band's gear has evolved. Sessions
+    that pre-date ``generation.run_index`` get a chronological fallback
+    index so legacy records still render.
+
+    Returns
+    -------
+    A dict with:
+
+    * ``claimed_set_key`` — echoed back.
+    * ``session_count`` — number of matching records.
+    * ``sessions`` — chronological list of ``{run_index, started_at}``.
+    * ``bands`` — sorted list of ``{burden_band, entries}`` where
+      ``entries`` carries ``run_index``, ``started_at``, ``fraction``
+      (``None`` when the session had no saved analysis for this band),
+      ``gear`` (the gear that session ran the band at), and
+      ``band_state``.
+    * ``gear_changes`` — chronological list of ``{burden_band,
+      run_index, started_at, previous_gear, current_gear}`` events.
+    * ``current_gears`` — ``{index: gear}`` from the most recent
+      session's generation profile.
+    """
+    matching: list[dict[str, Any]] = []
+    for record in records:
+        if not isinstance(record, dict):
             continue
-        idx = entry.get("index")
-        gear = entry.get("gear", 0)
-        if isinstance(idx, int) and not isinstance(idx, bool):
-            if isinstance(gear, int) and not isinstance(gear, bool):
-                out[idx] = gear
-    return out
+        if record.get("mode") != "koch-exercise":
+            continue
+        if record_claimed_set_key(record) != claimed_set_key:
+            continue
+        matching.append(record)
+    matching.sort(key=lambda r: str(r.get("started_at") or ""))
+
+    sessions_meta: list[dict[str, Any]] = []
+    for chronological_index, record in enumerate(matching, start=1):
+        generation = record.get("generation")
+        run_index: int | None = None
+        if isinstance(generation, dict):
+            stored = generation.get("run_index")
+            if isinstance(stored, int) and not isinstance(stored, bool):
+                run_index = stored
+        sessions_meta.append(
+            {
+                "run_index": run_index if run_index is not None else chronological_index,
+                "started_at": str(record.get("started_at") or ""),
+            }
+        )
+
+    band_entries: dict[int, list[dict[str, Any]]] = {}
+    for idx, record in enumerate(matching):
+        run_index = sessions_meta[idx]["run_index"]
+        started_at = sessions_meta[idx]["started_at"]
+        session_gears = _gears_from_generation(record.get("generation"))
+
+        exercises = record.get("exercises")
+        if not isinstance(exercises, list):
+            continue
+        for exercise in exercises:
+            if not isinstance(exercise, dict):
+                continue
+            burden_band = exercise.get("burden_band")
+            if not isinstance(burden_band, int) or isinstance(burden_band, bool):
+                continue
+
+            analysis = exercise.get("analysis")
+            fraction: float | None = None
+            state = ""
+            if isinstance(analysis, dict) and analysis.get("saved") is True:
+                raw_fraction = analysis.get("combined_fraction")
+                if isinstance(raw_fraction, (int, float)) and not isinstance(raw_fraction, bool):
+                    fraction = round(float(raw_fraction), 6)
+                raw_state = analysis.get("band_state")
+                state = str(raw_state) if isinstance(raw_state, str) else ""
+
+            gear = session_gears.get(burden_band)
+            if gear is None:
+                raw_gear = exercise.get("gear", 0)
+                gear = (
+                    raw_gear if isinstance(raw_gear, int) and not isinstance(raw_gear, bool) else 0
+                )
+
+            band_entries.setdefault(burden_band, []).append(
+                {
+                    "run_index": run_index,
+                    "started_at": started_at,
+                    "fraction": fraction,
+                    "gear": gear,
+                    "band_state": state,
+                }
+            )
+
+    gear_changes: list[dict[str, Any]] = []
+    for burden_band, entries in band_entries.items():
+        prev_gear: int | None = None
+        for entry in entries:
+            current_gear = entry["gear"]
+            if prev_gear is not None and current_gear != prev_gear:
+                gear_changes.append(
+                    {
+                        "burden_band": burden_band,
+                        "run_index": entry["run_index"],
+                        "started_at": entry["started_at"],
+                        "previous_gear": prev_gear,
+                        "current_gear": current_gear,
+                    }
+                )
+            prev_gear = current_gear
+    gear_changes.sort(key=lambda c: (c["run_index"], c["burden_band"]))
+
+    current_gears = _gears_from_generation(matching[-1].get("generation")) if matching else {}
+
+    return {
+        "claimed_set_key": claimed_set_key,
+        "session_count": len(matching),
+        "sessions": sessions_meta,
+        "bands": [
+            {"burden_band": band, "entries": entries}
+            for band, entries in sorted(band_entries.items())
+        ],
+        "gear_changes": gear_changes,
+        "current_gears": dict(sorted(current_gears.items())),
+    }
 
 
 def resolve_gears(

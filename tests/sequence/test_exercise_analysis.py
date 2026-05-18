@@ -6,6 +6,7 @@ from copy_653.sequence.exercise_analysis import (
     build_generation_profile,
     latest_gears_for_claimed_set,
     load_band_evidence,
+    load_band_history,
     record_claimed_set_key,
     resolve_gears,
     spacing_weight_for_claimed_set,
@@ -311,6 +312,101 @@ def test_resolve_gears_preserves_bands_absent_from_evidence():
     evidence = {"bands": [{"burden_band": 1, "strong_streak": 3, "low_streak": 0}]}
     resolved = resolve_gears(evidence, current_gears={1: 0, 2: 1})
     assert resolved == {1: 1, 2: 1}
+
+
+def _history_session(
+    started_at: str,
+    run_index: int,
+    gears: list[int],
+    fractions: list[float],
+) -> dict:
+    return {
+        "mode": "koch-exercise",
+        "started_at": started_at,
+        "generation": {
+            "claimed_set_key": "K M",
+            "run_index": run_index,
+            "bands": [{"index": i + 1, "gear": gears[i]} for i in range(len(gears))],
+        },
+        "exercises": [
+            {
+                "index": i + 1,
+                "burden_band": i + 1,
+                "gear": gears[i],
+                "analysis": {
+                    "saved": True,
+                    "combined_fraction": fractions[i],
+                    "band_state": "exact" if fractions[i] >= 1.0 else "low",
+                },
+            }
+            for i in range(len(fractions))
+        ],
+    }
+
+
+def test_load_band_history_returns_sessions_in_chronological_order():
+    sessions = [
+        _history_session("2026-05-18T15:30:00Z", 2, [0, 0], [1.0, 1.0]),
+        _history_session("2026-05-18T15:00:00Z", 1, [0, 0], [1.0, 1.0]),
+    ]
+    history = load_band_history(sessions, claimed_set_key="K M")
+    # Sorted oldest-first regardless of input order.
+    assert [s["run_index"] for s in history["sessions"]] == [1, 2]
+
+
+def test_load_band_history_detects_gear_change_events():
+    sessions = [
+        _history_session("2026-05-18T15:00:00Z", 1, [0, 0], [1.0, 1.0]),
+        _history_session("2026-05-18T15:30:00Z", 2, [0, 0], [1.0, 1.0]),
+        _history_session("2026-05-18T16:00:00Z", 3, [0, 0], [1.0, 1.0]),
+        _history_session("2026-05-18T16:30:00Z", 4, [1, 1], [1.0, 1.0]),
+    ]
+    history = load_band_history(sessions, claimed_set_key="K M")
+    events = history["gear_changes"]
+    # Two changes at session 4 (one per band) — order: by run_index, then band.
+    assert len(events) == 2
+    assert all(e["run_index"] == 4 for e in events)
+    assert {e["burden_band"] for e in events} == {1, 2}
+    assert events[0]["previous_gear"] == 0
+    assert events[0]["current_gear"] == 1
+
+
+def test_load_band_history_current_gears_from_latest_session():
+    sessions = [
+        _history_session("2026-05-18T15:00:00Z", 1, [0, 0], [1.0, 1.0]),
+        _history_session("2026-05-18T15:30:00Z", 2, [1, 2], [1.0, 1.0]),
+    ]
+    history = load_band_history(sessions, claimed_set_key="K M")
+    assert history["current_gears"] == {1: 1, 2: 2}
+
+
+def test_load_band_history_falls_back_to_chronological_run_index_for_legacy():
+    # Schema 1.3 records have no generation.run_index — chronological
+    # fallback indices keep the grid renderable.
+    legacy = {
+        "mode": "koch-exercise",
+        "started_at": "2026-05-18T15:00:00Z",
+        "claimed_set": ["M", "K"],
+        "exercises": [
+            {
+                "burden_band": 1,
+                "analysis": {"saved": True, "combined_fraction": 1.0, "band_state": "exact"},
+            }
+        ],
+    }
+    history = load_band_history([legacy], claimed_set_key="K M")
+    assert history["sessions"] == [{"run_index": 1, "started_at": "2026-05-18T15:00:00Z"}]
+
+
+def test_load_band_history_marks_missing_fraction_when_session_unsaved():
+    unsaved_session = _history_session("2026-05-18T15:00:00Z", 1, [0], [1.0])
+    unsaved_session["exercises"][0]["analysis"]["saved"] = False
+    history = load_band_history([unsaved_session], claimed_set_key="K M")
+    band = history["bands"][0]
+    # Gear is still recorded (the session ran the band at that gear),
+    # but the fraction is None so the grid renders it as missing.
+    assert band["entries"][0]["fraction"] is None
+    assert band["entries"][0]["gear"] == 0
 
 
 def test_apply_answers_to_entries_dampens_repeated_exercise_evidence():

@@ -23,6 +23,7 @@ from copy_653.config import load_save_directory
 from copy_653.sequence.exercise_analysis import (
     DEFAULT_EVIDENCE_WINDOW_SIZE,
     load_band_evidence,
+    load_band_history,
     record_claimed_set_key,
 )
 from copy_653.server.records import _iter_koch_records
@@ -97,6 +98,16 @@ def _build_static_handler(web_root: Path, config_path: Path | None = None):
                     config_path,
                     claimed_set_key=key_values[0] if key_values else None,
                     window_size_raw=window_values[0] if window_values else None,
+                )
+            )
+
+        if clean_path == "/api/koch-band-history":
+            params = parse_qs(parsed_path.query)
+            key_values = params.get("claimed_set_key") or []
+            return _json_response(
+                _read_koch_band_history(
+                    config_path,
+                    claimed_set_key=key_values[0] if key_values else None,
                 )
             )
 
@@ -260,6 +271,47 @@ def _read_koch_band_evidence(
     )
     evidence["save_directory"] = str(save_directory)
     return evidence
+
+
+def _read_koch_band_history(
+    config_path: Path | None,
+    *,
+    claimed_set_key: str | None,
+) -> dict[str, Any]:
+    """Return per-band lifetime history for the Settings full-history modal.
+
+    Mirrors :func:`_read_koch_band_evidence` for the rollup endpoint —
+    when ``claimed_set_key`` is omitted, the most-recent saved
+    record's key is used so the page does not need a separate
+    round-trip to discover which key is current.
+    """
+    try:
+        save_directory = load_save_directory(config_path)
+    except Exception:
+        logger.exception("could not resolve save_directory for band-history read")
+        return {
+            "save_directory": "",
+            "claimed_set_key": claimed_set_key or "",
+            "session_count": 0,
+            "sessions": [],
+            "bands": [],
+            "gear_changes": [],
+            "current_gears": {},
+        }
+
+    records = _iter_koch_records(save_directory)
+    resolved_key = claimed_set_key
+    if not resolved_key:
+        latest = max(
+            records,
+            key=lambda r: str(r.get("started_at") or ""),
+            default=None,
+        )
+        resolved_key = record_claimed_set_key(latest) if latest else ""
+
+    history = load_band_history(records, claimed_set_key=resolved_key)
+    history["save_directory"] = str(save_directory)
+    return history
 
 
 def _read_koch_exercise(
