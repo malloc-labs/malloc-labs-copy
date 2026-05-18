@@ -80,7 +80,7 @@ from copy_653.sequence.cadence_analysis import (
     build_cadence_exercise_entries,
     build_cadence_generation_profile,
 )
-from copy_653.sequence.copy_exercises import DEFAULT_EXERCISE_COUNT
+from copy_653.sequence.copy_exercises import DEFAULT_EXERCISE_COUNT, DEFAULT_MAX_IDENTICAL_RUN
 from copy_653.sequence.exercise_analysis import build_exercise_entries, build_generation_profile
 
 logger = logging.getLogger(__name__)
@@ -443,6 +443,7 @@ async def _request_copy_exercises_action(
         if value is not None:
             kwargs[name] = value
     kwargs["gears"] = gears
+    kwargs["max_identical_run"] = DEFAULT_MAX_IDENTICAL_RUN
 
     try:
         result = sequence.generate_copy_exercises(**kwargs)

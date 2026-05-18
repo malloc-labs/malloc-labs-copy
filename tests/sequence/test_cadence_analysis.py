@@ -72,6 +72,8 @@ def test_apply_cadence_analysis_selects_latest_complete_attempt():
     assert exercise["analysis"]["symbol_fraction"] == 1.0
     assert exercise["analysis"]["spacing_fraction"] == 1.0
     assert exercise["analysis"]["formation_fraction"] == 1.0
+    assert exercise["analysis"]["gap_timing_fraction"] == 1.0
+    assert exercise["attempts"][1]["gaps"][0]["gap_units"] == 3.0
 
 
 def test_apply_cadence_analysis_penalises_word_gap_mismatch():
@@ -98,7 +100,37 @@ def test_apply_cadence_analysis_penalises_word_gap_mismatch():
     analysis = updated[0]["analysis"]
     assert analysis["symbol_fraction"] == 1.0
     assert analysis["spacing_fraction"] == 0.0
+    assert analysis["gap_timing_fraction"] == 0.0
     assert analysis["band_state"] == "low"
+
+
+def test_word_gap_readability_allows_operator_fist_without_exact_gap():
+    entries = build_cadence_exercise_entries(["K M"], scores=[50])
+    # 900ms after K at 20 WPM is about 15 dit-units: longer than a
+    # metronomic 7-unit word gap, but still plainly a readable word gap.
+    sent = [
+        {
+            "symbol": "K",
+            "pattern": "-.-",
+            "started_at": 1.0,
+            "ended_at": 1.54,
+            "leading_gap": "none",
+        },
+        {
+            "symbol": "M",
+            "pattern": "--",
+            "started_at": 2.44,
+            "ended_at": 2.86,
+            "leading_gap": "word",
+        },
+    ]
+
+    updated = apply_cadence_analysis(entries, sent=sent, key_events=[], character_wpm=20)
+
+    attempt = updated[0]["attempts"][0]
+    assert attempt["gaps"][0]["gap_units"] == 15.0
+    assert attempt["gap_timing_fraction"] == 1.0
+    assert updated[0]["analysis"]["spacing_fraction"] == 1.0
 
 
 def test_load_band_evidence_and_resolve_gears_for_cadence():
@@ -122,6 +154,7 @@ def test_load_band_evidence_and_resolve_gears_for_cadence():
                         "symbol_fraction": fraction,
                         "spacing_fraction": fraction,
                         "formation_fraction": fraction,
+                        "gap_timing_fraction": fraction,
                         "decode_health": 1.0,
                         "band_state": "exact" if fraction >= 1.0 else "low",
                     },

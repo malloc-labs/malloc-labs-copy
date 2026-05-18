@@ -57,6 +57,7 @@ function renderBands(bands) {
         appendCell(tr, formatFraction(band.symbol_fraction));
         appendCell(tr, formatFraction(band.spacing_fraction));
         appendCell(tr, formatFraction(band.formation_fraction));
+        appendCell(tr, formatFraction(band.gap_timing_fraction));
         appendCell(tr, Number.isFinite(band.strong_streak) ? band.strong_streak : "-");
         appendCell(tr, Number.isFinite(band.low_streak) ? band.low_streak : "-");
         tbody.appendChild(tr);
