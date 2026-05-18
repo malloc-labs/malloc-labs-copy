@@ -77,7 +77,9 @@ function buildExercisesTable(record) {
         "<th scope=\"col\">Symbols</th>" +
         "<th scope=\"col\">Spacing</th>" +
         "<th scope=\"col\">Formation</th>" +
+        "<th scope=\"col\">Gap</th>" +
         "<th scope=\"col\">Decode</th>" +
+        "<th scope=\"col\">Combined</th>" +
         "<th scope=\"col\">State</th>" +
         "<th scope=\"col\">Gear</th></tr>";
     table.appendChild(thead);
@@ -95,7 +97,9 @@ function buildExercisesTable(record) {
         appendCell(row, fraction(analysis.symbol_fraction));
         appendCell(row, fraction(analysis.spacing_fraction));
         appendCell(row, fraction(analysis.formation_fraction));
+        appendCell(row, fraction(analysis.gap_timing_fraction));
         appendCell(row, fraction(analysis.decode_health));
+        appendCell(row, fraction(analysis.combined_fraction));
         appendCell(row, analysis.band_state || "-");
         appendCell(row, exercise.gear ?? analysis.gear ?? "-");
         body.appendChild(row);

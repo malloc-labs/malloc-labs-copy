@@ -8,6 +8,7 @@ from copy_653 import sequence
 from copy_653.sequence.copy_exercises import (
     DEFAULT_CANDIDATE_MULTIPLIER,
     _score_copy_exercise,
+    _has_identical_run,
     _slot_range,
 )
 
@@ -214,6 +215,41 @@ def test_default_exercises_have_at_most_two_groups():
     result = sequence.generate_copy_exercises(claimed_set=KMU, exercise_count=5, seed=42)
     for exercise in result.exercises:
         assert len(exercise.split(" ")) <= 2, exercise
+
+
+def test_max_identical_run_rejects_triples_across_word_breaks():
+    assert _has_identical_run("KKK", max_run=2)
+    assert _has_identical_run("KK KM", max_run=2)
+    assert not _has_identical_run("KK M", max_run=2)
+
+
+def test_max_identical_run_filter_limits_generated_repetition():
+    result = sequence.generate_copy_exercises(
+        claimed_set=("K", "M"),
+        exercise_count=20,
+        candidate_count=80,
+        seed=20260518,
+        max_identical_run=2,
+    )
+
+    assert len(result.exercises) == 20
+    for exercise in result.exercises:
+        assert not _has_identical_run(exercise, max_run=2), exercise
+
+
+def test_max_identical_run_raises_when_pool_cannot_be_drawn():
+    with pytest.raises(ValueError, match="max_identical_run"):
+        sequence.generate_copy_exercises(
+            claimed_set=("K",),
+            exercise_count=1,
+            candidate_count=1,
+            min_words=1,
+            max_words=1,
+            min_word_length=3,
+            max_word_length=3,
+            seed=1,
+            max_identical_run=2,
+        )
 
 
 def test_slot_range_gear_zero_covers_full_band():

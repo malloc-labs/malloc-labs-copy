@@ -1484,6 +1484,10 @@ async def test_cadence_session_writes_analyzed_record_on_close(
             await ws.send(json.dumps({"action": "request-copy-exercises"}))
             copy_event = json.loads(await asyncio.wait_for(ws.recv(), timeout=2.0))
             assert copy_event["type"] == "copy-exercises"
+            assert all(
+                "KKK" not in exercise.replace(" ", "") and "MMM" not in exercise.replace(" ", "")
+                for exercise in copy_event["exercises"]
+            )
 
             await ws.send(json.dumps({"action": "start-browser-key-input"}))
             start_event = json.loads(await asyncio.wait_for(ws.recv(), timeout=2.0))

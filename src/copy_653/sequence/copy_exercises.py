@@ -44,6 +44,10 @@ DEFAULT_MIN_WORDS = 1
 DEFAULT_MAX_WORDS = 2
 DEFAULT_MIN_WORD_LENGTH = 1
 DEFAULT_MAX_WORD_LENGTH = 3
+# Send cadence practice should avoid accidental repetition drills in
+# early stages. Spaces do not reset this run because the physical skill
+# is still "same symbol, same symbol, same symbol" with a gap inserted.
+DEFAULT_MAX_IDENTICAL_RUN = 2
 # Default candidate pool is 4× the displayed count. With the default
 # ``exercise_count=5`` this gives a pool of 20, matching the size the
 # notes argue gives bands wide enough to feel random within each band.
@@ -147,6 +151,23 @@ def _score_copy_exercise(exercise: str) -> int:
     )
 
 
+def _has_identical_run(exercise: str, *, max_run: int) -> bool:
+    compact = exercise.replace(" ", "")
+    if max_run < 1:
+        raise ValueError(f"max_run must be >= 1, got {max_run}")
+    current = 0
+    previous = ""
+    for symbol in compact:
+        if symbol == previous:
+            current += 1
+        else:
+            previous = symbol
+            current = 1
+        if current > max_run:
+            return True
+    return False
+
+
 def generate_copy_exercises(
     *,
     claimed_set: Iterable[str],
@@ -158,6 +179,7 @@ def generate_copy_exercises(
     candidate_count: int | None = None,
     seed: int | None = None,
     gears: list[int] | None = None,
+    max_identical_run: int | None = None,
 ) -> CopyExercises:
     """Generate ``exercise_count`` sentence-shaped exercises.
 
@@ -208,6 +230,12 @@ def generate_copy_exercises(
 
         Higher gears are clamped to 2 — values 3+ are reserved for
         generator-parameter changes that are not yet implemented.
+    max_identical_run:
+        Optional candidate filter. When set, candidates containing
+        more than this many identical consecutive symbols are rejected
+        after removing word spaces. This is useful for Send Cadence,
+        where triples such as ``KKK`` or ``KK KM`` are repetition
+        drills rather than ordinary early-stage material.
 
     Raises
     ------
@@ -216,7 +244,8 @@ def generate_copy_exercises(
         a symbol with no defined CW pattern; if ``exercise_count`` is
         non-positive; if the word-count or word-length bounds are
         invalid; or if ``candidate_count`` is less than
-        ``exercise_count``.
+        ``exercise_count``; or if ``max_identical_run`` is invalid or
+        prevents drawing a full candidate pool.
     """
     claimed_tuple = tuple(claimed_set)
     if not claimed_tuple:
@@ -249,19 +278,33 @@ def generate_copy_exercises(
             "candidate_count must be >= exercise_count, "
             f"got candidate_count={candidate_count} exercise_count={exercise_count}"
         )
+    if max_identical_run is not None and max_identical_run < 1:
+        raise ValueError(f"max_identical_run must be >= 1, got {max_identical_run}")
 
     if seed is None:
         seed = secrets.randbits(64)
     rng = Random(seed)
 
     candidates: list[str] = []
-    for _ in range(candidate_count):
+    attempts_remaining = max(candidate_count * 100, 1000)
+    while len(candidates) < candidate_count and attempts_remaining > 0:
+        attempts_remaining -= 1
         word_count = rng.randint(min_words, max_words)
         words: list[str] = []
         for _ in range(word_count):
             length = rng.randint(min_word_length, max_word_length)
             words.append("".join(rng.choice(claimed_tuple) for _ in range(length)))
-        candidates.append(" ".join(words))
+        candidate = " ".join(words)
+        if max_identical_run is not None and _has_identical_run(
+            candidate, max_run=max_identical_run
+        ):
+            continue
+        candidates.append(candidate)
+    if len(candidates) < candidate_count:
+        raise ValueError(
+            "max_identical_run prevents drawing enough copy exercise candidates, "
+            f"got {len(candidates)} of {candidate_count}"
+        )
 
     scored = sorted(
         ((_score_copy_exercise(ex), idx, ex) for idx, ex in enumerate(candidates)),

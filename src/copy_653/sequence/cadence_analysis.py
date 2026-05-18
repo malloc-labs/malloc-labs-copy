@@ -214,18 +214,36 @@ def _analyse_attempt(
 
     spacing_available = max(0, min(len(expected_steps), len(events)) - 1)
     spacing_correct = 0
-    timing_values: list[float] = []
+    gap_values: list[float] = []
+    gap_samples: list[dict[str, Any]] = []
     for idx in range(1, min(len(expected_steps), len(events))):
         expected = expected_steps[idx]["leading"]
         actual = str(events[idx].get("leading_gap") or "none")
         if actual == expected:
             spacing_correct += 1
         gap_ms = _leading_gap_ms(events[idx - 1], events[idx])
-        ideal_ms = (7 if expected == "word" else 3) * dit_seconds * 1000
-        if gap_ms is not None and ideal_ms > 0:
-            timing_values.append(_ratio_score(gap_ms, ideal_ms, tolerance=0.35))
+        if gap_ms is not None and dit_seconds > 0:
+            gap_units = gap_ms / (dit_seconds * 1000)
+            expected_units = 7 if expected == "word" else 3
+            score = _gap_readability_score(
+                expected=expected,
+                actual=actual,
+                gap_units=gap_units,
+            )
+            gap_values.append(score)
+            gap_samples.append(
+                {
+                    "index": idx,
+                    "expected": expected,
+                    "actual": actual,
+                    "gap_ms": round(gap_ms, 3),
+                    "gap_units": round(gap_units, 3),
+                    "expected_units": expected_units,
+                    "readability_fraction": round(score, 6),
+                }
+            )
     spacing_fraction = _fraction(spacing_correct, spacing_available, default=1.0)
-    gap_timing_fraction = _mean(timing_values, default=1.0)
+    gap_timing_fraction = _mean(gap_values, default=1.0)
 
     formation_fraction = _formation_fraction_for_attempt(events, key_events, dit_seconds)
     decoded = [str(event.get("symbol") or "?") for event in events]
@@ -238,14 +256,11 @@ def _analyse_attempt(
 
     combined = (
         (0.40 * symbol_fraction)
-        + (0.25 * spacing_fraction)
+        + (0.30 * spacing_fraction)
         + (0.20 * formation_fraction)
-        + (0.10 * gap_timing_fraction)
+        + (0.05 * gap_timing_fraction)
         + (0.05 * decode_health)
     )
-    if complete:
-        combined = min(1.0, combined + 0.03)
-
     return {
         "events": [
             {
@@ -257,6 +272,7 @@ def _analyse_attempt(
             }
             for event in events
         ],
+        "gaps": gap_samples,
         "complete": complete,
         "symbol_correct_units": symbol_correct,
         "symbol_available_units": symbol_available,
@@ -407,6 +423,36 @@ def _ratio_score(actual: float, ideal: float, *, tolerance: float) -> float:
         return 0.0
     error = abs(actual - ideal) / ideal
     return max(0.0, min(1.0, 1.0 - (error / tolerance)))
+
+
+def _gap_readability_score(*, expected: str, actual: str, gap_units: float) -> float:
+    """Score gap readability in dit-units, not metronomic exactness.
+
+    A readable fist needs consistent separation: character gaps should
+    stay clearly character-sized and word gaps should be unmistakably
+    longer. Exact 3- and 7-unit matches are useful, but less important
+    than producing gaps the decoder and another operator can separate.
+    """
+    if actual != expected:
+        return 0.0
+    if expected == "word":
+        if gap_units >= 6.0:
+            return 1.0
+        if gap_units >= 5.0:
+            return 0.75 + ((gap_units - 5.0) * 0.25)
+        if gap_units >= 4.0:
+            return 0.35 + ((gap_units - 4.0) * 0.40)
+        return max(0.0, gap_units / 4.0 * 0.35)
+    if expected == "character":
+        if 2.0 <= gap_units <= 5.0:
+            return 1.0
+        if 1.0 <= gap_units < 2.0:
+            return 0.5 + ((gap_units - 1.0) * 0.5)
+        if 5.0 < gap_units <= 6.0:
+            return 1.0 - ((gap_units - 5.0) * 0.5)
+        if 6.0 < gap_units <= 7.0:
+            return 0.5 - ((gap_units - 6.0) * 0.5)
+    return 0.0
 
 
 def _expected_steps(exercise: str) -> list[dict[str, str]]:
