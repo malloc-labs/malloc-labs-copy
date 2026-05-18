@@ -238,9 +238,7 @@ async def handler(
 
             if action == "start":
                 await supersede(state.session_task)
-                state.session_task = asyncio.create_task(
-                    _run_start_session(ws, state.config_path)
-                )
+                state.session_task = asyncio.create_task(_run_start_session(ws, state.config_path))
             elif action == "stop":
                 # session-end is sent by _run_start_session's CancelledError handler.
                 if state.session_task is not None and not state.session_task.done():

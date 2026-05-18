@@ -34,7 +34,6 @@ from copy_653.config import (
     load_keyer_settings,
     load_letters_config,
     load_save_directory,
-    load_session_duration,
     save_audio_timing,
     save_claimed_symbols,
     save_developer_settings,
@@ -231,8 +230,6 @@ async def _start_action(
             pass  # No audio device or sounddevice not installed — ignore
         audio_task.cancel()
         raise  # Re-raise so _run_session's handler sends session-end
-
-
 
 
 async def _claim_symbol_action(
