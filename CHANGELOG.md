@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.7.0...v0.7.1) (2026-05-18)
+
+
+### Bug Fixes
+
+* **settings:** add tab navigation and Koch sessions table ([#91](https://github.com/malloc-labs/malloc-labs-copy/issues/91)) ([1c1cfa6](https://github.com/malloc-labs/malloc-labs-copy/commit/1c1cfa6c1977a28ce1ad3ecd2f406a5d5c7f01bc))
+
 ## [0.7.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.6.0...v0.7.0) (2026-05-18)
 
 
