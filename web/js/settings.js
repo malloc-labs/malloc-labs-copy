@@ -6,6 +6,10 @@
 
 import { getDeveloperModeEnabled, setDeveloperModeEnabled } from "./developer-mode.js";
 import { setHHClearEnabled } from "./hh-clear.js";
+import {
+    KEYER_MODE_SYNC_RESULT,
+    sendKeyerModeProgramChange,
+} from "./key-timing/keyer-mode-sync.js";
 
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const wsUrl = `${wsProtocol}//${location.host}/ws`;
@@ -16,6 +20,9 @@ const toneShapeInput = document.getElementById("tone-shape");
 const receiverBedInput = document.getElementById("receiver-bed");
 const cadenceVariationInput = document.getElementById("cadence-variation");
 const trinkeyBuzzerInput = document.getElementById("trinkey-buzzer");
+const keyerModeRadios = document.querySelectorAll('input[name="keyer_mode"]');
+const keyerModeSyncButton = document.getElementById("keyer-mode-sync");
+const keyerModeSyncStatusEl = document.getElementById("keyer-mode-sync-status");
 const saveDirectoryInput = document.getElementById("save-directory");
 const saveButton = document.getElementById("save-audio-settings");
 const playTestButton = document.getElementById("play-test-message");
@@ -50,10 +57,40 @@ function setInputsEnabled(enabled) {
     receiverBedInput.disabled = !enabled;
     cadenceVariationInput.disabled = !enabled;
     trinkeyBuzzerInput.disabled = !enabled;
+    keyerModeRadios.forEach((radio) => { radio.disabled = !enabled; });
+    keyerModeSyncButton.disabled = !enabled;
     saveDirectoryInput.disabled = !enabled;
     hhClearInput.disabled = !enabled;
     playTestButton.disabled = !enabled;
     saveTestButton.disabled = !enabled;
+}
+
+function getKeyerMode() {
+    const checked = Array.from(keyerModeRadios).find((radio) => radio.checked);
+    return checked?.value || "iambic_a";
+}
+
+function setKeyerModeSyncStatus(text) {
+    keyerModeSyncStatusEl.textContent = text;
+}
+
+function describeSyncResult(outcome) {
+    switch (outcome.result) {
+        case KEYER_MODE_SYNC_RESULT.SENT:
+            return `sent PC ${outcome.program_number} to ${outcome.output_name || "Trinkey"}`;
+        case KEYER_MODE_SYNC_RESULT.UNKNOWN_MODE:
+            return `unknown mode "${outcome.mode}"`;
+        case KEYER_MODE_SYNC_RESULT.MIDI_UNAVAILABLE:
+            return "browser does not support MIDI";
+        case KEYER_MODE_SYNC_RESULT.MIDI_BLOCKED:
+            return outcome.detail ? `MIDI blocked: ${outcome.detail}` : "MIDI access denied";
+        case KEYER_MODE_SYNC_RESULT.NO_OUTPUT:
+            return "no Trinkey output found";
+        case KEYER_MODE_SYNC_RESULT.SEND_FAILED:
+            return outcome.detail ? `send failed: ${outcome.detail}` : "send failed";
+        default:
+            return "unknown result";
+    }
 }
 
 function currentSettings() {
@@ -63,6 +100,7 @@ function currentSettings() {
     const receiverBed = Number(receiverBedInput.value);
     const cadenceVariation = Number(cadenceVariationInput.value);
     const trinkeyBuzzerEnabled = trinkeyBuzzerInput.checked;
+    const keyerMode = getKeyerMode();
     const hhClearEnabled = hhClearInput.checked;
     const saveDirectory = saveDirectoryInput.value.trim();
     return {
@@ -72,6 +110,7 @@ function currentSettings() {
         receiverBed,
         cadenceVariation,
         trinkeyBuzzerEnabled,
+        keyerMode,
         hhClearEnabled,
         saveDirectory,
     };
@@ -172,11 +211,16 @@ function renderAudioSettings(event) {
     receiverBedInput.value = event.receiver_bed;
     cadenceVariationInput.value = event.cadence_variation;
     trinkeyBuzzerInput.checked = Boolean(event.trinkey_buzzer_enabled);
+    const incomingKeyerMode = typeof event.keyer_mode === "string" ? event.keyer_mode : "iambic_a";
+    keyerModeRadios.forEach((radio) => {
+        radio.checked = radio.value === incomingKeyerMode;
+    });
     hhClearInput.checked = Boolean(event.hh_clear_enabled);
     saveDirectoryInput.value = event.save_directory || "";
     // Keep the localStorage cache that Key pages read in sync with the
     // authoritative server state.
     setHHClearEnabled(Boolean(event.hh_clear_enabled));
+    const previousKeyerMode = savedSettings?.keyerMode || null;
     savedSettings = {
         character: event.character_wpm,
         effective: event.effective_wpm,
@@ -184,12 +228,18 @@ function renderAudioSettings(event) {
         receiverBed: event.receiver_bed,
         cadenceVariation: event.cadence_variation,
         trinkeyBuzzerEnabled: Boolean(event.trinkey_buzzer_enabled),
+        keyerMode: incomingKeyerMode,
         hhClearEnabled: Boolean(event.hh_clear_enabled),
         saveDirectory: event.save_directory || "",
     };
     updateSummaries();
     const prefix = isSaving ? "saved" : "ready";
+    const justSaved = isSaving;
     isSaving = false;
+    if (justSaved && previousKeyerMode && previousKeyerMode !== incomingKeyerMode) {
+        // Mode changed on this save round-trip — push it to the firmware.
+        syncKeyerModeToDevice(incomingKeyerMode);
+    }
     setStatus(
         "connected",
         `${prefix} - ${event.character_wpm} WPM characters / ${event.effective_wpm} WPM effective`
@@ -297,6 +347,7 @@ form.addEventListener("submit", (event) => {
         receiverBed,
         cadenceVariation,
         trinkeyBuzzerEnabled,
+        keyerMode,
         hhClearEnabled,
         saveDirectory,
     } = currentSettings();
@@ -313,10 +364,22 @@ form.addEventListener("submit", (event) => {
             receiver_bed: receiverBed,
             cadence_variation: cadenceVariation,
             trinkey_buzzer_enabled: trinkeyBuzzerEnabled,
+            keyer_mode: keyerMode,
             hh_clear_enabled: hhClearEnabled,
             save_directory: saveDirectory,
         })
     );
+});
+
+async function syncKeyerModeToDevice(mode) {
+    setKeyerModeSyncStatus("sending");
+    const outcome = await sendKeyerModeProgramChange(mode);
+    setKeyerModeSyncStatus(describeSyncResult(outcome));
+}
+
+keyerModeSyncButton.addEventListener("click", () => {
+    const mode = savedSettings?.keyerMode || getKeyerMode();
+    syncKeyerModeToDevice(mode);
 });
 
 function testMessagePayload() {
@@ -387,6 +450,7 @@ function onSettingsInput() {
 ].forEach((input) => input.addEventListener("input", onSettingsInput));
 
 trinkeyBuzzerInput.addEventListener("change", onSettingsInput);
+keyerModeRadios.forEach((radio) => radio.addEventListener("change", onSettingsInput));
 hhClearInput.addEventListener("change", onSettingsInput);
 
 connect();

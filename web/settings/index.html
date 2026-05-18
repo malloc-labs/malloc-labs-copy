@@ -140,6 +140,25 @@
                     >
                     <p>Allows the Trinkey hardware buzzer to sound while Copy decodes input. Off keeps key input silent for now.</p>
                 </div>
+
+                <div class="settings-field" role="group" aria-labelledby="keyer-mode-label">
+                    <span class="settings-field__label" id="keyer-mode-label">Keyer Mode</span>
+                    <div class="settings-field__radios">
+                        <label class="settings-field__radio">
+                            <input type="radio" name="keyer_mode" value="iambic_a">
+                            <span>Iambic A</span>
+                        </label>
+                        <label class="settings-field__radio">
+                            <input type="radio" name="keyer_mode" value="ultimatic">
+                            <span>Ultimatic</span>
+                        </label>
+                    </div>
+                    <div class="settings-field__inline-actions">
+                        <button type="button" class="btn" id="keyer-mode-sync">Sync now</button>
+                        <span class="settings-field__status" id="keyer-mode-sync-status" aria-live="polite"></span>
+                    </div>
+                    <p>Sent to the Trinkey when you change it. Use Sync now if the device was changed elsewhere.</p>
+                </div>
             </details>
 
             <details class="settings-section">

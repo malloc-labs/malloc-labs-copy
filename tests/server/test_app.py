@@ -1391,6 +1391,7 @@ async def test_get_audio_settings_returns_configured_timing(tmp_path, patched_pl
                 "receiver_bed": 2,
                 "cadence_variation": 1,
                 "trinkey_buzzer_enabled": False,
+                "keyer_mode": "iambic_a",
                 "hh_clear_enabled": False,
                 "save_directory": str(config_path.parent),
             }
@@ -1423,6 +1424,7 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
                         "receiver_bed": 2,
                         "cadence_variation": 1,
                         "trinkey_buzzer_enabled": True,
+                        "keyer_mode": "ultimatic",
                         "hh_clear_enabled": True,
                     }
                 )
@@ -1438,6 +1440,7 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
                 "receiver_bed": 2,
                 "cadence_variation": 1,
                 "trinkey_buzzer_enabled": True,
+                "keyer_mode": "ultimatic",
                 "hh_clear_enabled": True,
                 "save_directory": str(config_path.parent),
             }
@@ -1456,6 +1459,7 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
         assert params.cadence_variation == 1
         keyer = load_keyer_settings(config_path)
         assert keyer.trinkey_buzzer_enabled is True
+        assert keyer.keyer_mode == "ultimatic"
         developer = load_developer_settings(config_path)
         assert developer.hh_clear_enabled is True
         data = tomllib.loads(config_path.read_text())
@@ -1465,6 +1469,7 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
             "dit_note": 1,
             "dah_note": 2,
             "straight_note": 0,
+            "keyer_mode": "ultimatic",
         }
         assert data["developer"] == {"hh_clear_enabled": True}
     finally:

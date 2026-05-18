@@ -2,7 +2,7 @@
 //
 // Owns the Web MIDI access lifecycle, the raw-event → server-key-event
 // translation, the arm/disarm gate, the keyConfig snapshot received
-// from the server's key-input-start event, and the "pending ons"
+// from the server's key-input-start event, and the "pending note-ons"
 // buffers that appendDiagnosticRow joins against on each sent-symbol.
 // Also handles the server-emitted key-event / key-input-reset / error
 // messages, since they're all part of the same keying I/O pipeline.
@@ -38,6 +38,7 @@ import {
     statusEl,
 } from "./dom.js";
 import { setKeyConfig as setSidetoneKeyConfig, sidetone, updateAudioDiagnostic } from "./sidetone.js";
+import { selectTrinkeyDevice } from "./trinkey-device.js";
 import { formatMs, formatRatio, formatTimestamp, kindForNote } from "./utils.js";
 
 const MAX_DIAGNOSTIC_ROWS = 24;
@@ -178,10 +179,7 @@ function handleFormedBrowserMidiEvent(socket, event) {
 }
 
 function selectMidiInput(inputs) {
-    const available = Array.from(inputs.values());
-    return available.find((input) => input.name?.toLowerCase().includes("trrs trinkey"))
-        || available[0]
-        || null;
+    return selectTrinkeyDevice(inputs);
 }
 
 export async function startBrowserMidi(socket) {
