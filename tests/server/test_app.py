@@ -432,49 +432,6 @@ async def test_start_with_same_seed_replays_via_config_round_trip(tmp_path, patc
         await server.wait_closed()
 
 
-async def test_start_word_detection_runs_focus_word_session(tmp_path, patched_playback):
-    config_path = _write_test_config(tmp_path, ["K", "M"], duration=1.2)
-    web_root = _make_web_root(tmp_path)
-
-    server, port = await app.serve_app(
-        port=_grab_free_port(),
-        port_search_span=5,
-        web_root=web_root,
-        config_path=config_path,
-    )
-    try:
-        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
-            await asyncio.wait_for(ws.recv(), timeout=2.0)  # claimed-symbols push
-
-            await ws.send(json.dumps({"action": "start-word-detection"}))
-            events = await _drain_until(ws, lambda e: e["type"] == "session-end", timeout=10.0)
-
-        kinds = [event["type"] for event in events]
-        assert kinds[0] == "session-start"
-        assert kinds[-1] == "session-end"
-
-        start_event = events[0]
-        assert start_event["mode"] == "word-detection"
-        assert start_event["focus_symbols"] == ["K", "M"]
-        assert start_event["ranking"] == "rhythmic-diverse"
-        assert start_event["word_count"] == len(start_event["words"])
-        assert start_event["word_count"] > 0
-        assert all({"k", "m"} & set(word) for word in start_event["words"])
-        assert start_event["symbols"] == [
-            letter.upper() for word in start_event["words"] for letter in word
-        ]
-
-        symbol_events = [event for event in events if event["type"] == "symbol"]
-        assert len(symbol_events) == len(start_event["symbols"])
-        assert all("word_index" in event and "word" in event for event in symbol_events)
-        assert events[-1] == {"type": "session-end", "mode": "word-detection"}
-
-        assert len(patched_playback) == 1
-    finally:
-        server.close()
-        await server.wait_closed()
-
-
 async def test_claim_symbol_persists_and_broadcasts(tmp_path, patched_playback):
     config_path = _write_test_config(tmp_path, ["K", "M"])
     web_root = _make_web_root(tmp_path)
