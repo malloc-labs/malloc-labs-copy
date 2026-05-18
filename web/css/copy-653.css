@@ -1657,17 +1657,59 @@ copy-top-menu {
     color: var(--mr-anchor);
 }
 
-.settings-koch-detail-row > td {
-    padding: 0;
-    border-top: 0;
-}
-
 .settings-koch-detail {
-    padding: var(--mr-space-3) var(--mr-space-2) var(--mr-space-4);
     color: var(--mr-text);
     font-family: var(--mr-font-mono);
     font-size: var(--mr-size-small);
-    background: var(--mr-surface, transparent);
+}
+
+.settings-koch-dialog {
+    width: min(96vw, 1120px);
+    max-width: 1120px;
+    max-height: min(86vh, 900px);
+    padding: 0;
+    border: var(--mr-border-rule);
+    background: var(--mr-bg);
+    color: var(--mr-text);
+}
+
+.settings-koch-dialog::backdrop {
+    background: rgb(0 0 0 / 0.62);
+}
+
+.settings-koch-dialog__bar {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--mr-space-4);
+    padding: var(--mr-space-4);
+    border-bottom: var(--mr-border-rule);
+    background: var(--mr-bg);
+}
+
+.settings-koch-dialog__title {
+    margin: 0;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-body);
+    font-weight: 500;
+    color: var(--mr-text);
+}
+
+.settings-koch-dialog__close {
+    flex-shrink: 0;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+}
+
+.settings-koch-dialog__body {
+    max-height: calc(min(86vh, 900px) - 4rem);
+    padding: var(--mr-space-4);
+    overflow: auto;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
 }
 
 .settings-koch-detail__meta {
@@ -1698,10 +1740,12 @@ copy-top-menu {
 }
 
 .settings-koch-detail__exercises-table {
+    min-width: 980px;
     width: 100%;
     border-collapse: collapse;
     font-family: var(--mr-font-mono);
     font-size: var(--mr-size-small);
+    table-layout: fixed;
 }
 
 .settings-koch-detail__exercises-table th,
@@ -1721,6 +1765,37 @@ copy-top-menu {
 .settings-koch-detail__exercises-table td:first-child {
     color: var(--mr-muted);
     width: 2.5rem;
+}
+
+.settings-koch-detail__exercises-table th:nth-child(1),
+.settings-koch-detail__exercises-table td:nth-child(1) {
+    width: 2.5rem;
+}
+
+.settings-koch-detail__exercises-table th:nth-child(2),
+.settings-koch-detail__exercises-table td:nth-child(2),
+.settings-koch-detail__exercises-table th:nth-child(3),
+.settings-koch-detail__exercises-table td:nth-child(3) {
+    width: 12rem;
+}
+
+.settings-koch-detail__exercises-table th:nth-child(4),
+.settings-koch-detail__exercises-table td:nth-child(4),
+.settings-koch-detail__exercises-table th:nth-child(5),
+.settings-koch-detail__exercises-table td:nth-child(5),
+.settings-koch-detail__exercises-table th:nth-child(6),
+.settings-koch-detail__exercises-table td:nth-child(6),
+.settings-koch-detail__exercises-table th:nth-child(7),
+.settings-koch-detail__exercises-table td:nth-child(7),
+.settings-koch-detail__exercises-table th:nth-child(8),
+.settings-koch-detail__exercises-table td:nth-child(8),
+.settings-koch-detail__exercises-table th:nth-child(9),
+.settings-koch-detail__exercises-table td:nth-child(9),
+.settings-koch-detail__exercises-table th:nth-child(10),
+.settings-koch-detail__exercises-table td:nth-child(10),
+.settings-koch-detail__exercises-table th:nth-child(11),
+.settings-koch-detail__exercises-table td:nth-child(11) {
+    width: 5rem;
 }
 
 .settings-koch-detail__missing {

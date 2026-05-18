@@ -69,6 +69,7 @@ from copy_653.server.wire_events import (
     _send_event,
     _sent_symbol_event,
 )
+from copy_653.sequence.exercise_analysis import build_exercise_entries, build_generation_profile
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +172,12 @@ async def _start_action(
     # letters open every exercise so the learner enters the listening
     # frame from a known shape regardless of their claimed set.
     exercises = [f"DE {exercise}" for exercise in result.exercises]
+    exercise_entries = build_exercise_entries(exercises, scores=result.scores)
+    generation = build_generation_profile(
+        claimed_set=claimed,
+        candidate_count=result.candidate_count,
+        exercise_count=len(exercises),
+    )
     samples, timeline = build_exercises_audio(exercises, audio_params)
 
     await _send_event(
@@ -216,7 +223,8 @@ async def _start_action(
             audio_params=audio_params,
             claimed=claimed,
             seed=result.seed,
-            exercises=exercises,
+            generation=generation,
+            exercises=exercise_entries,
             symbols=emitted_symbols,
             started_at=started_at,
         )

@@ -39,8 +39,9 @@ from typing import Any
 
 from copy_653 import __version__
 from copy_653.audio.parameters import AudioParameters
+from copy_653.sequence.exercise_analysis import apply_answers_to_entries
 
-SCHEMA_VERSION = "1.3"
+SCHEMA_VERSION = "2.0"
 
 
 def _audio_snapshot(params: AudioParameters) -> dict[str, Any]:
@@ -79,19 +80,10 @@ def _format_filename_stamp(when: datetime) -> str:
 class KochExerciseRecord:
     """A completed Koch Exercises listening session.
 
-    A session plays an ordered list of short pseudo-word exercises
-    drawn from the learner's claimed set. The truth recorded here is
-    the played symbol timeline: every entry in ``symbols`` carries its
-    ``exercise_index`` (1-based, indexing into ``exercises``),
-    ``word_index`` (1-based within the exercise), and ``word`` so
-    replay tools can reconstruct grouping without re-parsing the
-    exercise strings.
-
-    ``answers`` is parallel to ``exercises``: one learner-typed string
-    per exercise. Empty list at session-end (truth lands first); filled
-    by the ``save-koch-answers`` action when the learner clicks Save in
-    the review panel. The file is rewritten in place — schema 1.3
-    requires the field, even if empty.
+    Schema 2.0 stores each played exercise as an object rather than
+    keeping truth and answers in parallel arrays. This keeps the burden
+    metadata and saved-answer analysis beside the exact exercise they
+    describe.
     """
 
     started_at: datetime
@@ -99,10 +91,10 @@ class KochExerciseRecord:
     audio: AudioParameters
     claimed_set: tuple[str, ...]
     seed: int
-    exercises: list[str] = field(default_factory=list)
+    generation: dict[str, Any] = field(default_factory=dict)
+    exercises: list[dict[str, Any]] = field(default_factory=list)
     # Each entry: {"symbol", "t_on", "t_off", "exercise_index", "word_index", "word"}
     symbols: list[dict[str, Any]] = field(default_factory=list)
-    answers: list[str] = field(default_factory=list)
 
     mode: str = "koch-exercise"
 
@@ -116,9 +108,9 @@ class KochExerciseRecord:
             "audio": _audio_snapshot(self.audio),
             "claimed_set": list(self.claimed_set),
             "seed": self.seed,
-            "exercises": list(self.exercises),
+            "generation": dict(self.generation),
+            "exercises": [dict(exercise) for exercise in self.exercises],
             "symbols": list(self.symbols),
-            "answers": list(self.answers),
         }
 
 
@@ -173,10 +165,11 @@ class CadenceSendRecord:
 def update_koch_answers(path: Path, answers: list[str]) -> int:
     """Rewrite an existing koch-exercise record with learner answers.
 
-    Reads the record at ``path``, sets its ``answers`` field, and
-    writes the result back atomically (same-directory temp file
-    followed by ``os.replace``). Returns the number of exercises in
-    the record so the caller can verify length agreement.
+    Reads the record at ``path``, sets each exercise object's
+    ``answer`` and internal ``analysis`` fields, and writes the result
+    back atomically (same-directory temp file followed by
+    ``os.replace``). Returns the number of exercises in the record so
+    the caller can verify length agreement.
 
     Raises :class:`ValueError` if the file is not a koch-exercise
     record or if ``answers`` does not match the record's exercise
@@ -192,7 +185,10 @@ def update_koch_answers(path: Path, answers: list[str]) -> int:
         raise ValueError(
             f"answers length {len(answers)} does not match exercises length {expected}"
         )
-    data["answers"] = list(answers)
+    exercises = data.get("exercises", [])
+    if not isinstance(exercises, list) or not all(isinstance(ex, dict) for ex in exercises):
+        raise ValueError(f"invalid koch-exercise exercises shape: {path}")
+    data["exercises"] = apply_answers_to_entries(list(exercises), list(answers))
     serialised = json.dumps(data, indent=2).encode("utf-8")
     fd, tmp_path = tempfile.mkstemp(prefix=".record-", suffix=".json", dir=path.parent)
     try:

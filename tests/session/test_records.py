@@ -17,6 +17,7 @@ from copy_653.session.records import (
     update_koch_answers,
     write_record,
 )
+from copy_653.sequence.exercise_analysis import build_exercise_entries, build_generation_profile
 
 
 def _audio() -> AudioParameters:
@@ -32,7 +33,12 @@ def _koch_record(started_at: datetime | None = None) -> KochExerciseRecord:
         audio=_audio(),
         claimed_set=("K", "M", "U"),
         seed=12345,
-        exercises=["mk", "kmu"],
+        generation=build_generation_profile(
+            claimed_set=("K", "M", "U"),
+            candidate_count=20,
+            exercise_count=2,
+        ),
+        exercises=build_exercise_entries(["DE MK", "DE KMU"], scores=[32, 45]),
         symbols=[
             {
                 "symbol": "M",
@@ -115,7 +121,12 @@ def test_koch_record_carries_truth_timeline(tmp_path: Path):
     parsed = json.loads(path.read_text())
 
     assert parsed["seed"] == 12345
-    assert parsed["exercises"] == ["mk", "kmu"]
+    assert parsed["generation"]["profile_version"] == "koch-burden-v1"
+    assert parsed["generation"]["candidate_count"] == 20
+    assert parsed["exercises"][0]["played"] == "DE MK"
+    assert parsed["exercises"][0]["core"] == "MK"
+    assert parsed["exercises"][0]["burden_score"] == 32
+    assert parsed["exercises"][0]["burden_band"] == 1
     assert parsed["symbols"][0] == {
         "symbol": "M",
         "t_on": 0.0,
@@ -151,23 +162,30 @@ def test_cadence_record_carries_exercises_sent_and_key_events(tmp_path: Path):
     }
 
 
-def test_schema_version_is_one_three():
-    assert SCHEMA_VERSION == "1.3"
+def test_schema_version_is_two_zero():
+    assert SCHEMA_VERSION == "2.0"
 
 
-def test_koch_record_serialises_answers_field_always_present(tmp_path: Path):
-    """Schema 1.3 requires ``answers``. Empty list at session-end is fine."""
+def test_koch_record_serialises_unsaved_analysis(tmp_path: Path):
     path = write_record(_koch_record(), tmp_path)
     parsed = json.loads(path.read_text())
-    assert parsed["answers"] == []
+    assert "answers" not in parsed
+    assert parsed["exercises"][0]["answer"] == ""
+    assert parsed["exercises"][0]["analysis"] == {
+        "version": "koch-analysis-v1",
+        "saved": False,
+    }
 
 
 def test_koch_record_round_trips_filled_answers(tmp_path: Path):
-    record = _koch_record()
-    record.answers = ["alpha", "bravo"]
-    path = write_record(record, tmp_path)
+    path = write_record(_koch_record(), tmp_path)
+    update_koch_answers(path, ["DE MK", "DE KU"])
     parsed = json.loads(path.read_text())
-    assert parsed["answers"] == ["alpha", "bravo"]
+    assert parsed["exercises"][0]["answer"] == "DE MK"
+    assert parsed["exercises"][0]["analysis"]["saved"] is True
+    assert parsed["exercises"][0]["analysis"]["band_state"] == "exact"
+    assert parsed["exercises"][1]["answer"] == "DE KU"
+    assert parsed["exercises"][1]["analysis"]["symbol_correct_units"] == 2
 
 
 def test_update_koch_answers_rewrites_existing_file_in_place(tmp_path: Path):
@@ -175,7 +193,8 @@ def test_update_koch_answers_rewrites_existing_file_in_place(tmp_path: Path):
     expected = update_koch_answers(path, ["one", "two"])
 
     parsed = json.loads(path.read_text())
-    assert parsed["answers"] == ["one", "two"]
+    assert parsed["exercises"][0]["answer"] == "one"
+    assert parsed["exercises"][1]["answer"] == "two"
     # Length-of-exercises echoes back so the caller can confirm shape.
     assert expected == len(parsed["exercises"]) == 2
     # Truth fields are not disturbed.
