@@ -71,8 +71,9 @@ During a Koch Exercises session::
 
 After the learner types their copy answers and clicks Save, the
 client sends ``save-koch-answers`` with an array parallel to the
-session's ``exercises``; the engine rewrites the same JSON record
-with an ``answers`` field merged in and acknowledges::
+session's ``exercises``; the engine rewrites the same JSON record with
+per-exercise ``answer`` and internal ``analysis`` fields merged in and
+acknowledges::
 
     {"type": "koch-answers-saved", "answer_count": 5, "exercise_count": 5}
 

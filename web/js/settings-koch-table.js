@@ -14,8 +14,10 @@
 
 const tbody = document.getElementById("settings-koch-tbody");
 const metaEl = document.getElementById("settings-koch-meta");
+const detailDialog = document.getElementById("settings-koch-dialog");
+const detailDialogTitle = document.getElementById("settings-koch-dialog-title");
+const detailDialogBody = document.getElementById("settings-koch-dialog-body");
 
-const COLSPAN = 3;
 let openFilename = null;
 const detailCache = new Map();
 
@@ -80,7 +82,7 @@ function buildExercisesList(record) {
     wrap.appendChild(heading);
 
     const exercises = Array.isArray(record.exercises) ? record.exercises : [];
-    const answers = Array.isArray(record.answers) ? record.answers : [];
+    const legacyAnswers = Array.isArray(record.answers) ? record.answers : [];
 
     if (exercises.length === 0) {
         const empty = document.createElement("p");
@@ -96,43 +98,103 @@ function buildExercisesList(record) {
     thead.innerHTML =
         "<tr><th scope=\"col\">#</th>" +
         "<th scope=\"col\">Played</th>" +
-        "<th scope=\"col\">You typed</th></tr>";
+        "<th scope=\"col\">You typed</th>" +
+        "<th scope=\"col\">Band</th>" +
+        "<th scope=\"col\">Burden</th>" +
+        "<th scope=\"col\">Symbols</th>" +
+        "<th scope=\"col\">Spacing</th>" +
+        "<th scope=\"col\">Repeat</th>" +
+        "<th scope=\"col\">Evidence</th>" +
+        "<th scope=\"col\">State</th>" +
+        "<th scope=\"col\">Gear</th></tr>";
     table.appendChild(thead);
 
     const body = document.createElement("tbody");
-    exercises.forEach((exercise, idx) => {
+    exercises.forEach((rawExercise, idx) => {
+        const exercise = normalizeExerciseEntry(rawExercise, legacyAnswers[idx], idx);
+        const analysis = exercise.analysis || {};
         const tr = document.createElement("tr");
 
         const idxCell = document.createElement("td");
-        idxCell.textContent = String(idx + 1);
+        idxCell.textContent = String(exercise.index || idx + 1);
         tr.appendChild(idxCell);
 
         const playedCell = document.createElement("td");
-        playedCell.textContent = exercise || "—";
+        playedCell.textContent = exercise.played || "—";
         tr.appendChild(playedCell);
 
-        const typed = answers[idx];
         const answerCell = document.createElement("td");
-        if (typeof typed !== "string" || typed.length === 0) {
+        if (typeof exercise.answer !== "string" || exercise.answer.length === 0) {
             answerCell.textContent = "—";
             answerCell.classList.add("settings-koch-detail__missing");
         } else {
-            answerCell.textContent = typed;
+            answerCell.textContent = exercise.answer;
         }
         tr.appendChild(answerCell);
+
+        appendCell(tr, exercise.burden_band ?? "—");
+        appendCell(tr, exercise.burden_score ?? "—");
+        appendCell(
+            tr,
+            unitPair(analysis.symbol_correct_units, analysis.symbol_available_units),
+        );
+        appendCell(
+            tr,
+            unitPair(analysis.spacing_correct_units, analysis.spacing_available_units),
+        );
+        appendCell(tr, numericOrDash(analysis.repeat_weight));
+        appendCell(tr, numericOrDash(analysis.evidence));
+        appendCell(tr, analysis.band_state || "—");
+        appendCell(tr, exercise.gear ?? analysis.gear ?? "—");
 
         body.appendChild(tr);
     });
     table.appendChild(body);
     wrap.appendChild(table);
 
-    if (answers.length === 0) {
+    if (!hasSavedAnswerData(record)) {
         const note = document.createElement("p");
         note.className = "settings-koch-detail__note";
         note.textContent = "No answers saved for this session.";
         wrap.appendChild(note);
     }
     return wrap;
+}
+
+function normalizeExerciseEntry(raw, legacyAnswer, idx) {
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+        return raw;
+    }
+    return {
+        index: idx + 1,
+        played: typeof raw === "string" ? raw : "",
+        answer: typeof legacyAnswer === "string" ? legacyAnswer : "",
+        analysis: {},
+    };
+}
+
+function appendCell(row, value) {
+    const cell = document.createElement("td");
+    cell.textContent = String(value);
+    row.appendChild(cell);
+}
+
+function unitPair(correct, available) {
+    if (!Number.isFinite(correct) || !Number.isFinite(available)) return "—";
+    return `${correct}/${available}`;
+}
+
+function numericOrDash(value) {
+    if (!Number.isFinite(value)) return "—";
+    return String(value);
+}
+
+function hasSavedAnswerData(record) {
+    const exercises = Array.isArray(record.exercises) ? record.exercises : [];
+    return exercises.some((exercise) => {
+        const analysis = exercise && typeof exercise === "object" ? exercise.analysis : null;
+        return analysis && analysis.saved === true;
+    }) || (Array.isArray(record.answers) && record.answers.length > 0);
 }
 
 function renderDetailContent(container, record) {
@@ -156,14 +218,10 @@ async function loadRecord(filename) {
 function clearOpenDetail() {
     if (!openFilename) return;
     const prevRow = tbody.querySelector(`tr[data-filename="${cssEscape(openFilename)}"]`);
-    const prevDetail = tbody.querySelector(
-        `tr.settings-koch-detail-row[data-filename="${cssEscape(openFilename)}"]`,
-    );
     if (prevRow) {
         prevRow.dataset.expanded = "false";
         prevRow.setAttribute("aria-expanded", "false");
     }
-    if (prevDetail) prevDetail.remove();
     openFilename = null;
 }
 
@@ -181,25 +239,20 @@ async function openDetail(filename, summaryRow) {
     openFilename = filename;
     summaryRow.dataset.expanded = "true";
     summaryRow.setAttribute("aria-expanded", "true");
-
-    const detailRow = document.createElement("tr");
-    detailRow.className = "settings-koch-detail-row";
-    detailRow.dataset.filename = filename;
-    const cell = document.createElement("td");
-    cell.colSpan = COLSPAN;
-    const container = document.createElement("div");
-    container.className = "settings-koch-detail";
-    container.textContent = "Loading session…";
-    cell.appendChild(container);
-    detailRow.appendChild(cell);
-    summaryRow.insertAdjacentElement("afterend", detailRow);
+    detailDialogTitle.textContent = "Session";
+    detailDialogBody.className = "settings-koch-dialog__body";
+    detailDialogBody.textContent = "Loading session…";
+    if (!detailDialog.open) {
+        detailDialog.showModal();
+    }
 
     try {
         const record = await loadRecord(filename);
         if (openFilename !== filename) return; // user closed/switched while fetching
-        renderDetailContent(container, record);
+        detailDialogTitle.textContent = formatStartedAt(record.started_at);
+        renderDetailContent(detailDialogBody, record);
     } catch (err) {
-        container.textContent = `Could not load session: ${err.message}`;
+        detailDialogBody.textContent = `Could not load session: ${err.message}`;
     }
 }
 
@@ -212,7 +265,7 @@ function attachRowHandler(tr, filename) {
     tr.setAttribute("aria-expanded", "false");
     const toggle = () => {
         if (openFilename === filename) {
-            clearOpenDetail();
+            detailDialog.close();
         } else {
             openDetail(filename, tr);
         }
@@ -225,6 +278,18 @@ function attachRowHandler(tr, filename) {
         }
     });
 }
+
+detailDialog.addEventListener("close", () => {
+    detailDialogTitle.textContent = "Session";
+    detailDialogBody.replaceChildren();
+    clearOpenDetail();
+});
+
+detailDialog.addEventListener("click", (event) => {
+    if (event.target === detailDialog) {
+        detailDialog.close();
+    }
+});
 
 function renderRows(records) {
     tbody.replaceChildren();

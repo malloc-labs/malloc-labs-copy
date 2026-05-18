@@ -328,7 +328,7 @@ async def test_api_koch_exercise_returns_full_record(tmp_path):
     koch_dir = save_dir / "koch-exercise"
     koch_dir.mkdir(parents=True)
     record = {
-        "schema_version": "1.3",
+        "schema_version": "2.0",
         "engine_version": "0.7.1",
         "mode": "koch-exercise",
         "started_at": "2026-05-15T10:00:00.000Z",
@@ -340,9 +340,35 @@ async def test_api_koch_exercise_returns_full_record(tmp_path):
         },
         "claimed_set": ["K", "M"],
         "seed": 7,
-        "exercises": ["DE K", "DE M"],
+        "generation": {
+            "profile_version": "koch-burden-v1",
+            "claimed_set_key": "K M",
+            "candidate_count": 20,
+            "bands": [{"index": 1, "gear": 0}, {"index": 2, "gear": 0}],
+        },
+        "exercises": [
+            {
+                "index": 1,
+                "played": "DE K",
+                "core": "K",
+                "burden_score": 20,
+                "burden_band": 1,
+                "gear": 0,
+                "answer": "DE K",
+                "analysis": {"version": "koch-analysis-v1", "saved": True},
+            },
+            {
+                "index": 2,
+                "played": "DE M",
+                "core": "M",
+                "burden_score": 20,
+                "burden_band": 2,
+                "gear": 0,
+                "answer": "DE N",
+                "analysis": {"version": "koch-analysis-v1", "saved": True},
+            },
+        ],
         "symbols": [],
-        "answers": ["DE K", "DE N"],
     }
     filename = "koch-exercise-20260515T100000Z.json"
     (koch_dir / filename).write_text(json.dumps(record))
@@ -362,8 +388,8 @@ async def test_api_koch_exercise_returns_full_record(tmp_path):
         assert response.headers["Content-Type"] == "application/json; charset=utf-8"
         payload = json.loads(response.read())
         assert payload["mode"] == "koch-exercise"
-        assert payload["exercises"] == ["DE K", "DE M"]
-        assert payload["answers"] == ["DE K", "DE N"]
+        assert payload["exercises"][0]["played"] == "DE K"
+        assert payload["exercises"][0]["answer"] == "DE K"
         assert payload["audio"]["character_speed_wpm"] == 20
     finally:
         server.close()
@@ -549,14 +575,19 @@ async def test_start_action_writes_koch_record_to_save_directory(tmp_path, patch
 
         record = json.loads(files[0].read_text())
         assert record["mode"] == "koch-exercise"
-        assert record["schema_version"] == "1.3"
+        assert record["schema_version"] == "2.0"
         assert "duration_seconds" not in record
         assert record["claimed_set"] == ["K", "M"]
         assert isinstance(record["seed"], int)
+        assert record["generation"]["profile_version"] == "koch-burden-v1"
+        assert record["generation"]["candidate_count"] == 20
         assert len(record["exercises"]) == 5
-        # Truth lands at session-end with an empty answers list; the
-        # learner fills it via save-koch-answers.
-        assert record["answers"] == []
+        # Truth lands at session-end with unsaved per-exercise analysis;
+        # the learner fills answers via save-koch-answers.
+        assert "answers" not in record
+        assert record["exercises"][0]["played"].startswith("DE ")
+        assert record["exercises"][0]["answer"] == ""
+        assert record["exercises"][0]["analysis"]["saved"] is False
         symbol_events = [e for e in events if e["type"] == "symbol"]
         assert len(record["symbols"]) == len(symbol_events)
         for record_entry, event in zip(record["symbols"], symbol_events):
@@ -603,7 +634,9 @@ async def test_save_koch_answers_merges_into_record(tmp_path, patched_playback):
         files = list(record_dir.glob("koch-exercise-*.json"))
         assert len(files) == 1
         record = json.loads(files[0].read_text())
-        assert record["answers"] == answers
+        assert [exercise["answer"] for exercise in record["exercises"]] == answers
+        assert all(exercise["analysis"]["saved"] is True for exercise in record["exercises"])
+        assert all("evidence" in exercise["analysis"] for exercise in record["exercises"])
         # Truth fields are untouched by the rewrite.
         assert len(record["symbols"]) > 0
         assert len(record["exercises"]) == 5
@@ -640,13 +673,14 @@ async def test_save_koch_answers_rejects_length_mismatch(tmp_path, patched_playb
         assert ack_event["type"] == "error"
         assert ack_event["reason"] == "answers-length-mismatch"
 
-        # File should still have an empty answers list — the rejected
+        # File should still have unsaved exercise entries — the rejected
         # save must not have rewritten anything.
         record_dir = save_dir / "koch-exercise"
         files = list(record_dir.glob("koch-exercise-*.json"))
         assert len(files) == 1
         record = json.loads(files[0].read_text())
-        assert record["answers"] == []
+        assert all(exercise["answer"] == "" for exercise in record["exercises"])
+        assert all(exercise["analysis"]["saved"] is False for exercise in record["exercises"])
     finally:
         server.close()
         await server.wait_closed()

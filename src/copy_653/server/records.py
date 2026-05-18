@@ -131,7 +131,8 @@ def _write_koch_record(
     audio_params: AudioParameters,
     claimed: tuple[str, ...],
     seed: int,
-    exercises: list[str],
+    generation: dict[str, Any],
+    exercises: list[dict[str, Any]],
     symbols: list[dict[str, Any]],
     started_at: datetime,
 ) -> Path | None:
@@ -153,6 +154,7 @@ def _write_koch_record(
             audio=audio_params,
             claimed_set=claimed,
             seed=seed,
+            generation=generation,
             exercises=exercises,
             symbols=symbols,
         )
