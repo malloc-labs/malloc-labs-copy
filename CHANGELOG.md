@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.7.2...v0.8.0) (2026-05-18)
+
+
+### Features
+
+* **settings:** add Koch exercise diagnostics ([3bf5f76](https://github.com/malloc-labs/malloc-labs-copy/commit/3bf5f76f2e66250cc39009275fc4e52751f2f229))
+
 ## [0.7.2](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.7.1...v0.7.2) (2026-05-18)
 
 
