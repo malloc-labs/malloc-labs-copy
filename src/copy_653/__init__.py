@@ -4,4 +4,4 @@ See docs/philosophy.md and docs/specification.md for the design
 contract and v0 specification.
 """
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"

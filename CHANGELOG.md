@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.7.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.6.0...v0.7.0) (2026-05-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* **koch:** schema_version is now 1.3 (was 1.2). KochExerciseRecord gains a required `answers` field; records written under 1.2 are no longer readable by analysis tools that target 1.3. The Koch Exercises UI removes the Stop and Clear buttons; Start doubles as Abort while a session is active.
+
+### Features
+
+* **koch:** capture learner answers in koch-exercise record ([#89](https://github.com/malloc-labs/malloc-labs-copy/issues/89)) ([9b6ea53](https://github.com/malloc-labs/malloc-labs-copy/commit/9b6ea535019bb5ee3c58762f185b7068a1ab918c))
+
 ## [0.6.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.5.1...v0.6.0) (2026-05-17)
 
 
