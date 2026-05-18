@@ -486,6 +486,102 @@ async def test_api_koch_exercises_returns_empty_when_directory_missing(tmp_path)
         await server.wait_closed()
 
 
+async def test_api_cadence_sends_lists_records_newest_first(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    save_dir = tmp_path / "data"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    cadence_dir = save_dir / "cadence-send"
+    cadence_dir.mkdir(parents=True)
+    older = {
+        "schema_version": "2.0",
+        "mode": "cadence-send",
+        "started_at": "2026-05-15T09:00:00.000Z",
+        "ended_at": "2026-05-15T09:00:30.000Z",
+        "claimed_set": ["K", "M"],
+        "seed": 1,
+        "generation": {"claimed_set_key": "K M"},
+        "exercises": [{"index": 1, "target": "K"}],
+        "sent": [],
+        "key_events": [],
+    }
+    newer = dict(older)
+    newer["started_at"] = "2026-05-15T10:00:00.000Z"
+    newer["claimed_set"] = ["K", "M", "U"]
+    newer["exercises"] = [{"index": 1, "target": "KM"}, {"index": 2, "target": "MU"}]
+    (cadence_dir / "cadence-send-20260515T090000Z.json").write_text(json.dumps(older))
+    (cadence_dir / "cadence-send-20260515T100000Z.json").write_text(json.dumps(newer))
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        response = await asyncio.to_thread(
+            urllib.request.urlopen, f"http://127.0.0.1:{port}/api/cadence-sends"
+        )
+        payload = json.loads(response.read())
+        assert payload["save_directory"] == str(save_dir)
+        records = payload["records"]
+        assert len(records) == 2
+        assert records[0]["filename"] == "cadence-send-20260515T100000Z.json"
+        assert records[0]["claimed_set"] == ["K", "M", "U"]
+        assert records[0]["exercise_count"] == 2
+        assert records[1]["filename"] == "cadence-send-20260515T090000Z.json"
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_api_cadence_send_returns_full_record(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    save_dir = tmp_path / "data"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    cadence_dir = save_dir / "cadence-send"
+    cadence_dir.mkdir(parents=True)
+    filename = "cadence-send-20260515T100000Z.json"
+    record = {
+        "schema_version": "2.0",
+        "mode": "cadence-send",
+        "started_at": "2026-05-15T10:00:00.000Z",
+        "ended_at": "2026-05-15T10:01:00.000Z",
+        "claimed_set": ["K", "M"],
+        "seed": 7,
+        "generation": {"profile_version": "cadence-burden-v1", "claimed_set_key": "K M"},
+        "exercises": [{"index": 1, "target": "KM", "analysis": {"saved": True}}],
+        "sent": [],
+        "key_events": [],
+    }
+    (cadence_dir / filename).write_text(json.dumps(record))
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        response = await asyncio.to_thread(
+            urllib.request.urlopen,
+            f"http://127.0.0.1:{port}/api/cadence-send?file={filename}",
+        )
+        payload = json.loads(response.read())
+        assert payload["mode"] == "cadence-send"
+        assert payload["exercises"][0]["target"] == "KM"
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
 async def test_api_koch_band_evidence_returns_recent_per_band_rollup(tmp_path):
     config_path = _write_test_config(tmp_path, ["K", "M"])
     save_dir = tmp_path / "data"
@@ -1359,6 +1455,69 @@ async def test_start_key_input_marks_word_gap_between_symbols(
             ("K", "-.-", "none"),
             ("M", "--", "word"),
         ]
+        assert patched_playback == []
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_cadence_session_writes_analyzed_record_on_close(
+    tmp_path,
+    patched_playback,
+):
+    config_path = _write_test_config_with_keyer(tmp_path, trinkey_buzzer_enabled=False)
+    save_dir = tmp_path / "records"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)  # claimed-symbols push
+            await ws.send(json.dumps({"action": "request-copy-exercises"}))
+            copy_event = json.loads(await asyncio.wait_for(ws.recv(), timeout=2.0))
+            assert copy_event["type"] == "copy-exercises"
+
+            await ws.send(json.dumps({"action": "start-browser-key-input"}))
+            start_event = json.loads(await asyncio.wait_for(ws.recv(), timeout=2.0))
+            assert start_event["type"] == "key-input-start"
+
+            for event in [
+                {"note": 2, "pressed": True, "timestamp": 1.0},
+                {"note": 2, "pressed": False, "timestamp": 1.144},
+                {"note": 1, "pressed": True, "timestamp": 1.192},
+                {"note": 1, "pressed": False, "timestamp": 1.24},
+                {"note": 2, "pressed": True, "timestamp": 1.288},
+                {"note": 2, "pressed": False, "timestamp": 1.432},
+            ]:
+                await ws.send(json.dumps({"action": "key-note-event", **event}))
+            await _drain_until(ws, lambda e: e["type"] == "sent-symbol", timeout=2.0)
+            await ws.send(json.dumps({"action": "stop-key-input"}))
+            await asyncio.sleep(0)
+
+        record_dir = save_dir / "cadence-send"
+        files = list(record_dir.glob("cadence-send-*.json"))
+        assert len(files) == 1
+        record = json.loads(files[0].read_text())
+        assert record["mode"] == "cadence-send"
+        assert record["schema_version"] == "2.0"
+        assert record["generation"]["profile_version"] == "cadence-burden-v1"
+        assert record["generation"]["claimed_set_key"] == "K M"
+        assert record["generation"]["run_index"] == 1
+        assert len(record["exercises"]) == 5
+        assert record["exercises"][0]["target"] == copy_event["exercises"][0]
+        assert record["exercises"][0]["analysis"]["saved"] is True
+        assert "selection" not in record
+        assert len(record["sent"]) == 1
+        assert len(record["key_events"]) == 6
+        assert any("duration_ms" in event for event in record["key_events"])
         assert patched_playback == []
     finally:
         server.close()

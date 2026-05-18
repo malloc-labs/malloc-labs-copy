@@ -286,6 +286,51 @@
                  role="tabpanel"
                  aria-labelledby="settings-tab-key"
                  hidden>
+            <section class="settings-koch-rollup" id="settings-key-rollup" hidden>
+                <h3 class="settings-koch-rollup__heading">
+                    Recent send evidence
+                    <span class="settings-koch-rollup__meta" id="settings-key-rollup-meta"></span>
+                </h3>
+                <table class="settings-koch-rollup__table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Band</th>
+                            <th scope="col">Recent fractions</th>
+                            <th scope="col">Symbols</th>
+                            <th scope="col">Spacing</th>
+                            <th scope="col">Formation</th>
+                            <th scope="col">Strong</th>
+                            <th scope="col">Low</th>
+                        </tr>
+                    </thead>
+                    <tbody id="settings-key-rollup-tbody"></tbody>
+                </table>
+            </section>
+            <p class="settings-koch-meta" id="settings-key-meta">Loading saved send sessions…</p>
+            <div class="settings-koch-table-wrap">
+                <table class="settings-koch-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">#</th>
+                            <th scope="col">Date &amp; time</th>
+                            <th scope="col">Claimed symbols</th>
+                            <th scope="col">Exercises</th>
+                        </tr>
+                    </thead>
+                    <tbody id="settings-key-tbody"></tbody>
+                </table>
+            </div>
+            <dialog class="settings-koch-dialog" id="settings-key-dialog">
+                <form method="dialog" class="settings-koch-dialog__bar">
+                    <h2 class="settings-koch-dialog__title" id="settings-key-dialog-title">
+                        Send session
+                    </h2>
+                    <button type="submit"
+                            class="settings-koch-dialog__close"
+                            aria-label="Close send session details">Close</button>
+                </form>
+                <div class="settings-koch-dialog__body" id="settings-key-dialog-body"></div>
+            </dialog>
         </section>
     </main>
     <script type="module" src="../js/partials/landing-header.js"></script>
@@ -295,5 +340,7 @@
     <script type="module" src="../js/settings-koch-table.js"></script>
     <script type="module" src="../js/settings-koch-rollup.js"></script>
     <script type="module" src="../js/settings-koch-lifetime.js"></script>
+    <script type="module" src="../js/settings-key-table.js"></script>
+    <script type="module" src="../js/settings-key-rollup.js"></script>
 </body>
 </html>

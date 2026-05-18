@@ -39,6 +39,7 @@ from typing import Any
 
 from copy_653 import __version__
 from copy_653.audio.parameters import AudioParameters
+from copy_653.sequence.cadence_analysis import apply_cadence_analysis
 from copy_653.sequence.exercise_analysis import apply_answers_to_entries
 
 SCHEMA_VERSION = "2.0"
@@ -122,27 +123,27 @@ class CadenceSendRecord:
     ended_at: datetime
     audio: AudioParameters
     claimed_set: tuple[str, ...]
-    request: dict[str, Any]
     seed: int
-    exercises: list[str]
+    generation: dict[str, Any] = field(default_factory=dict)
+    exercises: list[dict[str, Any]] = field(default_factory=list)
+    request: dict[str, Any] = field(default_factory=dict)
     # Decoded sent symbols. Each entry:
     # {"symbol", "pattern", "started_at", "ended_at", "leading_gap"}.
-    # Mapping a sent symbol back to a target exercise is left to the
-    # replay tool — the server cannot do it honestly because a learner
-    # can send symbols that diverge from the target.
+    # The finalized exercise entries carry derived attempt analysis; the
+    # raw sent stream remains here so that analysis stays auditable.
     sent: list[dict[str, Any]] = field(default_factory=list)
     # Raw key press/release events. Each entry:
     # {"kind", "note", "pressed", "timestamp"}
     key_events: list[dict[str, Any]] = field(default_factory=list)
-    # Optional generator diagnostics (schema 1.1+). When present:
-    # {"candidate_count": int, "scores": [int, ...]}. ``scores`` is
-    # parallel to ``exercises``. Absent for records produced before
-    # the score+select layer landed; analysis tools should guard.
-    selection: dict[str, Any] | None = None
-
     mode: str = "cadence-send"
 
     def to_dict(self) -> dict[str, Any]:
+        exercises = apply_cadence_analysis(
+            [dict(exercise) for exercise in self.exercises],
+            sent=list(self.sent),
+            key_events=list(self.key_events),
+            character_wpm=self.audio.character_speed_wpm,
+        )
         payload: dict[str, Any] = {
             "schema_version": SCHEMA_VERSION,
             "engine_version": __version__,
@@ -153,12 +154,11 @@ class CadenceSendRecord:
             "claimed_set": list(self.claimed_set),
             "request": dict(self.request),
             "seed": self.seed,
-            "exercises": list(self.exercises),
+            "generation": dict(self.generation),
+            "exercises": exercises,
             "sent": list(self.sent),
             "key_events": list(self.key_events),
         }
-        if self.selection is not None:
-            payload["selection"] = dict(self.selection)
         return payload
 
 

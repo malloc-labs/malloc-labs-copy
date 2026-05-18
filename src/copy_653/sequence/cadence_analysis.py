@@ -1,0 +1,649 @@
+"""Internal analysis for finalized Cadence send sessions.
+
+Like Koch analysis, this module produces backend evidence for record
+diagnostics and future exercise selection. It is not learner-facing
+feedback and it is only applied when a cadence session is finalized.
+"""
+
+from __future__ import annotations
+
+from math import log1p
+from typing import Any
+
+from copy_653.audio import timing
+from copy_653.sequence.copy_exercises import _score_copy_exercise
+from copy_653.sequence.exercise_analysis import (
+    LOW_FRACTION,
+    MAX_GEAR,
+    N_CLEAN_RUNS_FOR_SHIFT,
+    N_LOW_RUNS_FOR_SHIFT_DOWN,
+    STRONG_FRACTION,
+    _levenshtein,
+    _streak_at_current_gear,
+)
+
+ANALYSIS_VERSION = "cadence-analysis-v1"
+GENERATION_PROFILE_VERSION = "cadence-burden-v1"
+DEFAULT_EVIDENCE_WINDOW_SIZE = 5
+
+
+def build_cadence_generation_profile(
+    *,
+    claimed_set: tuple[str, ...],
+    candidate_count: int,
+    exercise_count: int,
+    gears: list[int] | None = None,
+) -> dict[str, Any]:
+    """Build generation metadata persisted with a cadence-send record."""
+    resolved_gears = gears if gears is not None else [0] * exercise_count
+    return {
+        "profile_version": GENERATION_PROFILE_VERSION,
+        "claimed_set_key": " ".join(sorted(claimed_set)),
+        "candidate_count": candidate_count,
+        "bands": [
+            {
+                "index": idx + 1,
+                "gear": resolved_gears[idx] if idx < len(resolved_gears) else 0,
+            }
+            for idx in range(exercise_count)
+        ],
+    }
+
+
+def build_cadence_exercise_entries(
+    exercises: list[str],
+    *,
+    scores: list[int] | tuple[int, ...],
+    gears: list[int] | None = None,
+) -> list[dict[str, Any]]:
+    """Build persisted cadence exercise entries before final analysis."""
+    resolved_gears = gears if gears is not None else [0] * len(exercises)
+    entries: list[dict[str, Any]] = []
+    for idx, target in enumerate(exercises):
+        entries.append(
+            {
+                "index": idx + 1,
+                "target": target,
+                "burden_score": scores[idx] if idx < len(scores) else _score_copy_exercise(target),
+                "burden_band": idx + 1,
+                "gear": resolved_gears[idx] if idx < len(resolved_gears) else 0,
+                "attempts": [],
+                "analysis": {
+                    "version": ANALYSIS_VERSION,
+                    "saved": False,
+                },
+            }
+        )
+    return entries
+
+
+def apply_cadence_analysis(
+    entries: list[dict[str, Any]],
+    *,
+    sent: list[dict[str, Any]],
+    key_events: list[dict[str, Any]],
+    character_wpm: int,
+) -> list[dict[str, Any]]:
+    """Return cadence exercise entries with finalized attempts/analysis.
+
+    The sent stream is walked once across the target list. A target is
+    advanced only after a complete matching attempt, so the next
+    exercise's evidence is not polluted by retry traffic on the
+    previous one.
+    """
+    remaining = [_normalise_sent_event(event) for event in sent]
+    dit_seconds = timing.dit_seconds(character_wpm)
+    updated: list[dict[str, Any]] = []
+
+    cursor = 0
+    for raw_entry in entries:
+        entry = dict(raw_entry)
+        target = str(entry.get("target", ""))
+        exercise_events, cursor = _consume_events_for_target(target, remaining, cursor)
+        attempts = _segment_attempts(target, exercise_events)
+        analysed_attempts = [
+            _analyse_attempt(target, attempt, key_events=key_events, dit_seconds=dit_seconds)
+            for attempt in attempts
+        ]
+        selected_index = _select_attempt_index(analysed_attempts)
+        selected = analysed_attempts[selected_index] if selected_index is not None else None
+
+        entry["attempts"] = analysed_attempts
+        entry["analysis"] = _build_exercise_analysis(
+            entry,
+            selected,
+            attempt_count=len(analysed_attempts),
+            selected_attempt_index=selected_index,
+        )
+        updated.append(entry)
+
+    return updated
+
+
+def _consume_events_for_target(
+    target: str,
+    sent: list[dict[str, Any]],
+    cursor: int,
+) -> tuple[list[dict[str, Any]], int]:
+    steps = _expected_steps(target)
+    if not steps:
+        return [], cursor
+
+    events: list[dict[str, Any]] = []
+    progress = 0
+    idx = cursor
+    while idx < len(sent):
+        event = sent[idx]
+        events.append(event)
+        symbol = str(event.get("symbol") or "?")
+        leading = str(event.get("leading_gap") or "none")
+        expected = steps[progress]
+        symbol_matches = symbol == expected["symbol"]
+        gap_matches = progress == 0 or leading == expected["leading"]
+        if symbol_matches and gap_matches:
+            progress += 1
+            idx += 1
+            if progress >= len(steps):
+                return events, idx
+            continue
+
+        first = steps[0]
+        progress = 1 if symbol == first["symbol"] else 0
+        idx += 1
+
+    return events, idx
+
+
+def _segment_attempts(target: str, events: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    steps = _expected_steps(target)
+    if not events:
+        return []
+    if not steps:
+        return [events]
+
+    attempts: list[list[dict[str, Any]]] = []
+    progress = 0
+    for event in events:
+        symbol = str(event.get("symbol") or "?")
+        leading = str(event.get("leading_gap") or "none")
+        start_new = False
+        if symbol == steps[0]["symbol"]:
+            if progress == 0:
+                start_new = True
+            else:
+                expected = steps[progress] if progress < len(steps) else None
+                continues = (
+                    expected is not None
+                    and symbol == expected["symbol"]
+                    and leading == expected["leading"]
+                )
+                start_new = not continues
+        if start_new or not attempts:
+            attempts.append([])
+        attempts[-1].append(event)
+
+        expected = steps[progress] if progress < len(steps) else None
+        if (
+            expected
+            and symbol == expected["symbol"]
+            and (progress == 0 or leading == expected["leading"])
+        ):
+            progress += 1
+            if progress >= len(steps):
+                progress = 0
+        else:
+            progress = 1 if symbol == steps[0]["symbol"] else 0
+
+    return attempts
+
+
+def _analyse_attempt(
+    target: str,
+    events: list[dict[str, Any]],
+    *,
+    key_events: list[dict[str, Any]],
+    dit_seconds: float,
+) -> dict[str, Any]:
+    expected_steps = _expected_steps(target)
+    expected_symbols = "".join(step["symbol"] for step in expected_steps)
+    sent_symbols = "".join(str(event.get("symbol") or "?") for event in events)
+    symbol_available = max(len(expected_symbols), len(sent_symbols))
+    symbol_distance = _levenshtein(expected_symbols, sent_symbols)
+    symbol_correct = max(0, symbol_available - symbol_distance)
+    symbol_fraction = _fraction(symbol_correct, symbol_available)
+
+    spacing_available = max(0, min(len(expected_steps), len(events)) - 1)
+    spacing_correct = 0
+    timing_values: list[float] = []
+    for idx in range(1, min(len(expected_steps), len(events))):
+        expected = expected_steps[idx]["leading"]
+        actual = str(events[idx].get("leading_gap") or "none")
+        if actual == expected:
+            spacing_correct += 1
+        gap_ms = _leading_gap_ms(events[idx - 1], events[idx])
+        ideal_ms = (7 if expected == "word" else 3) * dit_seconds * 1000
+        if gap_ms is not None and ideal_ms > 0:
+            timing_values.append(_ratio_score(gap_ms, ideal_ms, tolerance=0.35))
+    spacing_fraction = _fraction(spacing_correct, spacing_available, default=1.0)
+    gap_timing_fraction = _mean(timing_values, default=1.0)
+
+    formation_fraction = _formation_fraction_for_attempt(events, key_events, dit_seconds)
+    decoded = [str(event.get("symbol") or "?") for event in events]
+    decode_health = _fraction(
+        sum(1 for symbol in decoded if symbol != "?"),
+        len(decoded),
+        default=1.0,
+    )
+    complete = _attempt_is_complete(expected_steps, events)
+
+    combined = (
+        (0.40 * symbol_fraction)
+        + (0.25 * spacing_fraction)
+        + (0.20 * formation_fraction)
+        + (0.10 * gap_timing_fraction)
+        + (0.05 * decode_health)
+    )
+    if complete:
+        combined = min(1.0, combined + 0.03)
+
+    return {
+        "events": [
+            {
+                "symbol": str(event.get("symbol") or "?"),
+                "pattern": str(event.get("pattern") or ""),
+                "started_at": event.get("started_at"),
+                "ended_at": event.get("ended_at"),
+                "leading_gap": str(event.get("leading_gap") or "none"),
+            }
+            for event in events
+        ],
+        "complete": complete,
+        "symbol_correct_units": symbol_correct,
+        "symbol_available_units": symbol_available,
+        "symbol_edit_distance": symbol_distance,
+        "spacing_correct_units": spacing_correct,
+        "spacing_available_units": spacing_available,
+        "symbol_fraction": round(symbol_fraction, 6),
+        "spacing_fraction": round(spacing_fraction, 6),
+        "formation_fraction": round(formation_fraction, 6),
+        "gap_timing_fraction": round(gap_timing_fraction, 6),
+        "decode_health": round(decode_health, 6),
+        "combined_fraction": round(max(0.0, min(1.0, combined)), 6),
+    }
+
+
+def _build_exercise_analysis(
+    entry: dict[str, Any],
+    selected: dict[str, Any] | None,
+    *,
+    attempt_count: int,
+    selected_attempt_index: int | None,
+) -> dict[str, Any]:
+    if selected is None:
+        return {
+            "version": ANALYSIS_VERSION,
+            "saved": True,
+            "attempt_count": 0,
+            "selected_attempt_index": None,
+            "selected_attempt_reason": "none",
+            "symbol_fraction": 0.0,
+            "spacing_fraction": 0.0,
+            "formation_fraction": 0.0,
+            "gap_timing_fraction": 0.0,
+            "decode_health": 0.0,
+            "combined_fraction": 0.0,
+            "evidence": 0.0,
+            "band_state": "low",
+            "burden_band": _coerce_int(entry.get("burden_band"), 0),
+            "gear": _coerce_int(entry.get("gear"), 0),
+        }
+
+    burden_score = _coerce_int(entry.get("burden_score"), 0)
+    burden_band = _coerce_int(entry.get("burden_band"), 0)
+    gear = _coerce_int(entry.get("gear"), 0)
+    combined = float(selected["combined_fraction"])
+    burden_weight = 1.0 + log1p(max(0, burden_score))
+    evidence = combined * burden_weight
+    return {
+        "version": ANALYSIS_VERSION,
+        "saved": True,
+        "attempt_count": attempt_count,
+        "selected_attempt_index": selected_attempt_index,
+        "selected_attempt_reason": "latest-complete" if selected["complete"] else "best-partial",
+        "symbol_fraction": selected["symbol_fraction"],
+        "spacing_fraction": selected["spacing_fraction"],
+        "formation_fraction": selected["formation_fraction"],
+        "gap_timing_fraction": selected["gap_timing_fraction"],
+        "decode_health": selected["decode_health"],
+        "combined_fraction": selected["combined_fraction"],
+        "evidence": round(evidence, 6),
+        "band_state": _band_state(combined),
+        "burden_band": burden_band,
+        "gear": gear,
+    }
+
+
+def _select_attempt_index(attempts: list[dict[str, Any]]) -> int | None:
+    if not attempts:
+        return None
+    for idx in range(len(attempts) - 1, -1, -1):
+        if attempts[idx].get("complete") is True:
+            return idx
+    return max(range(len(attempts)), key=lambda idx: float(attempts[idx]["combined_fraction"]))
+
+
+def _formation_fraction_for_attempt(
+    events: list[dict[str, Any]],
+    key_events: list[dict[str, Any]],
+    dit_seconds: float,
+) -> float:
+    if not events:
+        return 0.0
+    starts = [event.get("started_at") for event in events]
+    ends = [event.get("ended_at") for event in events]
+    numeric_starts = [
+        float(v) for v in starts if isinstance(v, (int, float)) and not isinstance(v, bool)
+    ]
+    numeric_ends = [
+        float(v) for v in ends if isinstance(v, (int, float)) and not isinstance(v, bool)
+    ]
+    if not numeric_starts or not numeric_ends:
+        return 0.0
+    start = min(numeric_starts)
+    end = max(numeric_ends)
+    scores: list[float] = []
+    for event in key_events:
+        if not isinstance(event, dict):
+            continue
+        if event.get("pressed") is not False:
+            continue
+        kind = event.get("kind")
+        if kind not in {"dit", "dah"}:
+            continue
+        timestamp = event.get("timestamp")
+        if not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool):
+            continue
+        if not start <= float(timestamp) <= end:
+            continue
+        duration_ms = _key_duration_ms(event)
+        if duration_ms is None:
+            continue
+        ideal_ms = (1 if kind == "dit" else 3) * dit_seconds * 1000
+        scores.append(_ratio_score(duration_ms, ideal_ms, tolerance=0.45))
+    return _mean(scores, default=0.0)
+
+
+def _key_duration_ms(event: dict[str, Any]) -> float | None:
+    raw = event.get("duration_ms")
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return float(raw)
+    started = event.get("started_at")
+    ended = event.get("ended_at")
+    if (
+        isinstance(started, (int, float))
+        and not isinstance(started, bool)
+        and isinstance(ended, (int, float))
+        and not isinstance(ended, bool)
+    ):
+        return max(0.0, (float(ended) - float(started)) * 1000)
+    return None
+
+
+def _leading_gap_ms(prev: dict[str, Any], current: dict[str, Any]) -> float | None:
+    prev_end = prev.get("ended_at")
+    current_start = current.get("started_at")
+    if (
+        isinstance(prev_end, (int, float))
+        and not isinstance(prev_end, bool)
+        and isinstance(current_start, (int, float))
+        and not isinstance(current_start, bool)
+    ):
+        return max(0.0, (float(current_start) - float(prev_end)) * 1000)
+    return None
+
+
+def _ratio_score(actual: float, ideal: float, *, tolerance: float) -> float:
+    if ideal <= 0:
+        return 0.0
+    error = abs(actual - ideal) / ideal
+    return max(0.0, min(1.0, 1.0 - (error / tolerance)))
+
+
+def _expected_steps(exercise: str) -> list[dict[str, str]]:
+    steps: list[dict[str, str]] = []
+    for word_idx, word in enumerate(str(exercise).split(" ")):
+        if not word:
+            continue
+        for ch_idx, symbol in enumerate(word):
+            if not steps:
+                leading = "none"
+            elif ch_idx == 0:
+                leading = "word"
+            else:
+                leading = "character"
+            steps.append({"symbol": symbol, "leading": leading})
+    return steps
+
+
+def _attempt_is_complete(
+    expected_steps: list[dict[str, str]], events: list[dict[str, Any]]
+) -> bool:
+    if len(events) < len(expected_steps):
+        return False
+    for idx, expected in enumerate(expected_steps):
+        event = events[idx]
+        symbol = str(event.get("symbol") or "?")
+        leading = str(event.get("leading_gap") or "none")
+        if symbol != expected["symbol"]:
+            return False
+        if idx > 0 and leading != expected["leading"]:
+            return False
+    return True
+
+
+def _normalise_sent_event(event: dict[str, Any]) -> dict[str, Any]:
+    symbol = event.get("symbol")
+    return {
+        "symbol": symbol if isinstance(symbol, str) and symbol else "?",
+        "pattern": event.get("pattern") if isinstance(event.get("pattern"), str) else "",
+        "started_at": event.get("started_at"),
+        "ended_at": event.get("ended_at"),
+        "leading_gap": (
+            event.get("leading_gap") if isinstance(event.get("leading_gap"), str) else "none"
+        ),
+    }
+
+
+def record_claimed_set_key(record: dict[str, Any]) -> str:
+    generation = record.get("generation")
+    if isinstance(generation, dict):
+        stored = generation.get("claimed_set_key")
+        if isinstance(stored, str):
+            return stored
+    claimed = record.get("claimed_set")
+    if isinstance(claimed, list):
+        return " ".join(sorted(str(s) for s in claimed))
+    return ""
+
+
+def load_band_evidence(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+    window_size: int = DEFAULT_EVIDENCE_WINDOW_SIZE,
+) -> dict[str, Any]:
+    matching = _matching_records(records, claimed_set_key=claimed_set_key)
+    matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
+    window = matching[: max(0, window_size)]
+
+    band_entries: dict[int, list[tuple[float, str, int]]] = {}
+    channel_totals: dict[int, dict[str, list[float]]] = {}
+    for session in window:
+        gears = _gears_from_generation(session.get("generation"))
+        exercises = session.get("exercises")
+        if not isinstance(exercises, list):
+            continue
+        for exercise in exercises:
+            if not isinstance(exercise, dict):
+                continue
+            band = exercise.get("burden_band")
+            if not isinstance(band, int) or isinstance(band, bool):
+                continue
+            analysis = exercise.get("analysis")
+            if not isinstance(analysis, dict) or analysis.get("saved") is not True:
+                continue
+            fraction = analysis.get("combined_fraction")
+            if not isinstance(fraction, (int, float)) or isinstance(fraction, bool):
+                continue
+            gear = gears.get(band, _coerce_int(exercise.get("gear"), 0))
+            state = analysis.get("band_state")
+            band_entries.setdefault(band, []).append((float(fraction), str(state), gear))
+            totals = channel_totals.setdefault(
+                band,
+                {
+                    "symbol_fraction": [],
+                    "spacing_fraction": [],
+                    "formation_fraction": [],
+                    "gap_timing_fraction": [],
+                    "decode_health": [],
+                },
+            )
+            for key in totals:
+                value = analysis.get(key)
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    totals[key].append(float(value))
+
+    bands: list[dict[str, Any]] = []
+    for band in sorted(band_entries):
+        entries = band_entries[band]
+        fractions = [f for f, _, _ in entries]
+        channel_means = {
+            key: round(_mean(values, default=0.0), 6)
+            for key, values in channel_totals.get(band, {}).items()
+        }
+        bands.append(
+            {
+                "burden_band": band,
+                "recent_fractions": [round(f, 6) for f in fractions],
+                "strong_streak": _streak_at_current_gear(entries, lambda v: v >= STRONG_FRACTION),
+                "low_streak": _streak_at_current_gear(entries, lambda v: v < LOW_FRACTION),
+                **channel_means,
+            }
+        )
+
+    return {
+        "claimed_set_key": claimed_set_key,
+        "session_count": len(matching),
+        "window_size": window_size,
+        "sessions_used": len(window),
+        "bands": bands,
+    }
+
+
+def latest_gears_for_claimed_set(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+) -> dict[int, int]:
+    matching = _matching_records(records, claimed_set_key=claimed_set_key)
+    if not matching:
+        return {}
+    matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
+    return _gears_from_generation(matching[0].get("generation"))
+
+
+def resolve_gears(
+    evidence: dict[str, Any],
+    *,
+    current_gears: dict[int, int],
+    max_gear: int = MAX_GEAR,
+    n_clean_runs_for_shift: int = N_CLEAN_RUNS_FOR_SHIFT,
+    n_low_runs_for_shift_down: int = N_LOW_RUNS_FOR_SHIFT_DOWN,
+) -> dict[int, int]:
+    resolved = dict(current_gears)
+    for band in evidence.get("bands") or []:
+        if not isinstance(band, dict):
+            continue
+        burden_band = band.get("burden_band")
+        if not isinstance(burden_band, int) or isinstance(burden_band, bool):
+            continue
+        current = resolved.get(burden_band, 0)
+        strong_streak = band.get("strong_streak", 0)
+        low_streak = band.get("low_streak", 0)
+        if (
+            isinstance(strong_streak, int)
+            and strong_streak >= n_clean_runs_for_shift
+            and current < max_gear
+        ):
+            resolved[burden_band] = current + 1
+        elif (
+            isinstance(low_streak, int) and low_streak >= n_low_runs_for_shift_down and current > 0
+        ):
+            resolved[burden_band] = current - 1
+        else:
+            resolved[burden_band] = current
+    return resolved
+
+
+def _matching_records(
+    records: list[dict[str, Any]], *, claimed_set_key: str
+) -> list[dict[str, Any]]:
+    return [
+        record
+        for record in records
+        if isinstance(record, dict)
+        and record.get("mode") == "cadence-send"
+        and record_claimed_set_key(record) == claimed_set_key
+    ]
+
+
+def _gears_from_generation(generation: Any) -> dict[int, int]:
+    if not isinstance(generation, dict):
+        return {}
+    bands = generation.get("bands")
+    if not isinstance(bands, list):
+        return {}
+    out: dict[int, int] = {}
+    for entry in bands:
+        if not isinstance(entry, dict):
+            continue
+        idx = entry.get("index")
+        gear = entry.get("gear", 0)
+        if (
+            isinstance(idx, int)
+            and not isinstance(idx, bool)
+            and isinstance(gear, int)
+            and not isinstance(gear, bool)
+        ):
+            out[idx] = gear
+    return out
+
+
+def _band_state(value: float) -> str:
+    if value < LOW_FRACTION:
+        return "low"
+    if value < 0.85:
+        return "building"
+    if value < STRONG_FRACTION:
+        return "steady"
+    if value < 1.0:
+        return "strong"
+    return "exact"
+
+
+def _fraction(correct: int, available: int, *, default: float = 0.0) -> float:
+    if available <= 0:
+        return default
+    return max(0.0, min(1.0, correct / available))
+
+
+def _mean(values: list[float], *, default: float) -> float:
+    if not values:
+        return default
+    return sum(values) / len(values)
+
+
+def _coerce_int(value: Any, default: int) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return default
