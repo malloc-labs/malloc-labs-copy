@@ -31,6 +31,20 @@ STRONG_FRACTION = 0.95
 # the band_state == "low" cutoff in :func:`_band_state`.
 LOW_FRACTION = 0.70
 
+# Highest gear the candidate selector currently understands. Gears
+# beyond this exist in the MOC but change generator parameters
+# (max_word_length, max_words) and are a separate validation surface.
+MAX_GEAR = 2
+# Consecutive strong-band sessions required before a band advances one
+# gear. Conservative on purpose — one lucky run should not move the
+# generator, and three repeated strong runs make a chance explanation
+# unlikely. The MOC suggests 2-3; 3 is the cautious end.
+N_CLEAN_RUNS_FOR_SHIFT = 3
+# Consecutive low-band sessions required before a band drops one gear.
+# Asymmetric with N_CLEAN_RUNS_FOR_SHIFT: easier to step down than to
+# step up, so the system never feels punitive.
+N_LOW_RUNS_FOR_SHIFT_DOWN = 2
+
 _SPACE_RE = re.compile(r"\s+")
 
 
@@ -402,3 +416,93 @@ def _streak(values: list[float], predicate: Callable[[float], bool]) -> int:
             return count
         count += 1
     return count
+
+
+def latest_gears_for_claimed_set(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+) -> dict[int, int]:
+    """Return the per-band gears from the most recent matching session.
+
+    Looks at all records — saved or not — because the gear a session
+    ran at is locked in at generation time regardless of whether the
+    learner later saved answers. A session that produced no answer
+    evidence still establishes the gear floor the next session inherits.
+
+    Returns ``{}`` when no record matches; the resolver treats missing
+    bands as gear 0.
+    """
+    matching = [
+        r
+        for r in records
+        if isinstance(r, dict)
+        and r.get("mode") == "koch-exercise"
+        and record_claimed_set_key(r) == claimed_set_key
+    ]
+    if not matching:
+        return {}
+    matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
+    latest = matching[0]
+    generation = latest.get("generation")
+    if not isinstance(generation, dict):
+        return {}
+    bands = generation.get("bands")
+    if not isinstance(bands, list):
+        return {}
+    out: dict[int, int] = {}
+    for entry in bands:
+        if not isinstance(entry, dict):
+            continue
+        idx = entry.get("index")
+        gear = entry.get("gear", 0)
+        if isinstance(idx, int) and not isinstance(idx, bool):
+            if isinstance(gear, int) and not isinstance(gear, bool):
+                out[idx] = gear
+    return out
+
+
+def resolve_gears(
+    evidence: dict[str, Any],
+    *,
+    current_gears: dict[int, int],
+    max_gear: int = MAX_GEAR,
+    n_clean_runs_for_shift: int = N_CLEAN_RUNS_FOR_SHIFT,
+    n_low_runs_for_shift_down: int = N_LOW_RUNS_FOR_SHIFT_DOWN,
+) -> dict[int, int]:
+    """Compute per-band gear assignments for the next session.
+
+    Step changes by one per call: a band that has met the strong-streak
+    threshold advances one gear, a band that has met the low-streak
+    threshold drops one gear, otherwise the gear is held. Bands not
+    represented in ``evidence`` keep whatever gear was in
+    ``current_gears``.
+
+    The single-step constraint is intentional — even a long strong
+    streak only adds one gear per session, so any move-up is followed
+    by another session of evidence at the new gear before another
+    advance is possible.
+    """
+    resolved: dict[int, int] = dict(current_gears)
+    for band in evidence.get("bands") or []:
+        if not isinstance(band, dict):
+            continue
+        burden_band = band.get("burden_band")
+        if not isinstance(burden_band, int) or isinstance(burden_band, bool):
+            continue
+        current = resolved.get(burden_band, 0)
+        strong_streak = band.get("strong_streak", 0)
+        low_streak = band.get("low_streak", 0)
+        if (
+            isinstance(strong_streak, int)
+            and strong_streak >= n_clean_runs_for_shift
+            and current < max_gear
+        ):
+            resolved[burden_band] = current + 1
+        elif (
+            isinstance(low_streak, int) and low_streak >= n_low_runs_for_shift_down and current > 0
+        ):
+            resolved[burden_band] = current - 1
+        else:
+            resolved[burden_band] = current
+    return resolved

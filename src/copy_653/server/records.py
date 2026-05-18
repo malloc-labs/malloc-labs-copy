@@ -17,6 +17,11 @@ from typing import Any
 
 from copy_653.audio.parameters import AudioParameters
 from copy_653.config import load_save_directory
+from copy_653.sequence.exercise_analysis import (
+    latest_gears_for_claimed_set,
+    load_band_evidence,
+    resolve_gears,
+)
 from copy_653.session import (
     CadenceSendRecord,
     KochExerciseRecord,
@@ -126,26 +131,39 @@ def _save_koch_answers(path: Path, answers: list[str]) -> int:
     return update_koch_answers(path, answers)
 
 
-def _next_koch_run_index(save_directory: Path, claimed_set_key: str) -> int:
-    """Return the next run index for sessions at this claimed-set key.
+def _iter_koch_records(save_directory: Path) -> list[dict[str, Any]]:
+    """Load every parseable koch-exercise record under ``save_directory``.
 
-    Scans ``<save_directory>/koch-exercise/`` and counts records that
-    share the same normalised claimed-set identity. Legacy records that
-    pre-date ``generation.claimed_set_key`` fall back to deriving the
-    key from ``claimed_set`` so the count is consistent across the
-    schema bump.
+    Returns full record dicts. Files that fail to parse or do not
+    declare ``mode = "koch-exercise"`` are skipped — a corrupt file
+    should not break the diagnostic or gear-resolution paths that
+    consume this listing.
     """
     target_dir = save_directory / "koch-exercise"
+    records: list[dict[str, Any]] = []
     if not target_dir.is_dir():
-        return 1
-    count = 0
+        return records
     for entry in target_dir.glob("koch-exercise-*.json"):
         try:
             data = json.loads(entry.read_text())
         except (OSError, ValueError):
+            logger.exception("skipping unreadable koch-exercise record: %s", entry)
             continue
-        if not isinstance(data, dict) or data.get("mode") != "koch-exercise":
-            continue
+        if isinstance(data, dict) and data.get("mode") == "koch-exercise":
+            records.append(data)
+    return records
+
+
+def _next_koch_run_index(save_directory: Path, claimed_set_key: str) -> int:
+    """Return the next run index for sessions at this claimed-set key.
+
+    Counts records that share the same normalised claimed-set identity.
+    Legacy records that pre-date ``generation.claimed_set_key`` fall
+    back to deriving the key from ``claimed_set`` so the count is
+    consistent across the schema bump.
+    """
+    count = 0
+    for data in _iter_koch_records(save_directory):
         generation = data.get("generation")
         key: str | None = None
         if isinstance(generation, dict):
@@ -159,6 +177,24 @@ def _next_koch_run_index(save_directory: Path, claimed_set_key: str) -> int:
         if key == claimed_set_key:
             count += 1
     return count + 1
+
+
+def _resolve_session_gears(
+    save_directory: Path, claimed_set_key: str, exercise_count: int
+) -> list[int]:
+    """Compute the per-slot gears for the next session.
+
+    Reads recent koch-exercise records, derives per-band evidence and
+    the most-recent session's gear floor, and applies the resolver to
+    produce a list of gears parallel to ``exercise_count``. The list
+    is returned with positional indices — entry ``i`` is the gear for
+    slot ``i + 1``.
+    """
+    records = _iter_koch_records(save_directory)
+    evidence = load_band_evidence(records, claimed_set_key=claimed_set_key)
+    current_gears = latest_gears_for_claimed_set(records, claimed_set_key=claimed_set_key)
+    resolved = resolve_gears(evidence, current_gears=current_gears)
+    return [resolved.get(i + 1, 0) for i in range(exercise_count)]
 
 
 def _write_koch_record(

@@ -51,7 +51,12 @@ from copy_653.midi import (
     MidiNoteEvent,
     iter_midi_note_events,
 )
-from copy_653.server.records import _ActiveCadenceSession, _save_koch_answers, _write_koch_record
+from copy_653.server.records import (
+    _ActiveCadenceSession,
+    _resolve_session_gears,
+    _save_koch_answers,
+    _write_koch_record,
+)
 from copy_653.server.test_message_audio import build_marconi_test_message
 from copy_653.server.validation import (
     _audio_params_from_settings_message,
@@ -160,23 +165,32 @@ async def _start_action(
         await _send_event(ws, {"type": "error", "reason": "no-claimed-symbols"})
         return None
 
+    # Resolve per-slot gears from prior evidence before generation. The
+    # generator owns gear semantics; this call only decides "which gear"
+    # by reading the recent record history for this exact claimed set.
+    save_directory = load_save_directory(config_path)
+    claimed_set_key = " ".join(sorted(claimed))
+    gears = _resolve_session_gears(save_directory, claimed_set_key, exercise_count=5)
+
     result = sequence.generate_copy_exercises(
         claimed_set=claimed,
         exercise_count=5,
         max_words=3,
         min_word_length=1,
         max_word_length=3,
+        gears=gears,
     )
     # Prepend the fixed ``DE`` listening anchor (spec §2.5). Unlike the
     # uniform draw, this is deliberate structural framing — the same two
     # letters open every exercise so the learner enters the listening
     # frame from a known shape regardless of their claimed set.
     exercises = [f"DE {exercise}" for exercise in result.exercises]
-    exercise_entries = build_exercise_entries(exercises, scores=result.scores)
+    exercise_entries = build_exercise_entries(exercises, scores=result.scores, gears=gears)
     generation = build_generation_profile(
         claimed_set=claimed,
         candidate_count=result.candidate_count,
         exercise_count=len(exercises),
+        gears=gears,
     )
     samples, timeline = build_exercises_audio(exercises, audio_params)
 

@@ -25,6 +25,7 @@ from copy_653.sequence.exercise_analysis import (
     load_band_evidence,
     record_claimed_set_key,
 )
+from copy_653.server.records import _iter_koch_records
 
 logger = logging.getLogger(__name__)
 
@@ -205,29 +206,6 @@ def _list_koch_exercises(config_path: Path | None) -> dict[str, Any]:
 # optional -N collision suffix); this rejects path separators and anything
 # else that could escape the koch-exercise subdirectory.
 _KOCH_FILENAME_RE = re.compile(r"^koch-exercise-[0-9A-Za-z-]+\.json$")
-
-
-def _iter_koch_records(save_directory: Path) -> list[dict[str, Any]]:
-    """Load every parseable koch-exercise record under ``save_directory``.
-
-    Returns full record dicts (not just listing summaries) so callers
-    can pass them straight to :func:`load_band_evidence`. Files that
-    fail to parse or do not declare ``mode = "koch-exercise"`` are
-    skipped — a corrupt file should not 500 the diagnostic endpoints.
-    """
-    target_dir = save_directory / "koch-exercise"
-    records: list[dict[str, Any]] = []
-    if not target_dir.is_dir():
-        return records
-    for entry in target_dir.glob("koch-exercise-*.json"):
-        try:
-            data = json.loads(entry.read_text())
-        except (OSError, ValueError):
-            logger.exception("skipping unreadable koch-exercise record: %s", entry)
-            continue
-        if isinstance(data, dict) and data.get("mode") == "koch-exercise":
-            records.append(data)
-    return records
 
 
 def _read_koch_band_evidence(

@@ -1,10 +1,13 @@
 from copy_653.sequence.exercise_analysis import (
+    MAX_GEAR,
     analyse_answer,
     apply_answers_to_entries,
     build_exercise_entries,
     build_generation_profile,
+    latest_gears_for_claimed_set,
     load_band_evidence,
     record_claimed_set_key,
+    resolve_gears,
     spacing_weight_for_claimed_set,
     strip_fixed_anchor,
 )
@@ -247,6 +250,67 @@ def test_load_band_evidence_supports_legacy_records_without_generation():
     evidence = load_band_evidence([legacy], claimed_set_key="K M")
     assert evidence["session_count"] == 1
     assert evidence["bands"][0]["recent_fractions"] == [1.0]
+
+
+def test_latest_gears_returns_empty_when_no_matching_record():
+    sessions = [
+        _session("2026-05-18T13:00:00Z", "K M U", [_saved_exercise(1, 1.0)]),
+    ]
+    sessions[0]["generation"]["bands"] = [{"index": 1, "gear": 2}]
+    assert latest_gears_for_claimed_set(sessions, claimed_set_key="K M") == {}
+
+
+def test_latest_gears_reads_most_recent_session():
+    older = _session("2026-05-18T13:00:00Z", "K M", [_saved_exercise(1, 1.0)])
+    older["generation"]["bands"] = [{"index": 1, "gear": 0}, {"index": 2, "gear": 0}]
+    newer = _session("2026-05-18T14:00:00Z", "K M", [_saved_exercise(1, 1.0)])
+    newer["generation"]["bands"] = [{"index": 1, "gear": 1}, {"index": 2, "gear": 2}]
+
+    gears = latest_gears_for_claimed_set([older, newer], claimed_set_key="K M")
+    assert gears == {1: 1, 2: 2}
+
+
+def test_resolve_gears_advances_after_strong_streak():
+    evidence = {
+        "bands": [
+            {"burden_band": 1, "strong_streak": 3, "low_streak": 0},
+            {"burden_band": 2, "strong_streak": 2, "low_streak": 0},
+        ],
+    }
+    resolved = resolve_gears(evidence, current_gears={1: 0, 2: 0})
+    # Band 1 met the 3-strong threshold and advances; band 2 holds.
+    assert resolved == {1: 1, 2: 0}
+
+
+def test_resolve_gears_drops_after_low_streak():
+    evidence = {
+        "bands": [
+            {"burden_band": 1, "strong_streak": 0, "low_streak": 2},
+            {"burden_band": 2, "strong_streak": 0, "low_streak": 1},
+        ],
+    }
+    resolved = resolve_gears(evidence, current_gears={1: 2, 2: 1})
+    assert resolved == {1: 1, 2: 1}
+
+
+def test_resolve_gears_caps_at_max_gear():
+    evidence = {"bands": [{"burden_band": 1, "strong_streak": 10, "low_streak": 0}]}
+    resolved = resolve_gears(evidence, current_gears={1: MAX_GEAR})
+    assert resolved == {1: MAX_GEAR}
+
+
+def test_resolve_gears_floors_at_zero():
+    evidence = {"bands": [{"burden_band": 1, "strong_streak": 0, "low_streak": 5}]}
+    resolved = resolve_gears(evidence, current_gears={1: 0})
+    assert resolved == {1: 0}
+
+
+def test_resolve_gears_preserves_bands_absent_from_evidence():
+    # Band 2 produced no recent evidence (e.g. unsaved sessions); its
+    # previous gear is kept rather than reset.
+    evidence = {"bands": [{"burden_band": 1, "strong_streak": 3, "low_streak": 0}]}
+    resolved = resolve_gears(evidence, current_gears={1: 0, 2: 1})
+    assert resolved == {1: 1, 2: 1}
 
 
 def test_apply_answers_to_entries_dampens_repeated_exercise_evidence():
