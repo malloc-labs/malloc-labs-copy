@@ -72,6 +72,11 @@ function renderSequence(state) {
     const claimedSet = new Set(state.symbols);
     claimedSymbolSet = claimedSet;
     const next = state.suggested_next;
+    // Saved-evidence readiness for the next-symbol nudge. Painted as
+    // a row-level attribute so CSS toggles the box on the "next"
+    // token without per-token logic. Server defaults to false on
+    // insufficient evidence.
+    sequenceRow.dataset.ready = state.ready_for_next ? "true" : "false";
 
     KOCH_ORDER.forEach((sym) => {
         const btn = sequenceRow.querySelector(`[data-symbol="${CSS.escape(sym)}"]`);

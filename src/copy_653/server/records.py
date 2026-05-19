@@ -24,6 +24,7 @@ from copy_653.sequence.cadence_analysis import (
     resolve_gears as resolve_cadence_gears,
 )
 from copy_653.sequence.exercise_analysis import (
+    is_ready_for_next_symbol,
     latest_gears_for_claimed_set,
     load_band_evidence,
     resolve_gears,
@@ -221,6 +222,20 @@ def _resolve_session_gears(
     current_gears = latest_gears_for_claimed_set(records, claimed_set_key=claimed_set_key)
     resolved = resolve_gears(evidence, current_gears=current_gears)
     return [resolved.get(i + 1, 0) for i in range(exercise_count)]
+
+
+def _next_symbol_readiness(save_directory: Path, claimed_set_key: str) -> bool:
+    """Whether saved evidence says the learner is ready for the next symbol.
+
+    Thin disk-walking wrapper over :func:`is_ready_for_next_symbol`.
+    Returns ``False`` for an empty claimed-set key — the WS layer calls
+    this for every ``claimed-symbols`` push and the empty key path is a
+    real one (cold start before any claim).
+    """
+    if not claimed_set_key:
+        return False
+    records = _iter_koch_records(save_directory)
+    return is_ready_for_next_symbol(records, claimed_set_key=claimed_set_key)
 
 
 def _next_cadence_run_index(save_directory: Path, claimed_set_key: str) -> int:

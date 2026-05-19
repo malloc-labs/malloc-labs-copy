@@ -594,9 +594,9 @@ copy-top-menu {
     opacity: 0.85;
 }
 
-/* Unclaimed — both "next" and "available" render identically; the
- * sequence is fixed and ordered, so position already communicates
- * which symbol comes next. */
+/* Unclaimed — both "next" and "available" render identically by
+ * default; the sequence is fixed and ordered, so position already
+ * communicates which symbol comes next. */
 .seq-token[data-state="next"],
 .seq-token[data-state="available"] {
     opacity: 0.35;
@@ -606,6 +606,21 @@ copy-top-menu {
 .seq-token[data-state="available"]:hover {
     color: var(--mr-text);
     opacity: 0.75;
+}
+
+/* Readiness nudge — when the saved-evidence signal says the learner
+ * has cleared the next-symbol bar, paint the existing affordance
+ * (anchor-coloured border around the "next" token). Driven by the
+ * row's data-ready attribute so the per-token render stays simple. */
+.sequence-row[data-ready="true"] .seq-token[data-state="next"] {
+    color: var(--mr-anchor);
+    opacity: 1;
+    border-color: var(--mr-anchor);
+}
+
+.sequence-row[data-ready="true"] .seq-token[data-state="next"]:hover {
+    color: var(--mr-text);
+    border-color: var(--mr-text);
 }
 
 /* Preview playback — mirrors the next-letter box style so the eye is
