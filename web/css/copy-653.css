@@ -594,32 +594,15 @@ copy-top-menu {
     opacity: 0.85;
 }
 
-/* Next — first unclaimed, quiet nudge via border accent */
-.seq-token[data-state="next"] {
-    color: var(--mr-anchor);
-    opacity: 1;
-    border-color: var(--mr-anchor);
-}
-
-.seq-token[data-state="next"]:hover {
-    color: var(--mr-text);
-    border-color: var(--mr-text);
-}
-
-/* Cadence drops the next-letter box and dims it back to the available
- * tier — only claimed symbols stay bright. The box-with-accent
- * affordance is reused below for the symbol whose Morse is previewing. */
-.cadence-shell .seq-token[data-state="next"] {
-    color: var(--mr-muted);
-    opacity: 0.35;
-    border-color: transparent;
-}
-
-/* Available — not yet reached, muted but interactive */
+/* Unclaimed — both "next" and "available" render identically; the
+ * sequence is fixed and ordered, so position already communicates
+ * which symbol comes next. */
+.seq-token[data-state="next"],
 .seq-token[data-state="available"] {
     opacity: 0.35;
 }
 
+.seq-token[data-state="next"]:hover,
 .seq-token[data-state="available"]:hover {
     color: var(--mr-text);
     opacity: 0.75;
