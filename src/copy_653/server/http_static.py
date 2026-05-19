@@ -29,6 +29,7 @@ from copy_653.sequence.exercise_analysis import (
 from copy_653.sequence.cadence_analysis import (
     DEFAULT_EVIDENCE_WINDOW_SIZE as CADENCE_EVIDENCE_WINDOW_SIZE,
     load_band_evidence as load_cadence_band_evidence,
+    load_band_history as load_cadence_band_history,
     record_claimed_set_key as cadence_record_claimed_set_key,
 )
 from copy_653.server.records import _iter_cadence_records, _iter_koch_records
@@ -134,6 +135,16 @@ def _build_static_handler(web_root: Path, config_path: Path | None = None):
                     config_path,
                     claimed_set_key=key_values[0] if key_values else None,
                     window_size_raw=window_values[0] if window_values else None,
+                )
+            )
+
+        if clean_path == "/api/cadence-band-history":
+            params = parse_qs(parsed_path.query)
+            key_values = params.get("claimed_set_key") or []
+            return _json_response(
+                _read_cadence_band_history(
+                    config_path,
+                    claimed_set_key=key_values[0] if key_values else None,
                 )
             )
 
@@ -463,6 +474,47 @@ def _read_cadence_band_evidence(
     )
     evidence["save_directory"] = str(save_directory)
     return evidence
+
+
+def _read_cadence_band_history(
+    config_path: Path | None,
+    *,
+    claimed_set_key: str | None,
+) -> dict[str, Any]:
+    """Return per-band lifetime history for the Key full-history modal.
+
+    Mirrors :func:`_read_koch_band_history` — when ``claimed_set_key``
+    is omitted, the most-recent saved cadence record's key is used so
+    the page does not need a separate round-trip to discover the
+    current key.
+    """
+    try:
+        save_directory = load_save_directory(config_path)
+    except Exception:
+        logger.exception("could not resolve save_directory for cadence band-history read")
+        return {
+            "save_directory": "",
+            "claimed_set_key": claimed_set_key or "",
+            "session_count": 0,
+            "sessions": [],
+            "bands": [],
+            "gear_changes": [],
+            "current_gears": {},
+        }
+
+    records = _iter_cadence_records(save_directory)
+    resolved_key = claimed_set_key
+    if not resolved_key:
+        latest = max(
+            records,
+            key=lambda r: str(r.get("started_at") or ""),
+            default=None,
+        )
+        resolved_key = cadence_record_claimed_set_key(latest) if latest else ""
+
+    history = load_cadence_band_history(records, claimed_set_key=resolved_key)
+    history["save_directory"] = str(save_directory)
+    return history
 
 
 def _read_cadence_send(
