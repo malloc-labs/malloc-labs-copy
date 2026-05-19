@@ -1,0 +1,707 @@
+/*
+ * key-page.css — styles for the key-input pages (cadence + freeplay).
+ *
+ * Owns the custom-input field, sent-symbol history, copy-target, rhythm
+ * review (zone bars + attempt markers), per-page action row, and the
+ * key diagnostics grid/table. Linked only by web/key/cadence.html and
+ * web/key/freeplay.html — the shared shell tokens live in core.css and
+ * the Koch sequence token row stays in copy-653.css.
+ */
+
+.key-custom-input {
+    margin-top: var(--mr-space-5);
+    border-top: var(--mr-border-rule);
+    padding-top: var(--mr-space-4);
+}
+
+.key-custom-input__toggle {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--mr-space-2);
+    margin: 0 0 var(--mr-space-3);
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    color: var(--mr-muted);
+    opacity: 0.55;
+    cursor: pointer;
+    text-align: left;
+    transition: color 0.1s ease, opacity 0.1s ease;
+}
+
+.key-custom-input__toggle:hover {
+    color: var(--mr-text);
+    opacity: 0.75;
+}
+
+.key-custom-input__arrow {
+    flex-shrink: 0;
+    font-size: var(--mr-size-small);
+}
+
+.key-custom-input__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--mr-space-2);
+    margin-bottom: var(--mr-space-3);
+}
+
+.key-custom-input__body[hidden] {
+    display: none;
+}
+
+.key-custom-input__field-label {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    margin: 0;
+}
+
+.key-custom-input__field {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    background: none;
+    color: var(--mr-text);
+    border: 1px solid var(--mr-border);
+    padding: var(--mr-space-2);
+    width: 100%;
+    box-sizing: border-box;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.key-custom-input__field:focus {
+    outline: 1px solid var(--mr-anchor);
+    outline-offset: 2px;
+    border-color: var(--mr-anchor);
+}
+
+.key-custom-input__hint {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    opacity: 0.65;
+    margin: 0;
+}
+
+.key-sent {
+    margin-top: var(--mr-space-5);
+    border-top: var(--mr-border-rule);
+    padding-top: var(--mr-space-4);
+}
+
+.key-sent__toggle {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--mr-space-2);
+    margin: 0 0 var(--mr-space-3);
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    color: var(--mr-muted);
+    opacity: 0.55;
+    cursor: pointer;
+    text-align: left;
+    transition: color 0.1s ease, opacity 0.1s ease;
+}
+
+.key-sent__toggle:hover {
+    color: var(--mr-text);
+    opacity: 0.75;
+}
+
+.key-sent__arrow {
+    flex-shrink: 0;
+    font-size: var(--mr-size-small);
+}
+
+.key-sent-current {
+    display: flex;
+    align-items: baseline;
+    gap: var(--mr-space-4);
+    margin-bottom: var(--mr-space-4);
+}
+
+.key-sent-symbol {
+    font-family: var(--mr-font-mono);
+    font-size: 4rem;
+    line-height: 1;
+    color: var(--mr-muted);
+    opacity: 0.35;
+}
+
+.key-sent-history {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    width: 100%;
+    overflow: hidden;
+    /* Per-item margins encode the leading gap; the container does not
+       add its own uniform spacing so within-word characters can touch.
+       Single line: newest symbols are anchored to the right and older
+       ones scroll off to the left as the history fills. */
+    gap: 0;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.key-sent-history li {
+    display: inline-flex;
+    align-items: baseline;
+    flex-shrink: 0;
+    gap: var(--mr-space-2);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    opacity: 0.35;
+}
+
+.key-sent-history__symbol {
+    color: var(--mr-muted);
+}
+
+/* No space before the first symbol. */
+.key-sent-history__item--leading-none {
+    margin-left: 0;
+}
+
+/* In-word characters touch with a single monospace character of breathing room. */
+.key-sent-history__item--leading-character {
+    margin-left: 0.5ch;
+}
+
+/* Word break — wide gap so a new word reads as separate without a visible separator. */
+.key-sent-history__item--leading-word {
+    margin-left: var(--mr-space-5);
+}
+
+/* Cadence Copy section — same leading-gap idiom as the sent history,
+   but per-exercise: each <li> is its own flex row of character spans
+   so the numbered exercise list stays readable while characters within
+   each sentence use sent-style intra-word / inter-word spacing. */
+.key-copy-target {
+    display: flex;
+    align-items: center;
+    gap: var(--mr-space-4);
+    margin-bottom: var(--mr-space-4);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+}
+
+.key-copy-target-labels {
+    display: flex;
+    flex-direction: column;
+    gap: var(--mr-space-1);
+}
+
+.key-copy-target-labels .sequence-label {
+    margin-bottom: 0;
+}
+
+.key-copy-target-label {
+    color: var(--mr-muted);
+}
+
+.key-copy-symbol {
+    font-family: var(--mr-font-mono);
+    font-size: 3rem;
+    line-height: 1;
+    color: var(--mr-text);
+}
+
+.key-copy-imi {
+    margin: 0 0 var(--mr-space-2);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    letter-spacing: 0.04em;
+    text-align: center;
+}
+
+/* Reserve the cue's vertical space whether or not it's showing so
+   the surrounding layout doesn't reflow when it toggles. Overrides
+   the user-agent ``[hidden] { display: none }``. */
+.key-copy-imi[hidden] {
+    display: block;
+    visibility: hidden;
+}
+
+.key-copy-history__toggle {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--mr-space-2);
+    margin: 0 0 var(--mr-space-2);
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    color: var(--mr-muted);
+    opacity: 0.55;
+    cursor: pointer;
+    text-align: left;
+    transition: color 0.1s ease, opacity 0.1s ease;
+}
+
+.key-copy-history__toggle:hover {
+    color: var(--mr-text);
+    opacity: 0.75;
+}
+
+.key-copy-history__arrow {
+    flex-shrink: 0;
+    font-size: var(--mr-size-small);
+}
+
+.key-copy-history {
+    margin: 0;
+    padding-left: var(--mr-space-5);
+}
+
+.key-copy-history__item {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    margin-bottom: var(--mr-space-2);
+}
+
+.key-copy-history__item[data-selected="true"] {
+    color: var(--mr-text);
+}
+
+.key-copy-history__item::marker {
+    color: var(--mr-muted);
+}
+
+.key-copy-history__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0;
+}
+
+.key-copy-history__symbol--leading-none {
+    margin-left: 0;
+}
+
+.key-copy-history__symbol--leading-character {
+    margin-left: 0.5ch;
+}
+
+.key-copy-history__symbol--leading-word {
+    margin-left: var(--mr-space-5);
+}
+
+.key-rhythm-review {
+    --key-rhythm-green: color-mix(in srgb, var(--mr-anchor) 62%, var(--mr-muted));
+    --key-rhythm-amber: color-mix(in srgb, var(--mr-warning) 58%, var(--mr-muted));
+    --key-rhythm-red: color-mix(in srgb, #b36a5e 52%, var(--mr-muted));
+    margin-top: var(--mr-space-4);
+}
+
+.key-rhythm-review__toggle {
+    color: var(--mr-muted);
+    opacity: 0.55;
+}
+
+.key-rhythm-review__toggle:hover {
+    color: var(--mr-text);
+    opacity: 0.75;
+}
+
+.key-rhythm-review__body {
+    height: auto;
+    min-height: 0;
+    overflow-y: visible;
+}
+
+/* Column layout so the legend can be pinned to the bottom-right via
+ * margin-top: auto on the legend itself. Scoped to :not([hidden]) so
+ * the display rule doesn't override the [hidden] attribute. */
+.key-rhythm-review__body:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+}
+
+.key-rhythm-review__tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--mr-space-2);
+    /* Negative side margins pull the tab strip out over the body's
+     * padding so the sticky background spans the full bordered region;
+     * matching padding keeps the tab buttons in their original spots.
+     * Without this, scrolling content shows through the padding gap
+     * above the sticky bar. */
+    margin: calc(-1 * var(--mr-space-3)) calc(-1 * var(--mr-space-3)) var(--mr-space-3);
+    padding: calc(var(--mr-space-3) + var(--mr-space-2)) var(--mr-space-3) var(--mr-space-2);
+    border-bottom: var(--mr-border-rule);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--mr-bg);
+}
+
+.key-rhythm-review__tabs:empty {
+    display: none;
+}
+
+.key-rhythm-review__tab {
+    padding: var(--mr-space-1) var(--mr-space-3);
+    border: var(--mr-border-rule);
+    background: none;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    cursor: pointer;
+    transition: color 0.1s ease, border-color 0.1s ease, opacity 0.1s ease;
+    opacity: 0.7;
+}
+
+.key-rhythm-review__tab:hover {
+    color: var(--mr-text);
+    opacity: 1;
+}
+
+.key-rhythm-review__tab[data-selected="true"] {
+    color: var(--mr-text);
+    border-color: var(--mr-anchor);
+    opacity: 1;
+}
+
+.key-rhythm-review__symbols {
+    /* One column per symbol, fixed width. Asymmetric zone fractions —
+     * tolerance for stretched timing is more forgiving than compressed,
+     * so red is widest, green narrowest. Tune by retuning the vars. */
+    --zone-group-width: 5ch;
+    --zone-green-frac: 1.2fr;
+    --zone-amber-frac: 1.6fr;
+    --zone-red-frac: 2.2fr;
+    --zone-group-height: 0.9rem;
+    width: 100%;
+}
+
+.key-rhythm-baseline__exercise {
+    margin-bottom: var(--mr-space-4);
+}
+
+.key-rhythm-baseline__exercise:last-child {
+    margin-bottom: 0;
+}
+
+.key-rhythm-baseline__exercise-label {
+    margin: 0 0 var(--mr-space-2) 0;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+}
+
+.key-rhythm-baseline__cols {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0;
+}
+
+.key-rhythm-baseline__col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+    width: var(--zone-group-width);
+    flex-shrink: 0;
+}
+
+.key-rhythm-baseline__symbol {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-text);
+    line-height: 1.2;
+}
+
+.key-rhythm-baseline__zones {
+    display: grid;
+    grid-template-columns:
+        var(--zone-green-frac)
+        var(--zone-amber-frac)
+        var(--zone-red-frac);
+    width: 100%;
+    height: var(--zone-group-height);
+}
+
+.key-rhythm-baseline__zone {
+    display: block;
+    height: 100%;
+}
+
+.key-rhythm-baseline__zone:first-child {
+    border-top-left-radius: 3px;
+    border-bottom-left-radius: 3px;
+}
+
+.key-rhythm-baseline__zone:last-child {
+    border-top-right-radius: 3px;
+    border-bottom-right-radius: 3px;
+}
+
+.key-rhythm-baseline__zone--green {
+    background: var(--key-rhythm-green);
+}
+
+.key-rhythm-baseline__zone--amber {
+    background: var(--key-rhythm-amber);
+}
+
+.key-rhythm-baseline__zone--red {
+    background: var(--key-rhythm-red);
+}
+
+/* User-attempt overlay: sits below each column's zone group, full width,
+ * and positions a marker (up-arrow + sent-symbol glyph stacked) at a
+ * continuous x-fraction across the column via --attempt-x (0..1).
+ * Left-aligned at the marker — x=0 sits flush with the column's left
+ * edge, matching the baseline symbol's left alignment over green. */
+.key-rhythm-baseline__attempt {
+    position: relative;
+    width: 100%;
+    margin-top: 0.3rem;
+    height: 1.6rem;
+}
+
+.key-rhythm-baseline__attempt-marker {
+    position: absolute;
+    top: 0;
+    left: calc(var(--attempt-x, 0) * 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1;
+}
+
+.key-rhythm-baseline__attempt-arrow {
+    color: var(--mr-text);
+    font-size: 0.7rem;
+}
+
+.key-rhythm-baseline__attempt-symbol {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-text);
+}
+
+.key-rhythm-review__legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--mr-space-4);
+    margin-top: auto;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    opacity: 0.72;
+}
+
+.key-rhythm-review__legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--mr-space-2);
+}
+
+.key-rhythm-review__swatch {
+    display: inline-block;
+    width: 1.2ch;
+    height: 0.18rem;
+    border-radius: 999px;
+    background: var(--mr-muted);
+    opacity: 0.55;
+}
+
+.key-rhythm-review__swatch--green {
+    background: var(--key-rhythm-green);
+}
+
+.key-rhythm-review__swatch--amber {
+    background: var(--key-rhythm-amber);
+}
+
+.key-rhythm-review__swatch--red {
+    background: var(--key-rhythm-red);
+}
+
+.key-diagnostics {
+    margin-top: var(--mr-space-5);
+    border-top: var(--mr-border-rule);
+    padding-top: var(--mr-space-4);
+}
+
+.key-diagnostics__header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--mr-space-3);
+}
+
+.key-diagnostics-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--mr-space-2);
+    justify-content: flex-end;
+}
+
+.key-page-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--mr-space-2);
+    margin: var(--mr-space-3) 0;
+}
+
+/* Cadence wraps the action row in a collapsible section: the toggle
+ * sits on top, items appear underneath when expanded. Freeplay keeps
+ * the flat right-aligned row. */
+.cadence-shell .key-page-actions {
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.key-page-actions__toggle {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--mr-space-2);
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    color: var(--mr-muted);
+    opacity: 0.55;
+    cursor: pointer;
+    text-align: left;
+    transition: color 0.1s ease, opacity 0.1s ease;
+}
+
+.key-page-actions__toggle:hover {
+    color: var(--mr-text);
+    opacity: 0.75;
+}
+
+.key-page-actions__arrow {
+    flex-shrink: 0;
+    font-size: var(--mr-size-small);
+}
+
+.key-page-actions__items {
+    display: flex;
+    gap: var(--mr-space-2);
+}
+
+.key-page-actions__items[hidden] {
+    display: none;
+}
+
+.key-sound-toggle {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    border: 1px solid var(--mr-border);
+    background: none;
+    color: var(--mr-text);
+    padding: var(--mr-space-1) var(--mr-space-2);
+    cursor: pointer;
+}
+
+.key-sound-toggle:disabled {
+    color: var(--mr-muted);
+    cursor: default;
+    opacity: 0.65;
+}
+
+.key-page-actions .key-sound-toggle {
+    border-color: transparent;
+    color: var(--mr-muted);
+    opacity: 0.35;
+    transition: color 0.1s ease, opacity 0.1s ease, border-color 0.1s ease;
+}
+
+.key-page-actions .key-sound-toggle:hover,
+.key-page-actions .key-sound-toggle:focus-visible {
+    color: var(--mr-text);
+    opacity: 0.75;
+}
+
+.key-page-actions .key-sound-toggle:focus-visible {
+    outline: 1px solid var(--mr-border);
+    outline-offset: 2px;
+}
+
+.key-page-actions .key-sound-toggle:disabled {
+    color: var(--mr-muted);
+    opacity: 0.35;
+}
+
+.key-diagnostics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: var(--mr-space-3) var(--mr-space-4);
+    margin: 0;
+}
+
+.key-diagnostics-grid div {
+    min-width: 0;
+}
+
+.key-diagnostics-grid dt {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    margin-bottom: var(--mr-space-1);
+}
+
+.key-diagnostics-grid dd {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-text);
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.key-diagnostics-table-wrap {
+    margin-top: var(--mr-space-4);
+    overflow-x: auto;
+}
+
+.key-diagnostics-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+}
+
+.key-diagnostics-table caption {
+    color: var(--mr-muted);
+    font-weight: 400;
+    padding: 0 0 var(--mr-space-2);
+    text-align: left;
+}
+
+.key-diagnostics-table th,
+.key-diagnostics-table td {
+    border-top: var(--mr-border-rule);
+    padding: var(--mr-space-2);
+    text-align: left;
+    max-width: 18rem;
+    overflow-wrap: anywhere;
+    vertical-align: top;
+}
+
+.key-diagnostics-table th {
+    color: var(--mr-muted);
+    font-weight: 400;
+}
+
+.key-diagnostics-table td {
+    color: var(--mr-text);
+}
