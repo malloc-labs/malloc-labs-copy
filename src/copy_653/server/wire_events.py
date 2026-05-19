@@ -40,12 +40,25 @@ async def _send_event(ws: WebSocketServerProtocol, event: dict[str, Any]) -> Non
         pass
 
 
-def _claimed_symbols_event(claimed: tuple[str, ...]) -> dict[str, Any]:
-    """Build the ``claimed-symbols`` event payload from a claimed list."""
+def _claimed_symbols_event(
+    claimed: tuple[str, ...],
+    *,
+    ready_for_next: bool = False,
+) -> dict[str, Any]:
+    """Build the ``claimed-symbols`` event payload from a claimed list.
+
+    ``ready_for_next`` is the saved-evidence judgment on whether the
+    learner has cleared the readiness bar for the next-symbol nudge
+    (see :func:`copy_653.sequence.exercise_analysis.is_ready_for_next_symbol`).
+    Defaults to ``False`` so callers that have no record access — tests
+    and the initial cold path — degrade to "no nudge", which is the
+    safe default.
+    """
     return {
         "type": "claimed-symbols",
         "symbols": list(claimed),
         "suggested_next": patterns.next_koch_after(claimed),
+        "ready_for_next": ready_for_next,
     }
 
 

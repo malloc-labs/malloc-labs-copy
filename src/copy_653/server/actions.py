@@ -54,6 +54,7 @@ from copy_653.midi import (
 from copy_653.server.records import (
     _ActiveCadenceSession,
     _next_cadence_run_index,
+    _next_symbol_readiness,
     _resolve_cadence_session_gears,
     _resolve_session_gears,
     _save_koch_answers,
@@ -352,7 +353,10 @@ async def _claim_symbol_action(
         save_claimed_symbols(new_claimed, config_path)
         claimed = new_claimed
 
-    await _send_event(ws, _claimed_symbols_event(claimed))
+    save_directory = load_save_directory(config_path)
+    claimed_set_key = " ".join(sorted(claimed))
+    ready_for_next = _next_symbol_readiness(save_directory, claimed_set_key)
+    await _send_event(ws, _claimed_symbols_event(claimed, ready_for_next=ready_for_next))
 
 
 async def _unclaim_symbol_action(
@@ -386,7 +390,10 @@ async def _unclaim_symbol_action(
         save_claimed_symbols(new_claimed, config_path)
         claimed = new_claimed
 
-    await _send_event(ws, _claimed_symbols_event(claimed))
+    save_directory = load_save_directory(config_path)
+    claimed_set_key = " ".join(sorted(claimed))
+    ready_for_next = _next_symbol_readiness(save_directory, claimed_set_key)
+    await _send_event(ws, _claimed_symbols_event(claimed, ready_for_next=ready_for_next))
 
 
 async def _request_copy_exercises_action(

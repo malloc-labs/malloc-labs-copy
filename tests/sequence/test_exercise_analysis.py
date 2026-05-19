@@ -4,6 +4,7 @@ from copy_653.sequence.exercise_analysis import (
     apply_answers_to_entries,
     build_exercise_entries,
     build_generation_profile,
+    is_ready_for_next_symbol,
     latest_gears_for_claimed_set,
     load_band_evidence,
     load_band_history,
@@ -366,6 +367,120 @@ def test_resolve_gears_preserves_bands_absent_from_evidence():
     evidence = {"bands": [{"burden_band": 1, "strong_streak": 3, "low_streak": 0}]}
     resolved = resolve_gears(evidence, current_gears={1: 0, 2: 1})
     assert resolved == {1: 1, 2: 1}
+
+
+def _ready_session(
+    started_at: str,
+    gears: list[int],
+    fractions: list[float],
+    *,
+    claimed_set_key: str = "K M",
+) -> dict:
+    """Build a koch-exercise record where each list index = a burden band.
+
+    Mirrors :func:`_history_session` but lives next to the readiness
+    tests so changes in shape stay local. ``gears[i]`` and
+    ``fractions[i]`` describe band ``i + 1``.
+    """
+    return {
+        "mode": "koch-exercise",
+        "started_at": started_at,
+        "generation": {
+            "claimed_set_key": claimed_set_key,
+            "bands": [{"index": i + 1, "gear": gears[i]} for i in range(len(gears))],
+        },
+        "exercises": [
+            {
+                "index": i + 1,
+                "burden_band": i + 1,
+                "gear": gears[i],
+                "analysis": {
+                    "saved": True,
+                    "combined_fraction": fractions[i],
+                    "band_state": "exact" if fractions[i] >= 1.0 else "building",
+                },
+            }
+            for i in range(len(fractions))
+        ],
+    }
+
+
+def test_is_ready_returns_false_on_empty_records():
+    assert is_ready_for_next_symbol([], claimed_set_key="K M") is False
+
+
+def test_is_ready_returns_false_on_empty_claimed_set_key():
+    sessions = [_ready_session("2026-05-18T13:00:00Z", [MAX_GEAR], [1.0])]
+    assert is_ready_for_next_symbol(sessions, claimed_set_key="") is False
+
+
+def test_is_ready_returns_true_with_three_strong_sessions_at_max_gear():
+    sessions = [
+        _ready_session("2026-05-18T13:00:00Z", [MAX_GEAR, MAX_GEAR], [1.0, 1.0]),
+        _ready_session("2026-05-18T13:10:00Z", [MAX_GEAR, MAX_GEAR], [1.0, 1.0]),
+        _ready_session("2026-05-18T13:20:00Z", [MAX_GEAR, MAX_GEAR], [1.0, 1.0]),
+    ]
+    assert is_ready_for_next_symbol(sessions, claimed_set_key="K M") is True
+
+
+def test_is_ready_returns_false_when_any_band_below_max_gear():
+    # Three strong sessions, but the most-recent gear profile has
+    # band 2 at gear 1 — the gear-ceiling gate trips before any
+    # evidence is consulted.
+    sessions = [
+        _ready_session("2026-05-18T13:00:00Z", [MAX_GEAR, MAX_GEAR], [1.0, 1.0]),
+        _ready_session("2026-05-18T13:10:00Z", [MAX_GEAR, MAX_GEAR], [1.0, 1.0]),
+        _ready_session("2026-05-18T13:20:00Z", [MAX_GEAR, 1], [1.0, 1.0]),
+    ]
+    assert is_ready_for_next_symbol(sessions, claimed_set_key="K M") is False
+
+
+def test_is_ready_returns_false_when_latest_session_wobbles():
+    # Four exacts, then a single below-strong run on the latest.
+    # The "latest must be strong" gate suppresses the nudge today;
+    # one more strong session brings it back.
+    sessions = [
+        _ready_session("2026-05-18T13:00:00Z", [MAX_GEAR], [1.0]),
+        _ready_session("2026-05-18T13:10:00Z", [MAX_GEAR], [1.0]),
+        _ready_session("2026-05-18T13:20:00Z", [MAX_GEAR], [1.0]),
+        _ready_session("2026-05-18T13:30:00Z", [MAX_GEAR], [1.0]),
+        _ready_session("2026-05-18T13:40:00Z", [MAX_GEAR], [0.83]),
+    ]
+    assert is_ready_for_next_symbol(sessions, claimed_set_key="K M") is False
+
+
+def test_is_ready_tolerates_one_wobble_when_not_latest():
+    # One wobble inside the window but the latest is strong and the
+    # ≥3-strong-in-window count is still met (4 of 5).
+    sessions = [
+        _ready_session("2026-05-18T13:00:00Z", [MAX_GEAR], [1.0]),
+        _ready_session("2026-05-18T13:10:00Z", [MAX_GEAR], [1.0]),
+        _ready_session("2026-05-18T13:20:00Z", [MAX_GEAR], [0.5]),
+        _ready_session("2026-05-18T13:30:00Z", [MAX_GEAR], [1.0]),
+        _ready_session("2026-05-18T13:40:00Z", [MAX_GEAR], [1.0]),
+    ]
+    assert is_ready_for_next_symbol(sessions, claimed_set_key="K M") is True
+
+
+def test_is_ready_returns_false_below_strong_count_threshold():
+    # Latest is strong, but only 2 of the last 3 sessions clear the
+    # bar — short of N_CLEAN_RUNS_FOR_SHIFT.
+    sessions = [
+        _ready_session("2026-05-18T13:00:00Z", [MAX_GEAR], [0.5]),
+        _ready_session("2026-05-18T13:10:00Z", [MAX_GEAR], [1.0]),
+        _ready_session("2026-05-18T13:20:00Z", [MAX_GEAR], [1.0]),
+    ]
+    assert is_ready_for_next_symbol(sessions, claimed_set_key="K M") is False
+
+
+def test_is_ready_ignores_records_at_other_claimed_set_keys():
+    # Sessions at "K M U" should not count toward "K M" readiness.
+    sessions = [
+        _ready_session("2026-05-18T13:00:00Z", [MAX_GEAR], [1.0], claimed_set_key="K M U"),
+        _ready_session("2026-05-18T13:10:00Z", [MAX_GEAR], [1.0], claimed_set_key="K M U"),
+        _ready_session("2026-05-18T13:20:00Z", [MAX_GEAR], [1.0], claimed_set_key="K M U"),
+    ]
+    assert is_ready_for_next_symbol(sessions, claimed_set_key="K M") is False
 
 
 def _history_session(

@@ -30,6 +30,7 @@ from copy_653.config import (
     load_audio_parameters,
     load_claimed_symbols,
     load_keyer_settings,
+    load_save_directory,
 )
 from copy_653.letters import ANCHORED_SYMBOLS, find_anchors_dir
 from copy_653.midi import KeyDecoder, KeyElementAssembler
@@ -50,7 +51,11 @@ from copy_653.server.actions import (
     _start_action,
     _unclaim_symbol_action,
 )
-from copy_653.server.records import _ActiveCadenceSession, _finalize_cadence_session
+from copy_653.server.records import (
+    _ActiveCadenceSession,
+    _finalize_cadence_session,
+    _next_symbol_readiness,
+)
 from copy_653.server.validation import (
     _browser_midi_note_event,
     _optional_positive_int,
@@ -228,7 +233,10 @@ async def handler(
 
     # Push current state on connect so the UI does not need to ask.
     claimed = load_claimed_symbols(state.config_path)
-    await _send_event(ws, _claimed_symbols_event(claimed))
+    save_directory = load_save_directory(state.config_path)
+    claimed_set_key = " ".join(sorted(claimed))
+    ready_for_next = _next_symbol_readiness(save_directory, claimed_set_key)
+    await _send_event(ws, _claimed_symbols_event(claimed, ready_for_next=ready_for_next))
 
     try:
         async for raw in ws:
