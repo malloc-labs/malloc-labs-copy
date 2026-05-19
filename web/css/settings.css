@@ -249,6 +249,7 @@
     padding: var(--mr-space-3);
     border: var(--mr-border-rule);
     background: var(--mr-surface, transparent);
+    overflow-x: auto;
 }
 
 .settings-koch-rollup__heading {
