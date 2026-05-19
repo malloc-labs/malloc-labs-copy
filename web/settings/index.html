@@ -40,6 +40,14 @@
                     aria-selected="false"
                     data-selected="false"
                     data-tab="key">Key Exercises</button>
+            <button type="button"
+                    class="settings-tab"
+                    role="tab"
+                    id="settings-tab-calendar"
+                    aria-controls="settings-panel-calendar"
+                    aria-selected="false"
+                    data-selected="false"
+                    data-tab="calendar">Calendar</button>
         </nav>
 
         <section class="settings-panel"
@@ -347,6 +355,34 @@
                 <div class="settings-koch-dialog__body" id="settings-key-dialog-body"></div>
             </dialog>
         </section>
+
+        <section class="settings-panel"
+                 id="settings-panel-calendar"
+                 role="tabpanel"
+                 aria-labelledby="settings-tab-calendar"
+                 hidden>
+            <div class="settings-calendar">
+                <div class="settings-calendar__header">
+                    <button type="button"
+                            class="settings-calendar__nav"
+                            id="settings-calendar-prev"
+                            aria-label="Previous month">&larr;</button>
+                    <h3 class="settings-calendar__title" id="settings-calendar-title">&nbsp;</h3>
+                    <button type="button"
+                            class="settings-calendar__nav"
+                            id="settings-calendar-next"
+                            aria-label="Next month">&rarr;</button>
+                </div>
+                <p class="settings-calendar__meta" id="settings-calendar-meta">Loading saved sessions…</p>
+                <div class="settings-calendar__weekdays" aria-hidden="true">
+                    <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                </div>
+                <div class="settings-calendar__grid"
+                     id="settings-calendar-grid"
+                     role="grid"
+                     aria-labelledby="settings-calendar-title"></div>
+            </div>
+        </section>
     </main>
     <script type="module" src="../js/partials/landing-header.js"></script>
     <script type="module" src="../js/partials/theme-btn.js"></script>
@@ -358,5 +394,6 @@
     <script type="module" src="../js/settings-key-table.js"></script>
     <script type="module" src="../js/settings-key-rollup.js"></script>
     <script type="module" src="../js/settings-key-lifetime.js"></script>
+    <script type="module" src="../js/settings-calendar.js"></script>
 </body>
 </html>
