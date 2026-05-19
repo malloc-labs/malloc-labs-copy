@@ -57,6 +57,99 @@ function buildMetaGrid(record) {
     return grid;
 }
 
+const EXERCISES_COLUMNS = [
+    { label: "#" },
+    { label: "Target" },
+    {
+        label: "Band",
+        tooltip:
+            "Burden band — which slice of the curriculum this exercise sits in. " +
+            "Band 1 is the simplest; later bands rise as targets get longer or more demanding.",
+    },
+    {
+        label: "Burden",
+        tooltip:
+            "Burden score — a length-and-difficulty number for the target. Higher means a heavier " +
+            "exercise to send cleanly.",
+    },
+    {
+        label: "Attempts",
+        tooltip:
+            "How many sending attempts you made on this target. The scored row picks your best " +
+            "attempt; the others are kept on the record but not double-counted.",
+    },
+    {
+        label: "Symbols",
+        tooltip:
+            "Symbol accuracy — decoded characters vs target (edit-distance based). " +
+            "Contributes 40% of the combined fraction.",
+    },
+    {
+        label: "Spacing",
+        tooltip:
+            "Spacing accuracy — word boundaries placed correctly between decoded symbols. " +
+            "Contributes 30% of the combined fraction.",
+    },
+    {
+        label: "Formation",
+        tooltip:
+            "Formation quality — how cleanly your dits, dahs, and element gaps matched the " +
+            "expected timing for each character. Contributes 20% of the combined fraction.",
+    },
+    {
+        label: "Gap",
+        tooltip:
+            "Gap-timing readability — were your inter-element, inter-symbol, and inter-word gaps " +
+            "in the readable range. Contributes 5% of the combined fraction.",
+    },
+    {
+        label: "Decode",
+        tooltip:
+            "Decode health — fraction of keyed events that resolved to a real symbol rather than " +
+            "an unresolvable “?”. Contributes 5% of the combined fraction.",
+    },
+    {
+        label: "Combined",
+        tooltip:
+            "Combined fraction — weighted total: 0.40 Symbols + 0.30 Spacing + 0.20 Formation + " +
+            "0.05 Gap + 0.05 Decode.",
+    },
+    {
+        label: "State",
+        tooltip:
+            "Band state from the combined fraction: low (<0.70), building (<0.85), " +
+            "steady (<0.95), strong (<1.0), exact (=1.0).",
+    },
+    {
+        label: "Gear",
+        tooltip:
+            "Curriculum pacing gear the band was on for this exercise. Strong runs nudge it up; " +
+            "struggles nudge it down.",
+    },
+];
+
+function buildExercisesHead() {
+    const thead = document.createElement("thead");
+    const tr = document.createElement("tr");
+    EXERCISES_COLUMNS.forEach((col, idx) => {
+        const th = document.createElement("th");
+        th.scope = "col";
+        th.textContent = col.label;
+        if (col.tooltip) {
+            th.dataset.tooltip = col.tooltip;
+            th.tabIndex = 0;
+            // Right-edge columns flip the tooltip so it does not clip
+            // against the table / dialog right edge.
+            if (idx >= EXERCISES_COLUMNS.length - 2) {
+                th.dataset.tooltipAlign = "right";
+            }
+        }
+        tr.appendChild(th);
+    });
+    thead.appendChild(tr);
+    return thead;
+}
+
 function buildExercisesTable(record) {
     const wrap = document.createElement("div");
     wrap.className = "settings-koch-detail__exercises";
@@ -67,22 +160,7 @@ function buildExercisesTable(record) {
 
     const table = document.createElement("table");
     table.className = "settings-koch-detail__exercises-table";
-    const thead = document.createElement("thead");
-    thead.innerHTML =
-        "<tr><th scope=\"col\">#</th>" +
-        "<th scope=\"col\">Target</th>" +
-        "<th scope=\"col\">Band</th>" +
-        "<th scope=\"col\">Burden</th>" +
-        "<th scope=\"col\">Attempts</th>" +
-        "<th scope=\"col\">Symbols</th>" +
-        "<th scope=\"col\">Spacing</th>" +
-        "<th scope=\"col\">Formation</th>" +
-        "<th scope=\"col\">Gap</th>" +
-        "<th scope=\"col\">Decode</th>" +
-        "<th scope=\"col\">Combined</th>" +
-        "<th scope=\"col\">State</th>" +
-        "<th scope=\"col\">Gear</th></tr>";
-    table.appendChild(thead);
+    table.appendChild(buildExercisesHead());
 
     const body = document.createElement("tbody");
     const exercises = Array.isArray(record.exercises) ? record.exercises : [];
