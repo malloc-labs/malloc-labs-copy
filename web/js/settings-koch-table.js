@@ -72,6 +72,82 @@ function buildMetaGrid(record) {
     return grid;
 }
 
+const EXERCISES_COLUMNS = [
+    { label: "#" },
+    { label: "Played" },
+    { label: "You typed" },
+    {
+        label: "Band",
+        tooltip:
+            "Burden band — which slice of the Koch curriculum this exercise sits in. " +
+            "Band 1 is the simplest; later bands rise as the played material gets longer or more demanding.",
+    },
+    {
+        label: "Burden",
+        tooltip:
+            "Burden score — a length-and-difficulty number for what was played " +
+            "(the fixed DE anchor is excluded). Higher means a heavier exercise.",
+    },
+    {
+        label: "Symbols",
+        tooltip:
+            "Symbol accuracy — characters you got right (correct / available), " +
+            "with spaces ignored. Edit-distance based, so insertions and missed letters both count.",
+    },
+    {
+        label: "Spacing",
+        tooltip:
+            "Spacing accuracy — word boundaries you placed correctly (correct / available). " +
+            "Tracks where your spaces landed, separately from the letters.",
+    },
+    {
+        label: "Repeat",
+        tooltip:
+            "Repeat weight — discount applied when the same core already came up earlier " +
+            "in the session. 1.0 first time, then 0.7 / 0.5 / 0.35 on later repeats.",
+    },
+    {
+        label: "Evidence",
+        tooltip:
+            "Evidence score — symbol and spacing accuracy combined, then weighted by burden, " +
+            "position in the session, and the repeat weight.",
+    },
+    {
+        label: "State",
+        tooltip:
+            "Band state from the combined fraction: low (<0.70), building (<0.85), " +
+            "steady (<0.95), strong (<1.0), exact (=1.0).",
+    },
+    {
+        label: "Gear",
+        tooltip:
+            "Curriculum pacing gear the band was on for this exercise. Strong runs nudge it up; " +
+            "struggles nudge it down.",
+    },
+];
+
+function buildExercisesHead() {
+    const thead = document.createElement("thead");
+    const tr = document.createElement("tr");
+    EXERCISES_COLUMNS.forEach((col, idx) => {
+        const th = document.createElement("th");
+        th.scope = "col";
+        th.textContent = col.label;
+        if (col.tooltip) {
+            th.dataset.tooltip = col.tooltip;
+            th.tabIndex = 0;
+            // Right-edge columns flip the tooltip so it does not clip
+            // against the table / dialog right edge.
+            if (idx >= EXERCISES_COLUMNS.length - 2) {
+                th.dataset.tooltipAlign = "right";
+            }
+        }
+        tr.appendChild(th);
+    });
+    thead.appendChild(tr);
+    return thead;
+}
+
 function buildExercisesList(record) {
     const wrap = document.createElement("div");
     wrap.className = "settings-koch-detail__exercises";
@@ -94,20 +170,7 @@ function buildExercisesList(record) {
 
     const table = document.createElement("table");
     table.className = "settings-koch-detail__exercises-table";
-    const thead = document.createElement("thead");
-    thead.innerHTML =
-        "<tr><th scope=\"col\">#</th>" +
-        "<th scope=\"col\">Played</th>" +
-        "<th scope=\"col\">You typed</th>" +
-        "<th scope=\"col\">Band</th>" +
-        "<th scope=\"col\">Burden</th>" +
-        "<th scope=\"col\">Symbols</th>" +
-        "<th scope=\"col\">Spacing</th>" +
-        "<th scope=\"col\">Repeat</th>" +
-        "<th scope=\"col\">Evidence</th>" +
-        "<th scope=\"col\">State</th>" +
-        "<th scope=\"col\">Gear</th></tr>";
-    table.appendChild(thead);
+    table.appendChild(buildExercisesHead());
 
     const body = document.createElement("tbody");
     const normalised = exercises.map((rawExercise, idx) =>
