@@ -713,3 +713,120 @@
         flex-direction: column;
     }
 }
+
+.settings-calendar {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.settings-calendar__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.settings-calendar__title {
+    margin: 0;
+    color: var(--mr-text);
+    font-size: 1.1rem;
+    text-align: center;
+    flex: 1;
+}
+
+.settings-calendar__nav {
+    background: transparent;
+    border: 1px solid var(--mr-faint, currentColor);
+    color: var(--mr-text);
+    cursor: pointer;
+    padding: 0.35rem 0.75rem;
+    font: inherit;
+    line-height: 1;
+}
+
+.settings-calendar__nav:hover:not(:disabled) {
+    color: var(--mr-anchor);
+    border-color: var(--mr-anchor);
+}
+
+.settings-calendar__nav:disabled {
+    cursor: not-allowed;
+    opacity: 0.35;
+}
+
+.settings-calendar__meta {
+    margin: 0;
+    color: var(--mr-text);
+    opacity: 0.7;
+    font-size: 0.85rem;
+}
+
+.settings-calendar__weekdays,
+.settings-calendar__grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.35rem;
+}
+
+.settings-calendar__weekdays {
+    color: var(--mr-text);
+    opacity: 0.6;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.settings-calendar__weekdays > span {
+    text-align: center;
+    padding: 0.25rem 0;
+}
+
+.settings-calendar__day {
+    min-height: 4.5rem;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    row-gap: 0.15rem;
+    padding: 0.3rem 0.4rem;
+    border: 1px solid var(--mr-faint, currentColor);
+    color: var(--mr-text);
+    opacity: 0.55;
+    font-size: 0.9rem;
+}
+
+.settings-calendar__day--blank {
+    border-color: transparent;
+}
+
+.settings-calendar__day[data-practice="true"] {
+    opacity: 1;
+    border-color: var(--mr-anchor);
+    color: var(--mr-anchor);
+}
+
+.settings-calendar__day[data-today="true"] {
+    box-shadow: inset 0 0 0 1px var(--mr-text);
+}
+
+.settings-calendar__day-num {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+.settings-calendar__day-claimed {
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    color: var(--mr-text);
+    align-self: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.settings-calendar__day-count {
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--mr-text);
+    opacity: 0.75;
+    text-align: right;
+}

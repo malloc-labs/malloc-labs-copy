@@ -1,0 +1,159 @@
+// Settings page — Calendar tab.
+//
+// Dev-only monitoring view: per-day at-a-glance of practice activity
+// to help judge whether the next-symbol nudge is firing at sensible
+// moments. Renders one month at a time with prev/next navigation. Day
+// cells show the claimed-set in effect at the end of that day plus
+// the total exercises taken across all sessions on that day.
+//
+// Aggregation rules for days with multiple sessions:
+//   • claimed_set: the latest session's set (the state the learner
+//     ended the day on — most informative for nudge tuning).
+//   • exercise_count: sum across all sessions that day.
+//
+// Data source: /api/koch-exercises. The earliest navigable month is
+// 2026-01.
+
+const MIN_YEAR = 2026;
+const MIN_MONTH = 0; // January
+
+const titleEl = document.getElementById("settings-calendar-title");
+const metaEl = document.getElementById("settings-calendar-meta");
+const gridEl = document.getElementById("settings-calendar-grid");
+const prevBtn = document.getElementById("settings-calendar-prev");
+const nextBtn = document.getElementById("settings-calendar-next");
+
+const MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+];
+
+const today = new Date();
+let viewYear = Math.max(today.getFullYear(), MIN_YEAR);
+let viewMonth = viewYear === today.getFullYear() ? today.getMonth() : MIN_MONTH;
+
+// Map<YYYY-MM-DD, {claimed_set: string[], exercise_count: number}>, in
+// local time so calendar squares match the wall clock the learner saw
+// when they were practising.
+const practiceDays = new Map();
+
+function localDateKey(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+}
+
+function isAtMinMonth() {
+    return viewYear === MIN_YEAR && viewMonth === MIN_MONTH;
+}
+
+function stepMonth(delta) {
+    let m = viewMonth + delta;
+    let y = viewYear;
+    while (m < 0) { m += 12; y -= 1; }
+    while (m > 11) { m -= 12; y += 1; }
+    if (y < MIN_YEAR || (y === MIN_YEAR && m < MIN_MONTH)) return;
+    viewYear = y;
+    viewMonth = m;
+    render();
+}
+
+function render() {
+    titleEl.textContent = `${MONTH_NAMES[viewMonth]} ${viewYear}`;
+    prevBtn.disabled = isAtMinMonth();
+
+    const first = new Date(viewYear, viewMonth, 1);
+    // JS getDay: 0=Sun..6=Sat. Convert to Mon=0..Sun=6.
+    const leading = (first.getDay() + 6) % 7;
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const todayKey = localDateKey(today);
+
+    gridEl.replaceChildren();
+
+    // Leading blanks so day 1 lands under its weekday column.
+    for (let i = 0; i < leading; i += 1) {
+        const blank = document.createElement("div");
+        blank.className = "settings-calendar__day settings-calendar__day--blank";
+        blank.setAttribute("aria-hidden", "true");
+        gridEl.appendChild(blank);
+    }
+
+    for (let d = 1; d <= daysInMonth; d += 1) {
+        const cell = document.createElement("div");
+        cell.className = "settings-calendar__day";
+        cell.setAttribute("role", "gridcell");
+
+        const key = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+        const entry = practiceDays.get(key);
+        if (entry) {
+            cell.dataset.practice = "true";
+            const claimed = entry.claimed_set.join(" ");
+            cell.setAttribute(
+                "aria-label",
+                `${d} ${MONTH_NAMES[viewMonth]} — claimed ${claimed || "none"}, ${entry.exercise_count} exercise${entry.exercise_count === 1 ? "" : "s"}`,
+            );
+        } else {
+            cell.setAttribute("aria-label", `${d} ${MONTH_NAMES[viewMonth]}`);
+        }
+        if (key === todayKey) cell.dataset.today = "true";
+
+        const num = document.createElement("span");
+        num.className = "settings-calendar__day-num";
+        num.textContent = String(d);
+        cell.appendChild(num);
+
+        if (entry) {
+            const claimed = document.createElement("span");
+            claimed.className = "settings-calendar__day-claimed";
+            claimed.textContent = entry.claimed_set.join(" ");
+            cell.appendChild(claimed);
+
+            const count = document.createElement("span");
+            count.className = "settings-calendar__day-count";
+            count.textContent = `${entry.exercise_count} ex`;
+            cell.appendChild(count);
+        }
+
+        gridEl.appendChild(cell);
+    }
+}
+
+async function loadSessions() {
+    try {
+        const res = await fetch("/api/koch-exercises", { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const records = Array.isArray(data.records) ? data.records : [];
+        practiceDays.clear();
+        // /api/koch-exercises returns newest-first. Walk oldest-first so
+        // the final claimed_set we keep per day is the latest session's.
+        const oldestFirst = [...records].reverse();
+        oldestFirst.forEach((rec) => {
+            const d = new Date(rec.started_at);
+            if (Number.isNaN(d.getTime())) return;
+            const key = localDateKey(d);
+            const prev = practiceDays.get(key);
+            const count = Number.isFinite(rec.exercise_count) ? rec.exercise_count : 0;
+            const claimed = Array.isArray(rec.claimed_set) ? rec.claimed_set : [];
+            practiceDays.set(key, {
+                claimed_set: claimed,
+                exercise_count: (prev?.exercise_count || 0) + count,
+            });
+        });
+        if (records.length === 0) {
+            metaEl.textContent = `No saved Koch sessions in ${data.save_directory || "save directory"}.`;
+        } else {
+            metaEl.textContent = `${practiceDays.size} day${practiceDays.size === 1 ? "" : "s"} with practice across ${records.length} session${records.length === 1 ? "" : "s"}.`;
+        }
+    } catch (err) {
+        metaEl.textContent = `Could not load saved sessions: ${err.message}`;
+    }
+    render();
+}
+
+prevBtn.addEventListener("click", () => stepMonth(-1));
+nextBtn.addEventListener("click", () => stepMonth(1));
+
+render();
+loadSessions();
