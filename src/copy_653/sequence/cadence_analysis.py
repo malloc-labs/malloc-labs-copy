@@ -586,6 +586,111 @@ def load_band_evidence(
     }
 
 
+def load_band_history(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+) -> dict[str, Any]:
+    """Chronological per-band history for one cadence claimed-set key.
+
+    Mirrors :func:`copy_653.sequence.exercise_analysis.load_band_history`
+    so the Settings full-history modal renders identically on the Key
+    side. Each cell carries the session's ``combined_fraction`` plus the
+    gear that band ran at; gear-change events come back as a separate
+    chronological list. Records with no analysis surface as ``fraction
+    = None`` and the cell renders as missing client-side.
+    """
+    matching = _matching_records(records, claimed_set_key=claimed_set_key)
+    matching.sort(key=lambda r: str(r.get("started_at") or ""))
+
+    sessions_meta: list[dict[str, Any]] = []
+    for chronological_index, record in enumerate(matching, start=1):
+        generation = record.get("generation")
+        run_index: int | None = None
+        if isinstance(generation, dict):
+            stored = generation.get("run_index")
+            if isinstance(stored, int) and not isinstance(stored, bool):
+                run_index = stored
+        sessions_meta.append(
+            {
+                "run_index": run_index if run_index is not None else chronological_index,
+                "started_at": str(record.get("started_at") or ""),
+            }
+        )
+
+    band_entries: dict[int, list[dict[str, Any]]] = {}
+    for idx, record in enumerate(matching):
+        run_index = sessions_meta[idx]["run_index"]
+        started_at = sessions_meta[idx]["started_at"]
+        session_gears = _gears_from_generation(record.get("generation"))
+
+        exercises = record.get("exercises")
+        if not isinstance(exercises, list):
+            continue
+        for exercise in exercises:
+            if not isinstance(exercise, dict):
+                continue
+            burden_band = exercise.get("burden_band")
+            if not isinstance(burden_band, int) or isinstance(burden_band, bool):
+                continue
+
+            analysis = exercise.get("analysis")
+            fraction: float | None = None
+            state = ""
+            if isinstance(analysis, dict) and analysis.get("saved") is True:
+                raw_fraction = analysis.get("combined_fraction")
+                if isinstance(raw_fraction, (int, float)) and not isinstance(raw_fraction, bool):
+                    fraction = round(float(raw_fraction), 6)
+                raw_state = analysis.get("band_state")
+                state = str(raw_state) if isinstance(raw_state, str) else ""
+
+            gear = session_gears.get(burden_band)
+            if gear is None:
+                gear = _coerce_int(exercise.get("gear"), 0)
+
+            band_entries.setdefault(burden_band, []).append(
+                {
+                    "run_index": run_index,
+                    "started_at": started_at,
+                    "fraction": fraction,
+                    "gear": gear,
+                    "band_state": state,
+                }
+            )
+
+    gear_changes: list[dict[str, Any]] = []
+    for burden_band, entries in band_entries.items():
+        prev_gear: int | None = None
+        for entry in entries:
+            current_gear = entry["gear"]
+            if prev_gear is not None and current_gear != prev_gear:
+                gear_changes.append(
+                    {
+                        "burden_band": burden_band,
+                        "run_index": entry["run_index"],
+                        "started_at": entry["started_at"],
+                        "previous_gear": prev_gear,
+                        "current_gear": current_gear,
+                    }
+                )
+            prev_gear = current_gear
+    gear_changes.sort(key=lambda c: (c["run_index"], c["burden_band"]))
+
+    current_gears = _gears_from_generation(matching[-1].get("generation")) if matching else {}
+
+    return {
+        "claimed_set_key": claimed_set_key,
+        "session_count": len(matching),
+        "sessions": sessions_meta,
+        "bands": [
+            {"burden_band": band, "entries": entries}
+            for band, entries in sorted(band_entries.items())
+        ],
+        "gear_changes": gear_changes,
+        "current_gears": dict(sorted(current_gears.items())),
+    }
+
+
 def latest_gears_for_claimed_set(
     records: list[dict[str, Any]],
     *,
