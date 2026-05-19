@@ -200,12 +200,20 @@ function buildAnswerInputs(exercises) {
         input.id = inputId;
         input.className = "answer-row__input";
         input.autocomplete = "off";
+        input.autocapitalize = "characters";
         input.spellcheck = false;
         input.disabled = true;
         // Any edit after a successful save returns Save to the
         // unsaved "Save" affordance so the learner can write the
         // updated answers back to the record.
         input.addEventListener("input", () => {
+            const start = input.selectionStart;
+            const end = input.selectionEnd;
+            const upper = input.value.toUpperCase();
+            if (upper !== input.value) {
+                input.value = upper;
+                input.setSelectionRange(start, end);
+            }
             if (saveBtn.dataset.state === "saved") setSaveState("ready");
         });
 
