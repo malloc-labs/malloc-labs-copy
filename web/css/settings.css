@@ -292,14 +292,32 @@
 
 .settings-koch-rollup__fractions {
     display: inline-flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: var(--mr-space-1);
+    white-space: nowrap;
 }
 
 .settings-koch-rollup__chip {
     padding: 0 var(--mr-space-1);
     border: var(--mr-border-rule);
     color: var(--mr-text);
+    flex: 0 0 auto;
+}
+
+.settings-key-rollup__metrics {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: var(--mr-space-1) var(--mr-space-2);
+}
+
+.settings-key-rollup__metric {
+    display: inline-flex;
+    gap: var(--mr-space-1);
+    white-space: nowrap;
+}
+
+.settings-key-rollup__metric-label {
+    color: var(--mr-muted);
 }
 
 .settings-koch-rollup__chip[data-state="strong"] {

@@ -46,6 +46,31 @@ function appendCell(row, value) {
     row.appendChild(cell);
 }
 
+const METRIC_FIELDS = [
+    ["Sym", "symbol_fraction"],
+    ["Spc", "spacing_fraction"],
+    ["Frm", "formation_fraction"],
+    ["Gap", "gap_timing_fraction"],
+];
+
+function renderMetricStrip(band) {
+    const wrap = document.createElement("span");
+    wrap.className = "settings-key-rollup__metrics";
+    METRIC_FIELDS.forEach(([label, key]) => {
+        const item = document.createElement("span");
+        item.className = "settings-key-rollup__metric";
+        const labelEl = document.createElement("span");
+        labelEl.className = "settings-key-rollup__metric-label";
+        labelEl.textContent = label;
+        const valueEl = document.createElement("span");
+        valueEl.textContent = formatFraction(band[key]);
+        item.appendChild(labelEl);
+        item.appendChild(valueEl);
+        wrap.appendChild(item);
+    });
+    return wrap;
+}
+
 function renderBands(bands) {
     tbody.replaceChildren();
     bands.forEach((band) => {
@@ -54,10 +79,9 @@ function renderBands(bands) {
         const fractionsCell = document.createElement("td");
         fractionsCell.appendChild(renderFractionList(band.recent_fractions));
         tr.appendChild(fractionsCell);
-        appendCell(tr, formatFraction(band.symbol_fraction));
-        appendCell(tr, formatFraction(band.spacing_fraction));
-        appendCell(tr, formatFraction(band.formation_fraction));
-        appendCell(tr, formatFraction(band.gap_timing_fraction));
+        const metricsCell = document.createElement("td");
+        metricsCell.appendChild(renderMetricStrip(band));
+        tr.appendChild(metricsCell);
         appendCell(tr, Number.isFinite(band.strong_streak) ? band.strong_streak : "-");
         appendCell(tr, Number.isFinite(band.low_streak) ? band.low_streak : "-");
         tbody.appendChild(tr);
