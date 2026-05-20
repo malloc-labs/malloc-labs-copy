@@ -283,9 +283,8 @@ def test_save_audio_timing_rejects_invalid_texture_values(tmp_path: Path):
 # ---------- key input ---------------------------------------------------
 
 
-def test_load_keyer_settings_defaults_to_trinkey_buzzer_off(tmp_path: Path):
+def test_load_keyer_settings_returns_defaults_when_table_missing(tmp_path: Path):
     assert load_keyer_settings(tmp_path / "missing.toml") == KeyerSettings(
-        trinkey_buzzer_enabled=False,
         input_name="TRRS Trinkey",
         dit_note=1,
         dah_note=2,
@@ -297,7 +296,6 @@ def test_load_keyer_settings_reads_key_table(tmp_path: Path):
     config_file = tmp_path / "config.toml"
     config_file.write_text(textwrap.dedent("""
         [midi.key]
-        trinkey_buzzer_enabled = true
         input_name = "TRRS Trinkey M0"
         dit_note = 1
         dah_note = 2
@@ -305,7 +303,6 @@ def test_load_keyer_settings_reads_key_table(tmp_path: Path):
         """))
 
     assert load_keyer_settings(config_file) == KeyerSettings(
-        trinkey_buzzer_enabled=True,
         input_name="TRRS Trinkey M0",
         dit_note=1,
         dah_note=2,
@@ -316,7 +313,6 @@ def test_load_keyer_settings_reads_key_table(tmp_path: Path):
 @pytest.mark.parametrize(
     ("toml", "message"),
     [
-        ('trinkey_buzzer_enabled = "yes"', "trinkey_buzzer_enabled"),
         ("input_name = false", "input_name"),
         ("dit_note = -1", "dit_note"),
         ("dah_note = 128", "dah_note"),
@@ -346,17 +342,15 @@ def test_save_keyer_settings_preserves_other_tables(tmp_path: Path):
         """))
 
     saved = save_keyer_settings(
-        trinkey_buzzer_enabled=True,
+        input_name="TRRS Trinkey M0",
         path=config_file,
     )
 
     assert saved == KeyerSettings(
-        trinkey_buzzer_enabled=True,
-        input_name="TRRS Trinkey",
+        input_name="TRRS Trinkey M0",
     )
     assert load_keyer_settings(config_file) == KeyerSettings(
-        trinkey_buzzer_enabled=True,
-        input_name="TRRS Trinkey",
+        input_name="TRRS Trinkey M0",
     )
     assert load_audio_parameters(config_file).character_speed_wpm == 22
     assert load_claimed_symbols(config_file) == ("K", "M")
@@ -387,7 +381,6 @@ def test_load_keyer_settings_rejects_unknown_keyer_mode(tmp_path: Path):
 def test_save_keyer_settings_persists_keyer_mode(tmp_path: Path):
     config_file = tmp_path / "config.toml"
     saved = save_keyer_settings(
-        trinkey_buzzer_enabled=False,
         keyer_mode="ultimatic",
         path=config_file,
     )

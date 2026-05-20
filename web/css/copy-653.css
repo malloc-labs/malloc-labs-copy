@@ -231,6 +231,26 @@ copy-top-menu {
 .status[data-status="disconnected"] { color: var(--mr-muted); opacity: 0.6; }
 .status[data-status="error"]        { color: var(--mr-warning); }
 
+/* Trinkey sync-status dot, beside the connection status. Click opens
+   Settings. data-state controls the colour: idle (no recent keying),
+   match (observed dit within tolerance), drift (out of tolerance). */
+.trinkey-sync-indicator {
+    display: inline-block;
+    margin-left: var(--mr-space-2);
+    font-size: var(--mr-size-small);
+    line-height: 1;
+    vertical-align: middle;
+    text-decoration: none;
+}
+.trinkey-sync-indicator[data-state="idle"]  { color: var(--mr-muted); }
+.trinkey-sync-indicator[data-state="match"] { color: var(--mr-anchor); }
+.trinkey-sync-indicator[data-state="drift"] { color: var(--mr-warning); }
+.trinkey-sync-indicator:hover,
+.trinkey-sync-indicator:focus-visible {
+    outline: none;
+    filter: brightness(1.25);
+}
+
 /* Claim section */
 .claim {
     margin-bottom: var(--mr-space-5);

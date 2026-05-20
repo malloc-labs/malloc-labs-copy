@@ -76,6 +76,7 @@ import {
     setMidiInputArmed,
     startBrowserMidi,
 } from "./key-timing/midi-input.js";
+import { initTrinkeySyncIndicator } from "./key-timing/trinkey-sync-indicator.js";
 
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const wsUrl = `${wsProtocol}//${location.host}/ws`;
@@ -348,4 +349,5 @@ renderKeyPageActionsToggleLabel();
 renderSentToggleLabel();
 renderRhythmReview();
 updateAudioDiagnostic();
+initTrinkeySyncIndicator();
 connect();
