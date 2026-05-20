@@ -295,8 +295,23 @@ copy-top-menu {
 /* Controls */
 .controls {
     display: flex;
+    align-items: baseline;
     gap: var(--mr-space-3);
     margin-bottom: var(--mr-space-4);
+}
+
+/* Pre-start countdown that sits to the right of the Start button.
+ * Shown after Start is pressed; ticks 5 → 1 then the session begins.
+ * Anchor-coloured so the eye lands on it during the wait. */
+.countdown {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    color: var(--mr-anchor);
+    font-variant-numeric: tabular-nums;
+}
+
+.countdown[hidden] {
+    display: none;
 }
 
 /* Primed line */
