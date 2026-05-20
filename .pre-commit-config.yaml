@@ -68,6 +68,8 @@ repos:
   - id: codespell
     args:
     - --skip="*.pyc,*.git,*.egg-info,htmlcov,.pytest_cache,__pycache__"
+    # ymbol: tail of "<u>S</u>ymbol" accelerator markup in landing-page nav
+    - --ignore-words-list=ymbol
 
 ci:
   autofix_commit_msg: |

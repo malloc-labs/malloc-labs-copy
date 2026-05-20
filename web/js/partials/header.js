@@ -10,6 +10,10 @@
 //   eyebrow-href  — href for the back-link; defaults to "index.html"
 //                   to match the project convention of a sibling
 //                   landing page
+//   eyebrow-key   — single-letter accelerator for the back-link
+//                   (e.g. "K" for "Key"). Wraps the first matching
+//                   letter in <u>, sets aria-keyshortcuts and title.
+//                   Activation is wired by landing-keybinds.js.
 //   title         — main title text (e.g. "Cadence", "Freeplay")
 //   speaker       — boolean; render the sidetone-state speaker SVG.
 //                   /key/ pages that emit a tone set this; Koch
@@ -39,19 +43,32 @@ const KEYER_MODE_BADGE = `<span class="key-mode-badge" id="key-mode-badge" data-
 // the same keyer-mode attribute that the badge uses.
 const TRINKEY_SYNC_INDICATOR = `<a class="trinkey-sync-indicator" id="trinkey-sync-indicator" href="../settings/index.html" data-state="idle" aria-label="Trinkey sync status — click to open Settings" title="no recent keying">●</a>`;
 
+function underlineAccel(text, key) {
+    if (!key || !text) return text;
+    const target = key[0].toLowerCase();
+    const idx = text.toLowerCase().indexOf(target);
+    if (idx === -1) return text;
+    return `${text.slice(0, idx)}<u>${text[idx]}</u>${text.slice(idx + 1)}`;
+}
+
 class CopyHeader extends HTMLElement {
     connectedCallback() {
         if (this._hydrated) return;
         this._hydrated = true;
         const eyebrow = this.getAttribute("eyebrow") ?? "";
         const eyebrowHref = this.getAttribute("eyebrow-href") ?? "index.html";
+        const eyebrowKey = this.getAttribute("eyebrow-key");
         const title = this.getAttribute("title") ?? "";
         const speakerSvg = this.hasAttribute("speaker") ? SPEAKER_SVG : "";
         const keyerModeBadge = this.hasAttribute("keyer-mode") ? KEYER_MODE_BADGE : "";
         const syncIndicator = this.hasAttribute("keyer-mode") ? TRINKEY_SYNC_INDICATOR : "";
+        const accel = eyebrowKey
+            ? ` aria-keyshortcuts="${eyebrowKey}" title="${eyebrow} (${eyebrowKey.toUpperCase()})"`
+            : "";
+        const eyebrowLabel = underlineAccel(eyebrow, eyebrowKey);
         this.innerHTML = `
 <header class="landing-header">
-    <p class="eyebrow"><a href="${eyebrowHref}" class="back-link">${eyebrow}</a></p>
+    <p class="eyebrow"><a href="${eyebrowHref}" class="back-link"${accel}>${eyebrowLabel}</a></p>
     <h1 class="landing-title">
         <span class="landing-title__text">${title} <span class="status" data-status="connecting">connecting...</span>${syncIndicator}</span>${keyerModeBadge}${speakerSvg}
     </h1>
