@@ -5,6 +5,11 @@ name: release-please
 # git tag and the GitHub release. No PyPI publish in v0 — spec §11.1
 # defers that until a second person installs Copy.
 #
+# The release-intent workflow protects this contract on pull requests:
+# release-bearing PRs must carry release:patch/minor/major and use a
+# Conventional Commit title, because the squash-merge title is the commit
+# release-please reads on main.
+#
 # Authenticates with RELEASE_PLEASE_TOKEN (a fine-grained PAT or GitHub
 # App token) instead of the default GITHUB_TOKEN. GitHub deliberately
 # suppresses downstream workflow triggers — including pull_request —
@@ -25,8 +30,8 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
-      - uses: googleapis/release-please-action@v4
-        with:
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
-          config-file: .release-please-config.json
-          manifest-file: .release-please-manifest.json
+    - uses: googleapis/release-please-action@v4
+      with:
+        token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        config-file: .release-please-config.json
+        manifest-file: .release-please-manifest.json

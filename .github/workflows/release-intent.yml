@@ -1,0 +1,105 @@
+name: release-intent
+
+on:
+  pull_request:
+    types:
+    - opened
+    - edited
+    - reopened
+    - synchronize
+    - labeled
+    - unlabeled
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  validate:
+    name: release-intent
+    runs-on: ubuntu-latest
+    steps:
+    - name: Validate release label and PR title
+      env:
+        PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        PR_BODY: ${{ github.event.pull_request.body }}
+        PR_LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+      run: |
+        python - <<'PY'
+        import json
+        import os
+        import re
+        import sys
+
+        labels = set(json.loads(os.environ["PR_LABELS"]))
+        release_labels = {
+            "release:none",
+            "release:patch",
+            "release:minor",
+            "release:major",
+        }
+        selected = sorted(labels & release_labels)
+        head_ref = os.environ["PR_HEAD_REF"].strip()
+        title = os.environ["PR_TITLE"].strip()
+        body = os.environ.get("PR_BODY") or ""
+
+        release_pr = (
+            re.match(r"^(?:codex/)?release-\d+\.\d+\.\d+$", head_ref) is not None
+            and re.search(r"\brelease \d+\.\d+\.\d+\b", title.lower())
+            and "bump package version" in body.lower()
+            and "update runtime __version__" in body.lower()
+        )
+        if release_pr:
+            print("Release-version PR accepted; release-please will create the tag/release after merge.")
+            sys.exit(0)
+
+        if len(selected) != 1:
+            print(
+                "::error::Select exactly one release intent label: "
+                "release:none, release:patch, release:minor, or release:major. "
+                f"Found: {', '.join(selected) or 'none'}"
+            )
+            sys.exit(1)
+
+        intent = selected[0]
+        conventional = re.compile(r"^[a-z]+(?:\([^)]+\))?!?: .+")
+        patch = re.compile(r"^(?:fix|perf)(?:\([^)]+\))?: .+")
+        minor = re.compile(r"^feat(?:\([^)]+\))?: .+")
+        breaking_title = re.compile(r"^[a-z]+(?:\([^)]+\))?!: .+")
+        breaking_body = "BREAKING CHANGE:" in body or "BREAKING-CHANGE:" in body
+
+        if intent == "release:none":
+            if patch.match(title) or minor.match(title) or breaking_title.match(title) or breaking_body:
+                print(
+                    "::error::release:none conflicts with a releasable "
+                    "Conventional Commit signal in the PR title/body."
+                )
+                sys.exit(1)
+            print("release:none accepted")
+            sys.exit(0)
+
+        if not conventional.match(title):
+            print(
+                "::error::Release-bearing PRs must use a Conventional Commit "
+                "title because release-please reads the squash commit on main."
+            )
+            sys.exit(1)
+
+        if intent == "release:patch" and not patch.match(title):
+            print("::error::release:patch requires a PR title starting with fix: or perf:.")
+            sys.exit(1)
+
+        if intent == "release:minor" and not minor.match(title):
+            print("::error::release:minor requires a PR title starting with feat:.")
+            sys.exit(1)
+
+        if intent == "release:major" and not (breaking_title.match(title) or breaking_body):
+            print(
+                "::error::release:major requires a breaking Conventional Commit "
+                "title using !: or a BREAKING CHANGE: note in the PR body."
+            )
+            sys.exit(1)
+
+        print(f"{intent} accepted for title: {title}")
+        PY
