@@ -558,6 +558,12 @@
     border-collapse: collapse;
     font-family: var(--mr-font-mono);
     font-size: var(--mr-size-small);
+    /* Draw the outer perimeter with an inset box-shadow rather than
+       relying on the cells' collapsed border at the table edge — that
+       edge goes missing on the bottom row (and intermittently on the
+       right) inside an overflow-x: auto wrap. The shadow paints inside
+       the table's own box, so it is unaffected by the wrap. */
+    box-shadow: inset 0 0 0 1px var(--mr-border);
 }
 
 .settings-koch-lifetime__grid th,
