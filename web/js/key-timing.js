@@ -86,9 +86,26 @@ let activeSocket = null;
 // blur because the matching keyup may never arrive if focus is lost.
 let leftAltDown = false;
 
+// Display labels for the keyer-mode badge. Mirror the strings used on
+// the Settings tab so the badge and the radio buttons agree word for
+// word. Unknown modes fall back to the raw value with underscores
+// replaced — honest rather than hiding a config the engine accepted.
+const KEYER_MODE_DISPLAY = {
+    iambic_a: "Iambic A",
+    ultimatic: "Ultimatic",
+};
+
 function setStatus(state, text) {
     statusEl.dataset.status = state;
     statusEl.textContent = text;
+}
+
+function renderKeyerModeBadge(mode) {
+    const el = document.getElementById("key-mode-badge");
+    if (!el) return;
+    const label = KEYER_MODE_DISPLAY[mode] || (mode ? mode.replace(/_/g, " ") : "—");
+    el.textContent = label;
+    el.dataset.keyerMode = mode || "";
 }
 
 installCopyProgressAccessors({
@@ -129,6 +146,12 @@ function connect() {
         recordDiagnostic("websocket", { state: "open", url: wsUrl });
         setStatus("connected", "connected");
         startBrowserMidi(socket);
+        // Pull the current keyer mode for the title-row badge. The
+        // server pushes claimed-symbols unsolicited on connect but
+        // not audio-settings, so this is the one explicit ask.
+        if (document.getElementById("key-mode-badge")) {
+            socket.send(JSON.stringify({ action: "get-audio-settings" }));
+        }
     });
 
     socket.addEventListener("message", (message) => {
@@ -140,6 +163,8 @@ function connect() {
             requestCopyExercises();
         } else if (event.type === "copy-exercises") {
             renderCopyExercises(event);
+        } else if (event.type === "audio-settings") {
+            renderKeyerModeBadge(event.keyer_mode);
         } else if (event.type === "sent-symbol") {
             renderSentSymbol(event);
         } else if (event.type === "key-input-start") {

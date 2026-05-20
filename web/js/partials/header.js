@@ -14,9 +14,14 @@
 //   speaker       — boolean; render the sidetone-state speaker SVG.
 //                   /key/ pages that emit a tone set this; Koch
 //                   pages do not.
+//   keyer-mode    — boolean; render a small text badge that the page
+//                   populates from the audio-settings WS event so the
+//                   learner can see at a glance which keyer mode the
+//                   firmware is configured for.
 //
 // Load order: this module must precede scripts that touch
-// #cadence-speaker or the .status span (key-timing.js etc.).
+// #cadence-speaker, #key-mode-badge, or the .status span
+// (key-timing.js etc.).
 
 const SPEAKER_SVG = `
                 <svg class="cadence-speaker" id="cadence-speaker" data-state="off" viewBox="0 0 32 32" role="img" aria-label="Sidetone state">
@@ -24,6 +29,8 @@ const SPEAKER_SVG = `
                     <rect x="6" y="11" width="6" height="10"/>
                     <polygon points="12,11 12,21 22,27 22,5"/>
                 </svg>`;
+
+const KEYER_MODE_BADGE = `<span class="key-mode-badge" id="key-mode-badge" data-keyer-mode="" aria-label="Keyer mode">—</span>`;
 
 class CopyHeader extends HTMLElement {
     connectedCallback() {
@@ -33,11 +40,12 @@ class CopyHeader extends HTMLElement {
         const eyebrowHref = this.getAttribute("eyebrow-href") ?? "index.html";
         const title = this.getAttribute("title") ?? "";
         const speakerSvg = this.hasAttribute("speaker") ? SPEAKER_SVG : "";
+        const keyerModeBadge = this.hasAttribute("keyer-mode") ? KEYER_MODE_BADGE : "";
         this.innerHTML = `
 <header class="landing-header">
     <p class="eyebrow"><a href="${eyebrowHref}" class="back-link">${eyebrow}</a></p>
     <h1 class="landing-title">
-        <span class="landing-title__text">${title} <span class="status" data-status="connecting">connecting...</span></span>${speakerSvg}
+        <span class="landing-title__text">${title} <span class="status" data-status="connecting">connecting...</span></span>${keyerModeBadge}${speakerSvg}
     </h1>
 </header>
 <hr class="landing-rule">`;
