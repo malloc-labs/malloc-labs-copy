@@ -469,7 +469,6 @@ copy-top-menu {
 }
 
 .cadence-speaker {
-    margin-left: auto;
     width: 2rem;
     height: 2rem;
     flex-shrink: 0;
@@ -484,6 +483,28 @@ copy-top-menu {
 
 .cadence-speaker[data-state="on"] {
     opacity: 1;
+}
+
+/* Keyer-mode badge — sits to the left of the speaker icon on Key
+ * pages. margin-left: auto pushes the badge+speaker pair to the
+ * right edge of the title row; the speaker follows with the row's
+ * gap. Populated from the audio-settings WS event. */
+.key-mode-badge {
+    margin-left: auto;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--mr-faint);
+    line-height: 1;
+    vertical-align: middle;
+}
+
+.key-mode-badge:empty,
+.key-mode-badge[data-keyer-mode=""] {
+    color: var(--mr-muted);
+    opacity: 0.6;
 }
 
 /* The exercises page has a collapsible timeline that grows the content
