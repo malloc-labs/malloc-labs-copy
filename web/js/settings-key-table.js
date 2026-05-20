@@ -5,8 +5,12 @@ const metaEl = document.getElementById("settings-key-meta");
 const detailDialog = document.getElementById("settings-key-dialog");
 const detailDialogTitle = document.getElementById("settings-key-dialog-title");
 const detailDialogBody = document.getElementById("settings-key-dialog-body");
+const prevButton = document.getElementById("settings-key-dialog-prev");
+const nextButton = document.getElementById("settings-key-dialog-next");
+const countEl = document.getElementById("settings-key-dialog-count");
 
 let openFilename = null;
+let currentRecords = [];
 const detailCache = new Map();
 
 function formatStartedAt(iso) {
@@ -204,14 +208,64 @@ async function loadRecord(filename) {
     return data;
 }
 
+async function deleteRecord(filename) {
+    const res = await fetch(
+        `/api/delete-cadence-send?file=${encodeURIComponent(filename)}`,
+        { method: "POST", cache: "no-store" },
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    detailCache.delete(filename);
+    if (openFilename === filename) {
+        detailDialog.close();
+    }
+    await loadCadenceSessions();
+    window.dispatchEvent(new CustomEvent("copy-settings-records-changed", {
+        detail: { kind: "key" },
+    }));
+}
+
 function clearOpenDetail() {
     if (!openFilename) return;
-    const prevRow = tbody.querySelector(`tr[data-filename="${CSS.escape(openFilename)}"]`);
+    const prevRow = rowForFilename(openFilename);
     if (prevRow) {
         prevRow.dataset.expanded = "false";
         prevRow.setAttribute("aria-expanded", "false");
     }
     openFilename = null;
+}
+
+function rowForFilename(filename) {
+    return tbody.querySelector(`tr[data-filename="${cssEscape(filename)}"]`);
+}
+
+function cssEscape(value) {
+    if (window.CSS && typeof window.CSS.escape === "function") {
+        return window.CSS.escape(value);
+    }
+    return value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+}
+
+function openRecordByOffset(offset) {
+    if (!openFilename || offset === 0) return;
+    const idx = currentRecords.findIndex((rec) => rec.filename === openFilename);
+    const nextRecord = currentRecords[idx + offset];
+    if (!nextRecord) return;
+    const row = rowForFilename(nextRecord.filename);
+    if (row) {
+        openDetail(nextRecord.filename, row);
+    }
+}
+
+function updateNavButtons() {
+    const idx = currentRecords.findIndex((rec) => rec.filename === openFilename);
+    const hasOpenRecord = idx >= 0;
+    if (prevButton) prevButton.disabled = !hasOpenRecord || idx === 0;
+    if (nextButton) nextButton.disabled = !hasOpenRecord || idx === currentRecords.length - 1;
+    if (countEl) {
+        countEl.textContent = hasOpenRecord
+            ? `${idx + 1} of ${currentRecords.length}`
+            : `0 of ${currentRecords.length}`;
+    }
 }
 
 async function openDetail(filename, row) {
@@ -221,14 +275,17 @@ async function openDetail(filename, row) {
     row.setAttribute("aria-expanded", "true");
     detailDialogTitle.textContent = "Send session";
     detailDialogBody.textContent = "Loading send session...";
+    updateNavButtons();
     if (!detailDialog.open) detailDialog.showModal();
     try {
         const record = await loadRecord(filename);
         if (openFilename !== filename) return;
         detailDialogTitle.textContent = formatStartedAt(record.started_at);
         renderDetail(record);
+        updateNavButtons();
     } catch (err) {
         detailDialogBody.textContent = `Could not load send session: ${err.message}`;
+        updateNavButtons();
     }
 }
 
@@ -252,14 +309,45 @@ function attachRowHandler(row, filename) {
     });
 }
 
+function appendDeleteCell(row, filename) {
+    const cell = document.createElement("td");
+    cell.className = "settings-koch-table__delete-cell";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "settings-koch-table__delete";
+    button.textContent = "Delete";
+    button.setAttribute("aria-label", "Delete Key send session record");
+    button.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        const ok = window.confirm("Delete this Key send session record?");
+        if (!ok) return;
+        try {
+            button.disabled = true;
+            await deleteRecord(filename);
+        } catch (err) {
+            button.disabled = false;
+            window.alert(`Could not delete Key send session: ${err.message}`);
+        }
+    });
+    button.addEventListener("keydown", (event) => {
+        event.stopPropagation();
+    });
+    cell.appendChild(button);
+    row.appendChild(cell);
+}
+
 function renderRows(records) {
     tbody.replaceChildren();
+    currentRecords = records;
+    openFilename = null;
+    updateNavButtons();
     records.forEach((rec, idx) => {
         const row = document.createElement("tr");
         appendCell(row, idx + 1);
         appendCell(row, formatStartedAt(rec.started_at));
         appendCell(row, Array.isArray(rec.claimed_set) ? rec.claimed_set.join(" ") : "-");
         appendCell(row, rec.exercise_count ?? "-");
+        appendDeleteCell(row, rec.filename);
         attachRowHandler(row, rec.filename);
         tbody.appendChild(row);
     });
@@ -273,6 +361,9 @@ async function loadCadenceSessions() {
         const records = Array.isArray(data.records) ? data.records : [];
         if (records.length === 0) {
             metaEl.textContent = `No saved send sessions in ${data.save_directory || "save directory"}.`;
+            currentRecords = [];
+            openFilename = null;
+            updateNavButtons();
             tbody.replaceChildren();
             return;
         }
@@ -280,6 +371,9 @@ async function loadCadenceSessions() {
         renderRows(records);
     } catch (err) {
         metaEl.textContent = `Could not load saved send sessions: ${err.message}`;
+        currentRecords = [];
+        openFilename = null;
+        updateNavButtons();
         tbody.replaceChildren();
     }
 }
@@ -290,8 +384,24 @@ detailDialog.addEventListener("close", () => {
     detailDialogTitle.textContent = "Send session";
     detailDialogBody.replaceChildren();
     clearOpenDetail();
+    updateNavButtons();
 });
 
 detailDialog.addEventListener("click", (event) => {
     if (event.target === detailDialog) detailDialog.close();
+});
+
+prevButton?.addEventListener("click", () => openRecordByOffset(-1));
+nextButton?.addEventListener("click", () => openRecordByOffset(1));
+
+document.addEventListener("keydown", (event) => {
+    if (!detailDialog.open || event.altKey || event.ctrlKey || event.metaKey) return;
+    const key = event.key.toLowerCase();
+    if (event.key === "ArrowLeft" || event.key === "<" || key === "h") {
+        event.preventDefault();
+        openRecordByOffset(-1);
+    } else if (event.key === "ArrowRight" || event.key === ">" || key === "l") {
+        event.preventDefault();
+        openRecordByOffset(1);
+    }
 });

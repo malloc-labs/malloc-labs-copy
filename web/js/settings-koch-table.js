@@ -17,8 +17,12 @@ const metaEl = document.getElementById("settings-koch-meta");
 const detailDialog = document.getElementById("settings-koch-dialog");
 const detailDialogTitle = document.getElementById("settings-koch-dialog-title");
 const detailDialogBody = document.getElementById("settings-koch-dialog-body");
+const prevButton = document.getElementById("settings-koch-dialog-prev");
+const nextButton = document.getElementById("settings-koch-dialog-next");
+const countEl = document.getElementById("settings-koch-dialog-count");
 
 let openFilename = null;
+let currentRecords = [];
 const detailCache = new Map();
 
 function formatStartedAt(iso) {
@@ -344,6 +348,22 @@ async function loadRecord(filename) {
     return data;
 }
 
+async function deleteRecord(filename) {
+    const res = await fetch(
+        `/api/delete-koch-exercise?file=${encodeURIComponent(filename)}`,
+        { method: "POST", cache: "no-store" },
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    detailCache.delete(filename);
+    if (openFilename === filename) {
+        detailDialog.close();
+    }
+    await loadKochSessions();
+    window.dispatchEvent(new CustomEvent("copy-settings-records-changed", {
+        detail: { kind: "koch" },
+    }));
+}
+
 function clearOpenDetail() {
     if (!openFilename) return;
     const prevRow = tbody.querySelector(`tr[data-filename="${cssEscape(openFilename)}"]`);
@@ -352,6 +372,33 @@ function clearOpenDetail() {
         prevRow.setAttribute("aria-expanded", "false");
     }
     openFilename = null;
+}
+
+function rowForFilename(filename) {
+    return tbody.querySelector(`tr[data-filename="${cssEscape(filename)}"]`);
+}
+
+function openRecordByOffset(offset) {
+    if (!openFilename || offset === 0) return;
+    const idx = currentRecords.findIndex((rec) => rec.filename === openFilename);
+    const nextRecord = currentRecords[idx + offset];
+    if (!nextRecord) return;
+    const row = rowForFilename(nextRecord.filename);
+    if (row) {
+        openDetail(nextRecord.filename, row);
+    }
+}
+
+function updateNavButtons() {
+    const idx = currentRecords.findIndex((rec) => rec.filename === openFilename);
+    const hasOpenRecord = idx >= 0;
+    if (prevButton) prevButton.disabled = !hasOpenRecord || idx === 0;
+    if (nextButton) nextButton.disabled = !hasOpenRecord || idx === currentRecords.length - 1;
+    if (countEl) {
+        countEl.textContent = hasOpenRecord
+            ? `${idx + 1} of ${currentRecords.length}`
+            : `0 of ${currentRecords.length}`;
+    }
 }
 
 function cssEscape(value) {
@@ -371,6 +418,7 @@ async function openDetail(filename, summaryRow) {
     detailDialogTitle.textContent = "Session";
     detailDialogBody.className = "settings-koch-dialog__body";
     detailDialogBody.textContent = "Loading session…";
+    updateNavButtons();
     if (!detailDialog.open) {
         detailDialog.showModal();
     }
@@ -380,8 +428,10 @@ async function openDetail(filename, summaryRow) {
         if (openFilename !== filename) return; // user closed/switched while fetching
         detailDialogTitle.textContent = formatStartedAt(record.started_at);
         renderDetailContent(detailDialogBody, record);
+        updateNavButtons();
     } catch (err) {
         detailDialogBody.textContent = `Could not load session: ${err.message}`;
+        updateNavButtons();
     }
 }
 
@@ -408,10 +458,38 @@ function attachRowHandler(tr, filename) {
     });
 }
 
+function appendDeleteCell(row, filename) {
+    const cell = document.createElement("td");
+    cell.className = "settings-koch-table__delete-cell";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "settings-koch-table__delete";
+    button.textContent = "Delete";
+    button.setAttribute("aria-label", "Delete Koch session record");
+    button.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        const ok = window.confirm("Delete this Koch session record?");
+        if (!ok) return;
+        try {
+            button.disabled = true;
+            await deleteRecord(filename);
+        } catch (err) {
+            button.disabled = false;
+            window.alert(`Could not delete Koch session: ${err.message}`);
+        }
+    });
+    button.addEventListener("keydown", (event) => {
+        event.stopPropagation();
+    });
+    cell.appendChild(button);
+    row.appendChild(cell);
+}
+
 detailDialog.addEventListener("close", () => {
     detailDialogTitle.textContent = "Session";
     detailDialogBody.replaceChildren();
     clearOpenDetail();
+    updateNavButtons();
 });
 
 detailDialog.addEventListener("click", (event) => {
@@ -420,9 +498,26 @@ detailDialog.addEventListener("click", (event) => {
     }
 });
 
+prevButton?.addEventListener("click", () => openRecordByOffset(-1));
+nextButton?.addEventListener("click", () => openRecordByOffset(1));
+
+document.addEventListener("keydown", (event) => {
+    if (!detailDialog.open || event.altKey || event.ctrlKey || event.metaKey) return;
+    const key = event.key.toLowerCase();
+    if (event.key === "ArrowLeft" || event.key === "<" || key === "h") {
+        event.preventDefault();
+        openRecordByOffset(-1);
+    } else if (event.key === "ArrowRight" || event.key === ">" || key === "l") {
+        event.preventDefault();
+        openRecordByOffset(1);
+    }
+});
+
 function renderRows(records) {
     tbody.replaceChildren();
     openFilename = null;
+    currentRecords = records;
+    updateNavButtons();
     records.forEach((rec, idx) => {
         const tr = document.createElement("tr");
 
@@ -438,6 +533,7 @@ function renderRows(records) {
         claimedCell.textContent = rec.claimed_set.join(" ");
         tr.appendChild(claimedCell);
 
+        appendDeleteCell(tr, rec.filename);
         attachRowHandler(tr, rec.filename);
         tbody.appendChild(tr);
     });
@@ -451,6 +547,9 @@ async function loadKochSessions() {
         const records = Array.isArray(data.records) ? data.records : [];
         if (records.length === 0) {
             metaEl.textContent = `No saved Koch sessions in ${data.save_directory || "save directory"}.`;
+            currentRecords = [];
+            openFilename = null;
+            updateNavButtons();
             tbody.replaceChildren();
             return;
         }
@@ -458,6 +557,9 @@ async function loadKochSessions() {
         renderRows(records);
     } catch (err) {
         metaEl.textContent = `Could not load saved sessions: ${err.message}`;
+        currentRecords = [];
+        openFilename = null;
+        updateNavButtons();
         tbody.replaceChildren();
     }
 }
