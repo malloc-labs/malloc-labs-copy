@@ -15,7 +15,19 @@
 //   eyebrow-href  — href for the back-link; defaults to "index.html"
 //                   (the sibling-landing convention). Subdirectory
 //                   index pages override to "../index.html".
+//   eyebrow-key   — single-letter accelerator for the back-link
+//                   (e.g. "C" for "Copy 653"). Wraps the first
+//                   matching letter in <u>, sets aria-keyshortcuts and
+//                   title. Activation is wired by landing-keybinds.js.
 //   title         — main title text (e.g. "Settings", "Koch Method")
+
+function underlineAccel(text, key) {
+    if (!key || !text) return text;
+    const target = key[0].toLowerCase();
+    const idx = text.toLowerCase().indexOf(target);
+    if (idx === -1) return text;
+    return `${text.slice(0, idx)}<u>${text[idx]}</u>${text.slice(idx + 1)}`;
+}
 
 class CopyLandingHeader extends HTMLElement {
     connectedCallback() {
@@ -24,12 +36,17 @@ class CopyLandingHeader extends HTMLElement {
         const kicker = this.getAttribute("kicker");
         const eyebrow = this.getAttribute("eyebrow");
         const eyebrowHref = this.getAttribute("eyebrow-href") ?? "index.html";
+        const eyebrowKey = this.getAttribute("eyebrow-key");
         const title = this.getAttribute("title") ?? "";
         let topLine = "";
         if (kicker) {
             topLine = `<p class="landing-kicker">${kicker}</p>`;
         } else if (eyebrow) {
-            topLine = `<p class="eyebrow"><a href="${eyebrowHref}" class="back-link">${eyebrow}</a></p>`;
+            const accel = eyebrowKey
+                ? ` aria-keyshortcuts="${eyebrowKey}" title="${eyebrow} (${eyebrowKey.toUpperCase()})"`
+                : "";
+            const label = underlineAccel(eyebrow, eyebrowKey);
+            topLine = `<p class="eyebrow"><a href="${eyebrowHref}" class="back-link"${accel}>${label}</a></p>`;
         }
         this.innerHTML = `
 <header class="landing-header">
