@@ -256,6 +256,7 @@
                             <th scope="col">#</th>
                             <th scope="col">Date &amp; time</th>
                             <th scope="col">Claimed symbols</th>
+                            <th scope="col">Delete</th>
                         </tr>
                     </thead>
                     <tbody id="settings-koch-tbody"></tbody>
@@ -283,6 +284,21 @@
                             aria-label="Close session details">Close</button>
                 </form>
                 <div class="settings-koch-dialog__body" id="settings-koch-dialog-body"></div>
+                <div class="settings-koch-dialog__nav" aria-label="Session navigation">
+                    <button type="button"
+                            class="settings-koch-dialog__nav-button"
+                            id="settings-koch-dialog-prev"
+                            aria-label="Previous session"
+                            title="Previous session (Left arrow, H, or <)">&lt;</button>
+                    <span class="settings-koch-dialog__nav-count"
+                          id="settings-koch-dialog-count"
+                          aria-live="polite">0 of 0</span>
+                    <button type="button"
+                            class="settings-koch-dialog__nav-button"
+                            id="settings-koch-dialog-next"
+                            aria-label="Next session"
+                            title="Next session (Right arrow, L, or >)">&gt;</button>
+                </div>
             </dialog>
         </section>
 
@@ -322,6 +338,7 @@
                             <th scope="col">Date &amp; time</th>
                             <th scope="col">Claimed symbols</th>
                             <th scope="col">Exercises</th>
+                            <th scope="col">Delete</th>
                         </tr>
                     </thead>
                     <tbody id="settings-key-tbody"></tbody>
@@ -349,6 +366,21 @@
                             aria-label="Close send session details">Close</button>
                 </form>
                 <div class="settings-koch-dialog__body" id="settings-key-dialog-body"></div>
+                <div class="settings-koch-dialog__nav" aria-label="Send session navigation">
+                    <button type="button"
+                            class="settings-koch-dialog__nav-button"
+                            id="settings-key-dialog-prev"
+                            aria-label="Previous send session"
+                            title="Previous send session (Left arrow, H, or <)">&lt;</button>
+                    <span class="settings-koch-dialog__nav-count"
+                          id="settings-key-dialog-count"
+                          aria-live="polite">0 of 0</span>
+                    <button type="button"
+                            class="settings-koch-dialog__nav-button"
+                            id="settings-key-dialog-next"
+                            aria-label="Next send session"
+                            title="Next send session (Right arrow, L, or >)">&gt;</button>
+                </div>
             </dialog>
         </section>
 

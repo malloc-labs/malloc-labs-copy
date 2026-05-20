@@ -115,3 +115,9 @@ async function loadRollup() {
 }
 
 loadRollup();
+
+window.addEventListener("copy-settings-records-changed", (event) => {
+    if (event.detail?.kind === "koch") {
+        loadRollup();
+    }
+});

@@ -95,6 +95,12 @@ def _build_static_handler(web_root: Path, config_path: Path | None = None):
             filename = filename_values[0] if filename_values else ""
             return _read_koch_exercise(config_path, filename)
 
+        if clean_path == "/api/delete-koch-exercise":
+            params = parse_qs(parsed_path.query)
+            filename_values = params.get("file") or params.get("filename") or []
+            filename = filename_values[0] if filename_values else ""
+            return _delete_koch_exercise(config_path, filename)
+
         if clean_path == "/api/koch-band-evidence":
             params = parse_qs(parsed_path.query)
             key_values = params.get("claimed_set_key") or []
@@ -125,6 +131,12 @@ def _build_static_handler(web_root: Path, config_path: Path | None = None):
             filename_values = params.get("file") or params.get("filename") or []
             filename = filename_values[0] if filename_values else ""
             return _read_cadence_send(config_path, filename)
+
+        if clean_path == "/api/delete-cadence-send":
+            params = parse_qs(parsed_path.query)
+            filename_values = params.get("file") or params.get("filename") or []
+            filename = filename_values[0] if filename_values else ""
+            return _delete_cadence_send(config_path, filename)
 
         if clean_path == "/api/cadence-band-evidence":
             params = parse_qs(parsed_path.query)
@@ -395,6 +407,61 @@ def _read_koch_exercise(
     return _json_response(data)
 
 
+def _delete_record_file(
+    *,
+    config_path: Path | None,
+    filename: str,
+    filename_re: re.Pattern[str],
+    subdirectory: str,
+    mode: str,
+) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
+    if not filename or not filename_re.fullmatch(filename):
+        return _http_response(HTTPStatus.BAD_REQUEST, b"invalid filename")
+
+    try:
+        save_directory = load_save_directory(config_path)
+    except Exception:
+        logger.exception("could not resolve save_directory for %s delete", mode)
+        return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"save directory unavailable")
+
+    target_dir = (save_directory / subdirectory).resolve()
+    resolved = (target_dir / filename).resolve()
+    try:
+        resolved.relative_to(target_dir)
+    except ValueError:
+        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+    if not resolved.is_file():
+        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+
+    try:
+        data = json.loads(resolved.read_text())
+    except (OSError, ValueError):
+        logger.exception("failed to validate %s record before delete: %s", mode, resolved)
+        return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"read failed")
+    if not isinstance(data, dict) or data.get("mode") != mode:
+        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+
+    try:
+        resolved.unlink()
+    except OSError:
+        logger.exception("failed to delete %s record: %s", mode, resolved)
+        return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"delete failed")
+
+    return _json_response({"deleted": True, "filename": filename})
+
+
+def _delete_koch_exercise(
+    config_path: Path | None, filename: str
+) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
+    return _delete_record_file(
+        config_path=config_path,
+        filename=filename,
+        filename_re=_KOCH_FILENAME_RE,
+        subdirectory="koch-exercise",
+        mode="koch-exercise",
+    )
+
+
 def _list_cadence_sends(config_path: Path | None) -> dict[str, Any]:
     """List saved cadence-send records for the settings UI."""
     try:
@@ -550,3 +617,15 @@ def _read_cadence_send(
         return _http_response(HTTPStatus.NOT_FOUND, b"not found")
 
     return _json_response(data)
+
+
+def _delete_cadence_send(
+    config_path: Path | None, filename: str
+) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
+    return _delete_record_file(
+        config_path=config_path,
+        filename=filename,
+        filename_re=_CADENCE_FILENAME_RE,
+        subdirectory="cadence-send",
+        mode="cadence-send",
+    )
