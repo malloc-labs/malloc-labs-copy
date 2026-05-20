@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.9.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.8.0...v0.9.0) (2026-05-20)
+
+
+### Features
+
+* **key:** show keyer mode badge in cadence/freeplay header ([#111](https://github.com/malloc-labs/malloc-labs-copy/issues/111)) ([f883c23](https://github.com/malloc-labs/malloc-labs-copy/commit/f883c23ea7c9e236dadb1568ff74060e56285dae))
+* **koch:** adaptive per-band gears and lifetime diagnostics ([#97](https://github.com/malloc-labs/malloc-labs-copy/issues/97)) ([7c9f252](https://github.com/malloc-labs/malloc-labs-copy/commit/7c9f252de4fe558e2d2f46c8246c6a61c06495f5))
+* **koch:** readiness signal for the next-symbol nudge ([#109](https://github.com/malloc-labs/malloc-labs-copy/issues/109)) ([09f8783](https://github.com/malloc-labs/malloc-labs-copy/commit/09f8783589fdab1acae325790d599309637d1fd2))
+* **settings:** add Calendar tab for per-day practice monitoring ([#110](https://github.com/malloc-labs/malloc-labs-copy/issues/110)) ([eeb2f21](https://github.com/malloc-labs/malloc-labs-copy/commit/eeb2f216739222aa1cebabd9b2dba645eb74379c))
+* **settings:** add Key lifetime history dialog ([#106](https://github.com/malloc-labs/malloc-labs-copy/issues/106)) ([b703e48](https://github.com/malloc-labs/malloc-labs-copy/commit/b703e486e3c4d536165b85d5bea2827b815e331b))
+* **settings:** add themed tooltips to session detail headers ([#107](https://github.com/malloc-labs/malloc-labs-copy/issues/107)) ([440d41d](https://github.com/malloc-labs/malloc-labs-copy/commit/440d41dc9f4cbaefaa5fb9b4c5bd8ca4529f42f5))
+* **settings:** sync Trinkey WPM via CC1 and surface drift status ([#112](https://github.com/malloc-labs/malloc-labs-copy/issues/112)) ([43270f1](https://github.com/malloc-labs/malloc-labs-copy/commit/43270f19711d9ea40cd1d733480abb40cd62cef8))
+
+
+### Bug Fixes
+
+* **koch:** auto-uppercase exercise answer inputs ([#102](https://github.com/malloc-labs/malloc-labs-copy/issues/102)) ([3ffc6c5](https://github.com/malloc-labs/malloc-labs-copy/commit/3ffc6c5dd4d7919653e7fe19ff15c994e3667230))
+* **settings:** allow horizontal scroll on rollup tables ([#104](https://github.com/malloc-labs/malloc-labs-copy/issues/104)) ([918fd22](https://github.com/malloc-labs/malloc-labs-copy/commit/918fd222d753cb9183c41b76d7e6c0663d71239f))
+
 ## [0.8.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.7.2...v0.8.0) (2026-05-18)
 
 
