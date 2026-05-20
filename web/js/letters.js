@@ -11,7 +11,7 @@
 // engine is reachable does nothing surprising. No retries on close —
 // the page is not the right surface for an offline reconnect loop.
 
-import { PATTERNS, displayMorsePattern, spokenMorsePattern } from "./morse-display.js";
+import { PATTERNS, spokenMorsePattern } from "./morse-display.js";
 
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const wsUrl = `${wsProtocol}//${location.host}/ws`;
@@ -84,11 +84,7 @@ function renderTruth(symbol) {
     spokenLine.className = "symbol-truth-line symbol-truth-spoken";
     spokenLine.textContent = spokenMorsePattern(pattern);
 
-    const morseLine = document.createElement("span");
-    morseLine.className = "symbol-truth-line symbol-truth-morse";
-    morseLine.textContent = displayMorsePattern(pattern);
-
-    li.replaceChildren(symbolLine, spokenLine, morseLine);
+    li.replaceChildren(symbolLine, spokenLine);
     truthEvents.replaceChildren(li);
 }
 

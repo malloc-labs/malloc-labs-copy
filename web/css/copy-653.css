@@ -887,8 +887,7 @@ copy-top-menu {
     line-height: var(--mr-line-tight);
 }
 
-.symbol-truth-symbol,
-.symbol-truth-morse {
+.symbol-truth-symbol {
     font-size: var(--mr-size-mono);
     color: var(--mr-muted);
 }
