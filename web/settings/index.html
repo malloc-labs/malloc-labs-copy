@@ -140,16 +140,6 @@
             <details class="settings-section">
                 <summary>Key Input</summary>
 
-                <div class="settings-field settings-field--check">
-                    <label for="trinkey-buzzer">Trinkey Buzzer</label>
-                    <input
-                        id="trinkey-buzzer"
-                        name="trinkey_buzzer_enabled"
-                        type="checkbox"
-                    >
-                    <p>Allows the Trinkey hardware buzzer to sound while Copy decodes input. Off keeps key input silent for now.</p>
-                </div>
-
                 <div class="settings-field" role="group" aria-labelledby="keyer-mode-label">
                     <span class="settings-field__label" id="keyer-mode-label">Keyer Mode</span>
                     <div class="settings-field__radios">
@@ -166,7 +156,13 @@
                         <button type="button" class="btn" id="keyer-mode-sync">Sync now</button>
                         <span class="settings-field__status" id="keyer-mode-sync-status" aria-live="polite"></span>
                     </div>
-                    <p>Sent to the Trinkey when you change it. Use Sync now if the device was changed elsewhere.</p>
+                    <p>Sync now sends the configured Keyer Mode and Words Per Minute to the Trinkey. Copy pushes them automatically when either changes; use Sync now if the device was changed elsewhere (for example, on vailmorse.com).</p>
+                </div>
+
+                <div class="settings-field" role="group" aria-labelledby="observed-dit-label">
+                    <span class="settings-field__label" id="observed-dit-label">Trinkey emitting</span>
+                    <p class="settings-field__readout" id="observed-dit-readout" aria-live="polite">no recent keying</p>
+                    <p>Measured from the dits the Trinkey actually sends while Copy decodes input. Key something into the <a href="../key/freeplay.html">Freeplay</a> page to refresh this.</p>
                 </div>
             </details>
 

@@ -105,16 +105,11 @@ def _write_test_config(tmp_path: Path, claimed: list[str], duration: float = 5.0
     return config_path
 
 
-def _write_test_config_with_keyer(
-    tmp_path: Path,
-    *,
-    trinkey_buzzer_enabled: bool,
-) -> Path:
+def _write_test_config_with_keyer(tmp_path: Path) -> Path:
     config_path = _write_test_config(tmp_path, ["K", "M"])
-    config_path.write_text(config_path.read_text() + textwrap.dedent(f"""
+    config_path.write_text(config_path.read_text() + textwrap.dedent("""
 
             [midi.key]
-            trinkey_buzzer_enabled = {str(trinkey_buzzer_enabled).lower()}
             input_name = "TRRS Trinkey"
             dit_note = 1
             dah_note = 2
@@ -186,7 +181,6 @@ def test_key_event_event_reports_mapped_note_and_release_measurement():
         "tone_frequency_hz": 600,
         "amplitude": 0.3,
         "envelope_ramp_ms": 5.0,
-        "trinkey_buzzer_enabled": False,
         "duration_ms": 180.0,
         "ratio_dits": 3.0,
     }
@@ -1204,7 +1198,7 @@ async def test_start_key_input_decodes_sent_symbol_without_app_sidetone(
     tmp_path,
     patched_playback,
 ):
-    config_path = _write_test_config_with_keyer(tmp_path, trinkey_buzzer_enabled=False)
+    config_path = _write_test_config_with_keyer(tmp_path)
     web_root = _make_web_root(tmp_path)
 
     def note_source(stop_event):
@@ -1260,7 +1254,7 @@ async def test_browser_key_input_decodes_sent_symbol(
     tmp_path,
     patched_playback,
 ):
-    config_path = _write_test_config_with_keyer(tmp_path, trinkey_buzzer_enabled=False)
+    config_path = _write_test_config_with_keyer(tmp_path)
     web_root = _make_web_root(tmp_path)
 
     server, port = await app.serve_app(
@@ -1320,7 +1314,7 @@ async def test_browser_key_input_reset_discards_pending_symbol(
     tmp_path,
     patched_playback,
 ):
-    config_path = _write_test_config_with_keyer(tmp_path, trinkey_buzzer_enabled=False)
+    config_path = _write_test_config_with_keyer(tmp_path)
     web_root = _make_web_root(tmp_path)
 
     server, port = await app.serve_app(
@@ -1377,44 +1371,11 @@ async def test_browser_key_input_reset_discards_pending_symbol(
         await server.wait_closed()
 
 
-async def test_start_key_input_skips_app_sidetone_when_trinkey_buzzer_enabled(
-    tmp_path,
-    patched_playback,
-):
-    config_path = _write_test_config_with_keyer(tmp_path, trinkey_buzzer_enabled=True)
-    web_root = _make_web_root(tmp_path)
-
-    def note_source(stop_event):
-        del stop_event
-        yield MidiNoteEvent(note=1, pressed=True, timestamp=1.0)
-        yield MidiNoteEvent(note=1, pressed=False, timestamp=1.048)
-
-    server, port = await app.serve_app(
-        port=_grab_free_port(),
-        port_search_span=5,
-        web_root=web_root,
-        config_path=config_path,
-        key_note_source=note_source,
-    )
-    try:
-        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
-            await asyncio.wait_for(ws.recv(), timeout=2.0)  # claimed-symbols push
-
-            await ws.send(json.dumps({"action": "start-key-input"}))
-            events = await _drain_until(ws, lambda e: e["type"] == "sent-symbol", timeout=2.0)
-
-        assert events[-1]["symbol"] == "E"
-        assert patched_playback == []
-    finally:
-        server.close()
-        await server.wait_closed()
-
-
 async def test_start_key_input_marks_word_gap_between_symbols(
     tmp_path,
     patched_playback,
 ):
-    config_path = _write_test_config_with_keyer(tmp_path, trinkey_buzzer_enabled=False)
+    config_path = _write_test_config_with_keyer(tmp_path)
     web_root = _make_web_root(tmp_path)
 
     def note_source(stop_event):
@@ -1465,7 +1426,7 @@ async def test_cadence_session_writes_analyzed_record_on_close(
     tmp_path,
     patched_playback,
 ):
-    config_path = _write_test_config_with_keyer(tmp_path, trinkey_buzzer_enabled=False)
+    config_path = _write_test_config_with_keyer(tmp_path)
     save_dir = tmp_path / "records"
     config_path.write_text(
         config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
@@ -1553,7 +1514,6 @@ async def test_get_audio_settings_returns_configured_timing(tmp_path, patched_pl
                 "tone_shape": 2,
                 "receiver_bed": 2,
                 "cadence_variation": 1,
-                "trinkey_buzzer_enabled": False,
                 "keyer_mode": "iambic_a",
                 "hh_clear_enabled": False,
                 "save_directory": str(config_path.parent),
@@ -1586,7 +1546,6 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
                         "tone_shape": 3,
                         "receiver_bed": 2,
                         "cadence_variation": 1,
-                        "trinkey_buzzer_enabled": True,
                         "keyer_mode": "ultimatic",
                         "hh_clear_enabled": True,
                     }
@@ -1602,7 +1561,6 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
                 "tone_shape": 3,
                 "receiver_bed": 2,
                 "cadence_variation": 1,
-                "trinkey_buzzer_enabled": True,
                 "keyer_mode": "ultimatic",
                 "hh_clear_enabled": True,
                 "save_directory": str(config_path.parent),
@@ -1621,13 +1579,11 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
         assert params.receiver_bed == 2
         assert params.cadence_variation == 1
         keyer = load_keyer_settings(config_path)
-        assert keyer.trinkey_buzzer_enabled is True
         assert keyer.keyer_mode == "ultimatic"
         developer = load_developer_settings(config_path)
         assert developer.hh_clear_enabled is True
         data = tomllib.loads(config_path.read_text())
         assert data["midi"]["key"] == {
-            "trinkey_buzzer_enabled": True,
             "input_name": "TRRS Trinkey",
             "dit_note": 1,
             "dah_note": 2,

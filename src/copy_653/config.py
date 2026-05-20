@@ -103,7 +103,6 @@ class KeyerSettings:
     ``[audio]`` parameters at the server.
     """
 
-    trinkey_buzzer_enabled: bool = False
     input_name: str | None = "TRRS Trinkey"
     dit_note: int = 1
     dah_note: int = 2
@@ -260,11 +259,7 @@ def save_audio_timing(
 
 
 def load_keyer_settings(path: Path | None = None) -> KeyerSettings:
-    """Load physical key input settings from ``[midi.key]``.
-
-    Missing settings default to Copy owning the sidetone, with the
-    Trinkey buzzer disabled.
-    """
+    """Load physical key input settings from ``[midi.key]``."""
     data = _read_toml(path)
     if data is None:
         return KeyerSettings()
@@ -277,11 +272,6 @@ def load_keyer_settings(path: Path | None = None) -> KeyerSettings:
         return KeyerSettings()
 
     return KeyerSettings(
-        trinkey_buzzer_enabled=_key_bool(
-            key_table.get("trinkey_buzzer_enabled"),
-            "trinkey_buzzer_enabled",
-            default=False,
-        ),
         input_name=_key_optional_string(
             key_table.get("input_name"),
             "input_name",
@@ -292,14 +282,6 @@ def load_keyer_settings(path: Path | None = None) -> KeyerSettings:
         straight_note=_key_midi_note(key_table.get("straight_note"), "straight_note", default=0),
         keyer_mode=_key_keyer_mode(key_table.get("keyer_mode"), default="iambic_a"),
     )
-
-
-def _key_bool(value: Any, field: str, *, default: bool) -> bool:
-    if value is None:
-        return default
-    if not isinstance(value, bool):
-        raise ValueError(f"[midi.key].{field} must be a boolean, got {type(value).__name__}")
-    return value
 
 
 def _key_optional_string(value: Any, field: str, *, default: str | None) -> str | None:
@@ -354,7 +336,6 @@ def _key_keyer_mode(value: Any, *, default: str) -> str:
 
 def save_keyer_settings(
     *,
-    trinkey_buzzer_enabled: bool,
     input_name: str | None = None,
     dit_note: int | None = None,
     dah_note: int | None = None,
@@ -377,11 +358,6 @@ def save_keyer_settings(
         midi_table["key"] = key_table
 
     settings = KeyerSettings(
-        trinkey_buzzer_enabled=_key_bool(
-            trinkey_buzzer_enabled,
-            "trinkey_buzzer_enabled",
-            default=current.trinkey_buzzer_enabled,
-        ),
         input_name=_key_optional_string(input_name, "input_name", default=current.input_name),
         dit_note=_key_midi_note(dit_note, "dit_note", default=current.dit_note),
         dah_note=_key_midi_note(dah_note, "dah_note", default=current.dah_note),
@@ -393,7 +369,6 @@ def save_keyer_settings(
         keyer_mode=_key_keyer_mode(keyer_mode, default=current.keyer_mode),
     )
 
-    key_table["trinkey_buzzer_enabled"] = settings.trinkey_buzzer_enabled
     key_table["input_name"] = settings.input_name
     key_table["dit_note"] = settings.dit_note
     key_table["dah_note"] = settings.dah_note

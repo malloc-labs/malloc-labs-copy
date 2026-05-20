@@ -36,8 +36,7 @@ Client → server, JSON over WS::
     {"action": "get-audio-settings"}
     {"action": "set-audio-settings", "character_wpm": 20, "effective_wpm": 10,
      "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1,
-     "trinkey_buzzer_enabled": false, "keyer_mode": "iambic_a",
-     "hh_clear_enabled": false,
+     "keyer_mode": "iambic_a", "hh_clear_enabled": false,
      "save_directory": "~/.local/share/copy_653"}
     {"action": "play-test-message", "character_wpm": 20, "effective_wpm": 10,
      "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1}
@@ -57,8 +56,8 @@ unsolicited on connect, and after every change::
      "ready_for_next": false}
     {"type": "audio-settings", "character_wpm": 20, "effective_wpm": 10,
      "farnsworth_enabled": true, "tone_shape": 2, "receiver_bed": 2,
-     "cadence_variation": 1, "trinkey_buzzer_enabled": false,
-     "keyer_mode": "iambic_a", "hh_clear_enabled": false,
+     "cadence_variation": 1, "keyer_mode": "iambic_a",
+     "hh_clear_enabled": false,
      "save_directory": "/home/learner/.local/share/copy_653"}
 
 During a Koch Exercises session::

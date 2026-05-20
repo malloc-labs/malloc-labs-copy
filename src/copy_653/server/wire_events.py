@@ -102,7 +102,6 @@ def _key_input_start_payload(
         "dit_note": settings.dit_note,
         "dah_note": settings.dah_note,
         "straight_note": settings.straight_note,
-        "trinkey_buzzer_enabled": settings.trinkey_buzzer_enabled,
         "character_wpm": params.character_speed_wpm,
         "effective_wpm": params.effective_speed_wpm,
         "tone_frequency_hz": params.tone_frequency_hz,
@@ -135,7 +134,6 @@ def _audio_settings_event_from_params(
         "tone_shape": texture.tone_shape_for_envelope_seconds(params.envelope_ramp_seconds),
         "receiver_bed": params.receiver_bed,
         "cadence_variation": params.cadence_variation,
-        "trinkey_buzzer_enabled": keyer_settings.trinkey_buzzer_enabled,
         "keyer_mode": keyer_settings.keyer_mode,
         "hh_clear_enabled": developer_settings.hh_clear_enabled,
         "save_directory": str(save_directory),
@@ -167,7 +165,6 @@ def _key_event_event(
         "tone_frequency_hz": params.tone_frequency_hz,
         "amplitude": params.amplitude,
         "envelope_ramp_ms": round(params.envelope_ramp_seconds * 1000, 3),
-        "trinkey_buzzer_enabled": settings.trinkey_buzzer_enabled,
     }
     if element is not None:
         duration_seconds = element.ended_at - element.started_at

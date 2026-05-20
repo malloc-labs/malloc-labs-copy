@@ -7,9 +7,10 @@
 import { getDeveloperModeEnabled, setDeveloperModeEnabled } from "./developer-mode.js";
 import { setHHClearEnabled } from "./hh-clear.js";
 import {
-    KEYER_MODE_SYNC_RESULT,
-    sendKeyerModeProgramChange,
-} from "./key-timing/keyer-mode-sync.js";
+    TRINKEY_SYNC_RESULT,
+    sendTrinkeySync,
+} from "./key-timing/trinkey-sync.js";
+import { getObservedDit, subscribeObservedDit } from "./trinkey-observed.js";
 
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const wsUrl = `${wsProtocol}//${location.host}/ws`;
@@ -19,10 +20,10 @@ const effectiveInput = document.getElementById("effective-wpm");
 const toneShapeInput = document.getElementById("tone-shape");
 const receiverBedInput = document.getElementById("receiver-bed");
 const cadenceVariationInput = document.getElementById("cadence-variation");
-const trinkeyBuzzerInput = document.getElementById("trinkey-buzzer");
 const keyerModeRadios = document.querySelectorAll('input[name="keyer_mode"]');
 const keyerModeSyncButton = document.getElementById("keyer-mode-sync");
 const keyerModeSyncStatusEl = document.getElementById("keyer-mode-sync-status");
+const observedDitReadoutEl = document.getElementById("observed-dit-readout");
 const saveDirectoryInput = document.getElementById("save-directory");
 const saveButton = document.getElementById("save-audio-settings");
 const playTestButton = document.getElementById("play-test-message");
@@ -56,7 +57,6 @@ function setInputsEnabled(enabled) {
     toneShapeInput.disabled = !enabled;
     receiverBedInput.disabled = !enabled;
     cadenceVariationInput.disabled = !enabled;
-    trinkeyBuzzerInput.disabled = !enabled;
     keyerModeRadios.forEach((radio) => { radio.disabled = !enabled; });
     keyerModeSyncButton.disabled = !enabled;
     saveDirectoryInput.disabled = !enabled;
@@ -76,17 +76,22 @@ function setKeyerModeSyncStatus(text) {
 
 function describeSyncResult(outcome) {
     switch (outcome.result) {
-        case KEYER_MODE_SYNC_RESULT.SENT:
-            return `sent PC ${outcome.program_number} to ${outcome.output_name || "Trinkey"}`;
-        case KEYER_MODE_SYNC_RESULT.UNKNOWN_MODE:
+        case TRINKEY_SYNC_RESULT.SENT: {
+            const parts = [];
+            if (outcome.sent?.mode) parts.push(`PC ${outcome.program_number}`);
+            if (outcome.sent?.wpm) parts.push(`CC1 ${outcome.cc1_value}`);
+            const payload = parts.length ? parts.join(" + ") : "nothing";
+            return `sent ${payload} to ${outcome.output_name || "Trinkey"}`;
+        }
+        case TRINKEY_SYNC_RESULT.UNKNOWN_MODE:
             return `unknown mode "${outcome.mode}"`;
-        case KEYER_MODE_SYNC_RESULT.MIDI_UNAVAILABLE:
+        case TRINKEY_SYNC_RESULT.MIDI_UNAVAILABLE:
             return "browser does not support MIDI";
-        case KEYER_MODE_SYNC_RESULT.MIDI_BLOCKED:
+        case TRINKEY_SYNC_RESULT.MIDI_BLOCKED:
             return outcome.detail ? `MIDI blocked: ${outcome.detail}` : "MIDI access denied";
-        case KEYER_MODE_SYNC_RESULT.NO_OUTPUT:
+        case TRINKEY_SYNC_RESULT.NO_OUTPUT:
             return "no Trinkey output found";
-        case KEYER_MODE_SYNC_RESULT.SEND_FAILED:
+        case TRINKEY_SYNC_RESULT.SEND_FAILED:
             return outcome.detail ? `send failed: ${outcome.detail}` : "send failed";
         default:
             return "unknown result";
@@ -99,7 +104,6 @@ function currentSettings() {
     const toneShape = Number(toneShapeInput.value);
     const receiverBed = Number(receiverBedInput.value);
     const cadenceVariation = Number(cadenceVariationInput.value);
-    const trinkeyBuzzerEnabled = trinkeyBuzzerInput.checked;
     const keyerMode = getKeyerMode();
     const hhClearEnabled = hhClearInput.checked;
     const saveDirectory = saveDirectoryInput.value.trim();
@@ -109,7 +113,6 @@ function currentSettings() {
         toneShape,
         receiverBed,
         cadenceVariation,
-        trinkeyBuzzerEnabled,
         keyerMode,
         hhClearEnabled,
         saveDirectory,
@@ -210,7 +213,6 @@ function renderAudioSettings(event) {
     toneShapeInput.value = event.tone_shape;
     receiverBedInput.value = event.receiver_bed;
     cadenceVariationInput.value = event.cadence_variation;
-    trinkeyBuzzerInput.checked = Boolean(event.trinkey_buzzer_enabled);
     const incomingKeyerMode = typeof event.keyer_mode === "string" ? event.keyer_mode : "iambic_a";
     keyerModeRadios.forEach((radio) => {
         radio.checked = radio.value === incomingKeyerMode;
@@ -221,13 +223,13 @@ function renderAudioSettings(event) {
     // authoritative server state.
     setHHClearEnabled(Boolean(event.hh_clear_enabled));
     const previousKeyerMode = savedSettings?.keyerMode || null;
+    const previousCharacterWpm = savedSettings ? savedSettings.character : null;
     savedSettings = {
         character: event.character_wpm,
         effective: event.effective_wpm,
         toneShape: event.tone_shape,
         receiverBed: event.receiver_bed,
         cadenceVariation: event.cadence_variation,
-        trinkeyBuzzerEnabled: Boolean(event.trinkey_buzzer_enabled),
         keyerMode: incomingKeyerMode,
         hhClearEnabled: Boolean(event.hh_clear_enabled),
         saveDirectory: event.save_directory || "",
@@ -236,9 +238,19 @@ function renderAudioSettings(event) {
     const prefix = isSaving ? "saved" : "ready";
     const justSaved = isSaving;
     isSaving = false;
-    if (justSaved && previousKeyerMode && previousKeyerMode !== incomingKeyerMode) {
-        // Mode changed on this save round-trip — push it to the firmware.
-        syncKeyerModeToDevice(incomingKeyerMode);
+    if (justSaved) {
+        const modeChanged = previousKeyerMode && previousKeyerMode !== incomingKeyerMode;
+        const wpmChanged = previousCharacterWpm != null
+            && previousCharacterWpm !== event.character_wpm;
+        if (modeChanged || wpmChanged) {
+            // Mode and/or WPM changed on this save round-trip — push the
+            // affected values to the firmware so the Trinkey stays in
+            // step with Copy's configured intent.
+            syncTrinkey({
+                mode: modeChanged ? incomingKeyerMode : null,
+                wpm: wpmChanged ? event.character_wpm : null,
+            });
+        }
     }
     setStatus(
         "connected",
@@ -246,6 +258,8 @@ function renderAudioSettings(event) {
     );
     setInputsEnabled(true);
     updateSaveState();
+    // savedSettings.character just changed → refresh drift comparison.
+    renderObservedDit();
 }
 
 function connect() {
@@ -346,7 +360,6 @@ form.addEventListener("submit", (event) => {
         toneShape,
         receiverBed,
         cadenceVariation,
-        trinkeyBuzzerEnabled,
         keyerMode,
         hhClearEnabled,
         saveDirectory,
@@ -363,7 +376,6 @@ form.addEventListener("submit", (event) => {
             tone_shape: toneShape,
             receiver_bed: receiverBed,
             cadence_variation: cadenceVariation,
-            trinkey_buzzer_enabled: trinkeyBuzzerEnabled,
             keyer_mode: keyerMode,
             hh_clear_enabled: hhClearEnabled,
             save_directory: saveDirectory,
@@ -371,15 +383,18 @@ form.addEventListener("submit", (event) => {
     );
 });
 
-async function syncKeyerModeToDevice(mode) {
+async function syncTrinkey({ mode = null, wpm = null } = {}) {
+    if (mode == null && wpm == null) return;
     setKeyerModeSyncStatus("sending");
-    const outcome = await sendKeyerModeProgramChange(mode);
+    const outcome = await sendTrinkeySync({ mode, wpm });
     setKeyerModeSyncStatus(describeSyncResult(outcome));
 }
 
 keyerModeSyncButton.addEventListener("click", () => {
     const mode = savedSettings?.keyerMode || getKeyerMode();
-    syncKeyerModeToDevice(mode);
+    const wpm = savedSettings?.character
+        ?? (Number.isFinite(Number(characterInput.value)) ? Number(characterInput.value) : null);
+    syncTrinkey({ mode, wpm });
 });
 
 function testMessagePayload() {
@@ -449,8 +464,62 @@ function onSettingsInput() {
     saveDirectoryInput,
 ].forEach((input) => input.addEventListener("input", onSettingsInput));
 
-trinkeyBuzzerInput.addEventListener("change", onSettingsInput);
 keyerModeRadios.forEach((radio) => radio.addEventListener("change", onSettingsInput));
 hhClearInput.addEventListener("change", onSettingsInput);
+
+// Within ±5% of the configured dit duration counts as a match; outside
+// that band we flag drift so the learner can either re-sync (Path A) or
+// adjust Copy's WPM to match what the device is doing (Path B).
+const DRIFT_TOLERANCE = 0.05;
+// Stale after one hour — older than that and the readout is more
+// likely a record of an old session than the device's current state.
+const OBSERVED_STALE_MS = 60 * 60 * 1000;
+
+function formatObservedAge(ageMs) {
+    const seconds = Math.round(ageMs / 1000);
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.round(seconds / 60);
+    return `${minutes}m ago`;
+}
+
+function renderObservedDit() {
+    const snapshot = getObservedDit();
+    if (!snapshot) {
+        observedDitReadoutEl.dataset.state = "idle";
+        observedDitReadoutEl.textContent = "no recent keying";
+        return;
+    }
+
+    const ageMs = Date.now() - snapshot.observedAt;
+    if (ageMs > OBSERVED_STALE_MS) {
+        observedDitReadoutEl.dataset.state = "idle";
+        observedDitReadoutEl.textContent = `no recent keying (last seen ${formatObservedAge(ageMs)})`;
+        return;
+    }
+
+    const configuredWpm = savedSettings?.character;
+    const ditMs = Math.round(snapshot.ditMs * 10) / 10;
+    const wpm = Math.round(snapshot.wpm * 10) / 10;
+    const base = `~${ditMs} ms dit (${wpm} WPM), measured ${formatObservedAge(ageMs)}`;
+
+    if (!Number.isFinite(configuredWpm) || configuredWpm <= 0) {
+        observedDitReadoutEl.dataset.state = "match";
+        observedDitReadoutEl.textContent = base;
+        return;
+    }
+
+    const expectedDitMs = 1200 / configuredWpm;
+    const drift = Math.abs(snapshot.ditMs - expectedDitMs) / expectedDitMs;
+    if (drift <= DRIFT_TOLERANCE) {
+        observedDitReadoutEl.dataset.state = "match";
+        observedDitReadoutEl.textContent = `${base} — matches configured ${configuredWpm} WPM`;
+    } else {
+        observedDitReadoutEl.dataset.state = "drift";
+        observedDitReadoutEl.textContent = `${base} — does not match configured ${configuredWpm} WPM (Sync now, or change WPM to match)`;
+    }
+}
+
+subscribeObservedDit(renderObservedDit);
+renderObservedDit();
 
 connect();

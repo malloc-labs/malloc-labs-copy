@@ -5,11 +5,6 @@
 // button rendering. Other modules read the audio state via the
 // exported `sidetone` singleton (.configure, .keyDown, .keyUp, .mute,
 // .unlock, .stateLabel) and the small accessor API below.
-//
-// keyConfig is pushed in via setKeyConfig — the page controller calls
-// that whenever a fresh key-config arrives so this module can honour
-// the trinkey-buzzer override without needing a cross-module state
-// container.
 
 import { clamp, makeAccelLabel } from "./utils.js";
 import { cadenceSpeakerEl, diagAudioEl, soundToggleEl } from "./dom.js";
@@ -19,11 +14,6 @@ const DEFAULT_AMPLITUDE = 0.3;
 const DEFAULT_RAMP_SECONDS = 0.005;
 
 let soundEnabled = false;
-let keyConfig = null;
-
-export function setKeyConfig(cfg) {
-    keyConfig = cfg;
-}
 
 export function isSoundEnabled() {
     return soundEnabled;
@@ -103,7 +93,7 @@ class KeySidetone {
     }
 
     keyDown(note) {
-        if (!canUseAppSidetone()) return;
+        if (!soundEnabled) return;
         if (!this.context || this.context.state !== "running") {
             this.browserBlocked = true;
             updateAudioDiagnostic();
@@ -135,7 +125,6 @@ class KeySidetone {
     }
 
     stateLabel() {
-        if (keyConfig?.trinkey_buzzer_enabled) return "trinkey buzzer";
         if (!soundEnabled || !this.context) return "click sound";
         if (this.context.state === "suspended") return "click sound";
         if (this.browserBlocked) return "blocked";
@@ -145,14 +134,9 @@ class KeySidetone {
 
 export const sidetone = new KeySidetone();
 
-function canUseAppSidetone() {
-    return soundEnabled && !keyConfig?.trinkey_buzzer_enabled;
-}
-
 export function updateAudioDiagnostic() {
     diagAudioEl.textContent = sidetone.stateLabel();
     renderSoundToggleLabel();
-    soundToggleEl.disabled = Boolean(keyConfig?.trinkey_buzzer_enabled);
 }
 
 function renderSoundToggleLabel() {
@@ -184,7 +168,6 @@ async function togglePower() {
 }
 
 export function toggleSidetone() {
-    if (soundToggleEl.disabled) return;
     togglePower();
 }
 

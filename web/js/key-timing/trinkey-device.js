@@ -1,6 +1,6 @@
 // Shared Trinkey device-name matcher.
 //
-// Used by midi-input.js to pick the input port and by keyer-mode-sync.js
+// Used by midi-input.js to pick the input port and by trinkey-sync.js
 // to pick the output port. Keeping them in one place ensures input and
 // output selection cannot drift apart.
 

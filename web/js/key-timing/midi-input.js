@@ -23,6 +23,7 @@
 // into the page controller.
 
 import { clearCopyExercises, clearImiCue, refreshImiCue, setLastNoteOffAt } from "./copy-progress.js";
+import { recordObservedDit } from "../trinkey-observed.js";
 import {
     BROWSER_MIDI_INPUT_MODE,
     appendRawDiagnosticRow,
@@ -37,7 +38,7 @@ import {
     diagTimingEl,
     statusEl,
 } from "./dom.js";
-import { setKeyConfig as setSidetoneKeyConfig, sidetone, updateAudioDiagnostic } from "./sidetone.js";
+import { sidetone, updateAudioDiagnostic } from "./sidetone.js";
 import { selectTrinkeyDevice } from "./trinkey-device.js";
 import { formatMs, formatRatio, formatTimestamp, kindForNote } from "./utils.js";
 
@@ -235,11 +236,15 @@ export async function startBrowserMidi(socket) {
 
 export function renderKeyInputStart(event) {
     keyConfig = event;
-    setSidetoneKeyConfig(event);
     // Fan-out: any page-specific listener needs ditMs to scale the
     // green/amber/red zones consistently with the cadence renderer.
+    // characterWpm rides along for the sync-status indicator so it can
+    // describe drift in WPM terms without recomputing from ditMs.
     document.dispatchEvent(new CustomEvent("copy-653:key-input-start", {
-        detail: { ditMs: Number(event.dit_ms_expected) || 60 },
+        detail: {
+            ditMs: Number(event.dit_ms_expected) || 60,
+            characterWpm: Number(event.character_wpm) || null,
+        },
     }));
     recordDiagnostic("key-input-start", {
         source: event.source,
@@ -327,6 +332,9 @@ export function renderKeyEvent(event) {
                 formatMs(event.duration_ms),
                 formatRatio(event.ratio_dits),
             ].join(" / "));
+            if (event.kind === "dit") {
+                recordObservedDit(event.duration_ms);
+            }
         }
     }
     if (keyConfig?.source !== "browser") {

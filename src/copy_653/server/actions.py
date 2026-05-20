@@ -539,10 +539,6 @@ async def _set_audio_settings_action(
             texture.MIN_CADENCE_VARIATION,
             texture.MAX_CADENCE_VARIATION,
         )
-        trinkey_buzzer_enabled = _optional_bool(
-            message.get("trinkey_buzzer_enabled"),
-            "trinkey_buzzer_enabled",
-        )
         keyer_mode = _optional_non_empty_string(
             message.get("keyer_mode"),
             "keyer_mode",
@@ -563,14 +559,8 @@ async def _set_audio_settings_action(
             cadence_variation=cadence_variation,
             path=config_path,
         )
-        if trinkey_buzzer_enabled is not None or keyer_mode is not None:
-            current_keyer = load_keyer_settings(config_path)
+        if keyer_mode is not None:
             keyer_settings = save_keyer_settings(
-                trinkey_buzzer_enabled=(
-                    trinkey_buzzer_enabled
-                    if trinkey_buzzer_enabled is not None
-                    else current_keyer.trinkey_buzzer_enabled
-                ),
                 keyer_mode=keyer_mode,
                 path=config_path,
             )

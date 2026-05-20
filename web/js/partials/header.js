@@ -32,6 +32,13 @@ const SPEAKER_SVG = `
 
 const KEYER_MODE_BADGE = `<span class="key-mode-badge" id="key-mode-badge" data-keyer-mode="" aria-label="Keyer mode">—</span>`;
 
+// Compact dot beside the connection status: green when the observed
+// Trinkey dit matches the configured WPM, amber when it drifts, muted
+// when there is no recent observation. Click opens Settings for the
+// learner to re-sync or adjust. Rendered only on Key pages, gated by
+// the same keyer-mode attribute that the badge uses.
+const TRINKEY_SYNC_INDICATOR = `<a class="trinkey-sync-indicator" id="trinkey-sync-indicator" href="../settings/index.html" data-state="idle" aria-label="Trinkey sync status — click to open Settings" title="no recent keying">●</a>`;
+
 class CopyHeader extends HTMLElement {
     connectedCallback() {
         if (this._hydrated) return;
@@ -41,11 +48,12 @@ class CopyHeader extends HTMLElement {
         const title = this.getAttribute("title") ?? "";
         const speakerSvg = this.hasAttribute("speaker") ? SPEAKER_SVG : "";
         const keyerModeBadge = this.hasAttribute("keyer-mode") ? KEYER_MODE_BADGE : "";
+        const syncIndicator = this.hasAttribute("keyer-mode") ? TRINKEY_SYNC_INDICATOR : "";
         this.innerHTML = `
 <header class="landing-header">
     <p class="eyebrow"><a href="${eyebrowHref}" class="back-link">${eyebrow}</a></p>
     <h1 class="landing-title">
-        <span class="landing-title__text">${title} <span class="status" data-status="connecting">connecting...</span></span>${keyerModeBadge}${speakerSvg}
+        <span class="landing-title__text">${title} <span class="status" data-status="connecting">connecting...</span>${syncIndicator}</span>${keyerModeBadge}${speakerSvg}
     </h1>
 </header>
 <hr class="landing-rule">`;
