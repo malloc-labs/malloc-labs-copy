@@ -551,7 +551,11 @@
 }
 
 .settings-koch-lifetime__grid-wrap {
+    /* overflow-x: auto promotes overflow-y from visible to auto per the
+       CSS overflow spec, which clips the last row's collapsed bottom
+       border. 1px of trailing padding keeps it inside the visible area. */
     overflow-x: auto;
+    padding-bottom: 1px;
 }
 
 .settings-koch-lifetime__grid {
