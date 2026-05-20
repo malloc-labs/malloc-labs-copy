@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.1](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.9.0...v0.9.1) (2026-05-20)
+
+
+### Bug Fixes
+
+* **docs:** refresh README status, surfaces, and Settings tabs ([#115](https://github.com/malloc-labs/malloc-labs-copy/issues/115)) ([0316d8c](https://github.com/malloc-labs/malloc-labs-copy/commit/0316d8c8284e0f0ac6a9d38d23e443a8bb8f3517))
+* **settings:** restore last-row bottom border on lifetime history grid ([#117](https://github.com/malloc-labs/malloc-labs-copy/issues/117)) ([fc7ad0f](https://github.com/malloc-labs/malloc-labs-copy/commit/fc7ad0f461ef748124f8955400f329086c445433))
+
 ## [0.9.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.8.0...v0.9.0) (2026-05-20)
 
 
