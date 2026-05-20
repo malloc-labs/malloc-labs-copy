@@ -922,7 +922,7 @@
 .settings-calendar__day {
     min-height: 4.5rem;
     display: grid;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: auto 1fr auto auto;
     row-gap: 0.15rem;
     padding: 0.3rem 0.4rem;
     border: 1px solid var(--mr-faint, currentColor);
@@ -966,4 +966,12 @@
     color: var(--mr-text);
     opacity: 0.75;
     text-align: right;
+}
+
+.settings-calendar__day-duration {
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--mr-text);
+    opacity: 0.75;
+    text-align: left;
 }

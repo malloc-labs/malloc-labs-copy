@@ -10,6 +10,8 @@
 //   • claimed_set: the latest session's set (the state the learner
 //     ended the day on — most informative for nudge tuning).
 //   • exercise_count: sum across all sessions that day.
+//   • duration_seconds: sum of (ended_at − started_at) across all
+//     sessions that day, displayed as rounded minutes.
 //
 // Data source: /api/koch-exercises. The earliest navigable month is
 // 2026-01.
@@ -32,9 +34,9 @@ const today = new Date();
 let viewYear = Math.max(today.getFullYear(), MIN_YEAR);
 let viewMonth = viewYear === today.getFullYear() ? today.getMonth() : MIN_MONTH;
 
-// Map<YYYY-MM-DD, {claimed_set: string[], exercise_count: number}>, in
-// local time so calendar squares match the wall clock the learner saw
-// when they were practising.
+// Map<YYYY-MM-DD, {claimed_set: string[], exercise_count: number,
+// duration_seconds: number}>, in local time so calendar squares match
+// the wall clock the learner saw when they were practising.
 const practiceDays = new Map();
 
 function localDateKey(date) {
@@ -42,6 +44,23 @@ function localDateKey(date) {
     const m = String(date.getMonth() + 1).padStart(2, "0");
     const d = String(date.getDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
+}
+
+// Wall-clock minutes between two ISO timestamps. Returns 0 if either
+// is missing/invalid or if ended_at precedes started_at (clock skew or
+// a record written before the engine populated ended_at).
+function sessionDurationSeconds(started_at, ended_at) {
+    if (typeof started_at !== "string" || typeof ended_at !== "string") return 0;
+    const start = new Date(started_at).getTime();
+    const end = new Date(ended_at).getTime();
+    if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return 0;
+    return (end - start) / 1000;
+}
+
+function formatPracticeMinutes(seconds) {
+    if (!seconds || seconds <= 0) return "";
+    const minutes = Math.max(1, Math.round(seconds / 60));
+    return `${minutes}m`;
 }
 
 function isAtMinMonth() {
@@ -89,9 +108,11 @@ function render() {
         if (entry) {
             cell.dataset.practice = "true";
             const claimed = entry.claimed_set.join(" ");
+            const minutesLabel = formatPracticeMinutes(entry.duration_seconds);
+            const durationLabel = minutesLabel ? `, ${minutesLabel} of practice` : "";
             cell.setAttribute(
                 "aria-label",
-                `${d} ${MONTH_NAMES[viewMonth]} — claimed ${claimed || "none"}, ${entry.exercise_count} exercise${entry.exercise_count === 1 ? "" : "s"}`,
+                `${d} ${MONTH_NAMES[viewMonth]} — claimed ${claimed || "none"}, ${entry.exercise_count} exercise${entry.exercise_count === 1 ? "" : "s"}${durationLabel}`,
             );
         } else {
             cell.setAttribute("aria-label", `${d} ${MONTH_NAMES[viewMonth]}`);
@@ -113,6 +134,12 @@ function render() {
             count.className = "settings-calendar__day-count";
             count.textContent = `${entry.exercise_count} ex`;
             cell.appendChild(count);
+
+            const minutesLabel = formatPracticeMinutes(entry.duration_seconds);
+            const duration = document.createElement("span");
+            duration.className = "settings-calendar__day-duration";
+            duration.textContent = minutesLabel;
+            cell.appendChild(duration);
         }
 
         gridEl.appendChild(cell);
@@ -136,9 +163,11 @@ async function loadSessions() {
             const prev = practiceDays.get(key);
             const count = Number.isFinite(rec.exercise_count) ? rec.exercise_count : 0;
             const claimed = Array.isArray(rec.claimed_set) ? rec.claimed_set : [];
+            const duration = sessionDurationSeconds(rec.started_at, rec.ended_at);
             practiceDays.set(key, {
                 claimed_set: claimed,
                 exercise_count: (prev?.exercise_count || 0) + count,
+                duration_seconds: (prev?.duration_seconds || 0) + duration,
             });
         });
         if (records.length === 0) {
