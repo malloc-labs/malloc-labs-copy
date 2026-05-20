@@ -94,6 +94,22 @@ toggleBtn.addEventListener("click", () => {
     setTruthOpen(!isOpen);
 });
 
+function renderToggleLabel() {
+    const labelEl = document.getElementById("symbol-truth-toggle-label");
+    if (!labelEl) return;
+    const u = document.createElement("u");
+    u.textContent = "r";
+    labelEl.replaceChildren(u);
+    toggleBtn.title = "Review (R)";
+    toggleBtn.setAttribute("aria-keyshortcuts", "R");
+}
+
+function toggleTruth() {
+    if (toggleBtn.getAttribute("aria-disabled") === "true") return;
+    const isOpen = toggleBtn.getAttribute("aria-expanded") === "true";
+    setTruthOpen(!isOpen);
+}
+
 function connect() {
     socket = new WebSocket(wsUrl);
 
@@ -219,6 +235,20 @@ window.addEventListener("blur", () => {
     leftAltDown = false;
 });
 
+window.addEventListener("keydown", (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    const target = event.target;
+    if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) return;
+    }
+    if (event.key.toLowerCase() === "r") {
+        event.preventDefault();
+        toggleTruth();
+    }
+});
+
+renderToggleLabel();
 setCellsEnabled(false);
 setTruthOpen(false);
 setTruthLocked(true);
