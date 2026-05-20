@@ -26,10 +26,18 @@
         <copy-koch-sequence section-label="Koch symbol sequence"></copy-koch-sequence>
 
         <section class="controls" aria-label="Listening controls">
-            <!-- Single toggle: idle → "Start" (begin a new seeded session);
-                 active → "Abort" (cancel the in-flight session). A new Start
-                 wipes the review section by design — see web/js/main.js. -->
-            <button type="button" id="start" disabled data-mode="idle">Start</button>
+            <!-- Single toggle: idle → "Start" (begin a new seeded session,
+                 after a 5-second countdown); counting → "Cancel" (abort
+                 the countdown); active → "Abort" (cancel the in-flight
+                 session). A new Start wipes the review section by design
+                 — see web/js/main.js. -->
+            <button type="button"
+                    id="start"
+                    disabled
+                    data-mode="idle"
+                    aria-keyshortcuts="S"
+                    title="Start (S)"><u>S</u>tart</button>
+            <span class="countdown" id="countdown" hidden aria-live="polite"></span>
         </section>
         <p class="primed" id="primed">Primed: —</p>
         <section class="timeline" aria-label="Truth">

@@ -13,9 +13,16 @@ const statusEl     = document.querySelector(".status");
 const eventsEl     = document.getElementById("events");
 const answersEl    = document.getElementById("answers");
 const startBtn     = document.getElementById("start");
+const countdownEl  = document.getElementById("countdown");
 const saveBtn      = document.getElementById("save-answers");
 const sequenceRow  = document.getElementById("sequence-row");
 const primedEl     = document.getElementById("primed");
+
+// Pre-start countdown — gives the learner a moment to settle before
+// audio begins. Cancellable while ticking by clicking Start (which
+// reads as "Cancel" during the count) or pressing the S keybind.
+const COUNTDOWN_SECONDS = 5;
+let countdownTimer = null;
 
 // Canonical Koch order — mirrors KOCH_ORDER in patterns.py.
 // This is the single source of truth for the UI sequence display.
@@ -420,6 +427,7 @@ function connect() {
 
     socket.addEventListener("close", () => {
         setStatus("disconnected", "disconnected");
+        clearCountdown();
         startBtn.disabled = true;
         sessionActive     = false;
         sessionStartedAtMs = null;
@@ -434,18 +442,60 @@ function connect() {
 
 // ─── Controls ─────────────────────────────────────────────────────────────────
 
-// Start is a single toggle: idle → begin a new seeded session;
+// Start is a three-state toggle: idle → begin a 5-second pre-start
+// countdown; counting → cancel the countdown and return to idle;
 // active → abort the in-flight session. ``data-mode`` mirrors the
 // state for CSS hooks without re-reading the button text.
 function setStartButtonMode(mode) {
     startBtn.dataset.mode = mode;
     if (mode === "idle") {
-        startBtn.disabled    = !socket || socket.readyState !== WebSocket.OPEN;
-        startBtn.textContent = "Start";
+        clearCountdown();
+        startBtn.disabled  = !socket || socket.readyState !== WebSocket.OPEN;
+        // <u>S</u>tart — keybind hint matches aria-keyshortcuts="S".
+        startBtn.innerHTML = "<u>S</u>tart";
+    } else if (mode === "counting") {
+        startBtn.disabled    = false;
+        startBtn.textContent = "Cancel";
     } else if (mode === "active") {
+        clearCountdown();
         startBtn.disabled    = false;
         startBtn.textContent = "Abort";
     }
+}
+
+function clearCountdown() {
+    if (countdownTimer !== null) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+    }
+    countdownEl.hidden = true;
+    countdownEl.textContent = "";
+}
+
+function beginCountdownThenStart() {
+    let remaining = COUNTDOWN_SECONDS;
+    countdownEl.hidden = false;
+    countdownEl.textContent = String(remaining);
+    setStartButtonMode("counting");
+    resetReviewSection();
+
+    countdownTimer = setInterval(() => {
+        remaining -= 1;
+        if (remaining > 0) {
+            countdownEl.textContent = String(remaining);
+            return;
+        }
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+        countdownEl.hidden = true;
+        countdownEl.textContent = "";
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            setStartButtonMode("idle");
+            return;
+        }
+        socket.send(JSON.stringify({ action: "start" }));
+        startBtn.disabled = true;
+    }, 1000);
 }
 
 function resetReviewSection() {
@@ -467,23 +517,46 @@ function resetReviewSection() {
 
 startBtn.addEventListener("click", () => {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
-    if (startBtn.dataset.mode === "active") {
+    const mode = startBtn.dataset.mode;
+    if (mode === "active") {
         // Abort path: cancel the in-flight session. The engine will
         // emit session-end, which flips the button back to "Start".
         socket.send(JSON.stringify({ action: "stop" }));
         startBtn.disabled = true;
         return;
     }
-    // Idle path: wipe review state and start a fresh seeded session.
-    resetReviewSection();
-    socket.send(JSON.stringify({ action: "start" }));
-    startBtn.disabled = true;
+    if (mode === "counting") {
+        // Cancel the pre-start countdown — no engine action yet.
+        setStartButtonMode("idle");
+        return;
+    }
+    // Idle path: wipe review state and run the pre-start countdown.
+    beginCountdownThenStart();
 });
 
 saveBtn.addEventListener("click", () => {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
     if (saveBtn.dataset.state !== "ready") return;
     socket.send(JSON.stringify({ action: "save-koch-answers", answers: collectAnswers() }));
+});
+
+// ─── Start keybind (S) ────────────────────────────────────────────────────────
+// Mirrors aria-keyshortcuts="S" on the Start button. Skips when a
+// modifier is held or focus is in an editable element so it never
+// fights a real text field. Whatever mode the button is in, this just
+// re-routes through its click handler.
+
+window.addEventListener("keydown", (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.repeat) return;
+    const target = event.target;
+    if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) return;
+    }
+    if (event.key.toLowerCase() !== "s") return;
+    if (startBtn.disabled) return;
+    event.preventDefault();
+    startBtn.click();
 });
 
 // ─── Symbol preview (Left Alt + key) ──────────────────────────────────────────
