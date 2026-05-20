@@ -252,10 +252,12 @@ def _list_koch_exercises(config_path: Path | None) -> dict[str, Any]:
                 continue
             exercises = data.get("exercises")
             exercise_count = len(exercises) if isinstance(exercises, list) else 0
+            ended_at = data.get("ended_at")
             records.append(
                 {
                     "filename": entry.name,
                     "started_at": started_at,
+                    "ended_at": ended_at if isinstance(ended_at, str) else None,
                     "claimed_set": [str(s) for s in claimed_set],
                     "exercise_count": exercise_count,
                 }
