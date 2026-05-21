@@ -202,11 +202,13 @@ async def _start_action(
         exercise_count=len(exercises),
         gears=gears,
     )
-    # Gear 3 stage 1: once band-evidence says the learner is in
-    # contention, engage the scaffold-break audio shape — per-exercise
-    # random lead-in silence so DE no longer reliably lands at the start
-    # of each exercise. The full nudge (60-min floor + evidence) is a
-    # separate gate; this probe runs through the build-up.
+    # Scaffold-break audio engages when every burden band is at the
+    # top gear (3) and the learner is still copying strongly. That
+    # condition is exactly _next_symbol_evidence — the same signal
+    # that lights the "in contention" box on the sequence row, so
+    # the audio probe and the visual probe stay in lockstep. The full
+    # nudge (60-min floor + evidence) is a separate gate; scaffold-
+    # break runs through that ramp.
     scaffold_break = _next_symbol_evidence(save_directory, claimed_set_key)
     samples, timeline, audio_shape = build_exercises_audio(
         exercises,

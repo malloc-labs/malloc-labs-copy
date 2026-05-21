@@ -41,10 +41,12 @@ function formatDuration(startedIso, endedIso) {
     return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 }
 
-function formatGear3(record) {
-    // Gear 3 (scaffold-break) was added in PRs #134/#135. Records
-    // before then carry no scaffold_break block; treat missing as
-    // "off" — that's the truth for those sessions.
+function formatScaffoldBreak(record) {
+    // Scaffold-break is the session-level audio shape that engages
+    // when every burden band reaches gear 3 — randomised DE lead-ins
+    // (PR #134) and a dynamic noise floor (PR #135). Records written
+    // before those landed carry no scaffold_break block; treat
+    // missing as "off" — that's the truth for those sessions.
     const sb = record.generation?.scaffold_break;
     if (!sb || !sb.enabled) return "Off";
     const parts = [];
@@ -73,7 +75,7 @@ function buildMetaPairs(record) {
         ["Effective speed", Number.isFinite(effWpm) ? `${effWpm} WPM` : "—"],
         ["Farnsworth", farnsworth ? "on" : "off"],
         ["Tone", Number.isFinite(toneHz) ? `${toneHz} Hz` : "—"],
-        ["Gear 3", formatGear3(record)],
+        ["Scaffold-break", formatScaffoldBreak(record)],
         ["Claimed set", claimed],
     ];
     if (record.engine_version) pairs.push(["Engine", `v${record.engine_version}`]);

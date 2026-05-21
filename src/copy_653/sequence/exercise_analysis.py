@@ -31,10 +31,21 @@ STRONG_FRACTION = 0.95
 # the band_state == "low" cutoff in :func:`_band_state`.
 LOW_FRACTION = 0.70
 
-# Highest gear the candidate selector currently understands. Gears
-# beyond this exist in the MOC but change generator parameters
-# (max_word_length, max_words) and are a separate validation surface.
-MAX_GEAR = 2
+# Highest band gear in the curriculum. Gears 0–2 escalate *content*
+# (which slice of the burden pool a slot draws from); gear 3 is
+# content-equivalent to gear 2 (already at the band ceiling) and
+# instead engages session-level scaffold-break audio — randomised DE
+# lead-ins and a dynamic noise floor — to disrupt the structural cues
+# the learner has built up over focused listening. Originally
+# scaffold-break lived on its own boolean wire; we folded it into the
+# gear axis so "the learner reaches a capability, the next gear kicks
+# in" stays a single story instead of bifurcating axes.
+MAX_GEAR = 3
+# Highest *content*-changing gear. Beyond this, gears layer audio /
+# assembly disruption on top of gear 2's content; the slot range stays
+# the same. Used by ``copy_exercises._slot_range`` to know when to
+# fall through.
+MAX_CONTENT_GEAR = 2
 # Consecutive strong-band sessions required before a band advances one
 # gear. Conservative on purpose — one lucky run should not move the
 # generator, and three repeated strong runs make a chance explanation
