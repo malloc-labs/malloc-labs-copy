@@ -82,8 +82,24 @@ def add_receiver_bed(
     params: AudioParameters,
     *,
     context: str,
+    dynamic: bool = False,
 ) -> np.ndarray:
-    """Mix a very quiet deterministic listening floor under ``samples``."""
+    """Mix a very quiet deterministic listening floor under ``samples``.
+
+    With ``dynamic=False`` (default) the floor RMS is constant across
+    the buffer — the existing well-tested behaviour.
+
+    With ``dynamic=True`` the floor amplitude is modulated by a slow
+    smoothed random envelope (gear 3 stage 2: scaffold-break dynamic
+    floor). The configured ``receiver_bed`` value becomes the *centre*
+    of the range rather than the absolute target; the envelope drifts
+    around it within ~±2 dB so the floor feels like band conditions
+    instead of a static sheet. The envelope is seeded from the same
+    context as the noise so replay reproduces the exact modulation.
+
+    The tone itself is never modulated — only the noise floor
+    multiplied by the envelope. Bed continuity is preserved end-to-end.
+    """
     if params.receiver_bed == 0 or len(samples) == 0:
         return samples.astype(np.float32, copy=False)
 
@@ -100,6 +116,14 @@ def add_receiver_bed(
     target_rms = params.amplitude * (10.0 ** (relative_db / 20.0))
     floor = floor * np.float32(target_rms / floor_rms)
 
+    if dynamic:
+        envelope = _smooth_random_envelope(
+            len(samples),
+            sample_rate_hz=params.sample_rate_hz,
+            seed=_seed_int("receiver-bed-envelope", context, str(params.receiver_bed)),
+        )
+        floor = floor * envelope
+
     mixed = samples.astype(np.float32, copy=False) + floor
     return np.clip(mixed, -1.0, 1.0).astype(np.float32, copy=False)
 
@@ -108,6 +132,67 @@ def _soften_floor(samples: np.ndarray) -> np.ndarray:
     """Shape raw random samples into a less brittle listening bed."""
     kernel = np.array([0.08, 0.18, 0.48, 0.18, 0.08], dtype=np.float32)
     return np.convolve(samples, kernel, mode="same").astype(np.float32)
+
+
+# Dynamic-floor tunings. The envelope drives the noise floor's level
+# over time when ``add_receiver_bed(..., dynamic=True)`` is called.
+#
+# * _DYNAMIC_FLOOR_RANGE — peak ±deviation around 1.0 in linear gain.
+#   ±0.25 corresponds to roughly +1.9 dB / -2.5 dB, which is subtle
+#   enough to read as band conditions rather than a fade effect.
+# * _DYNAMIC_FLOOR_UPDATE_HZ — rate at which the underlying random
+#   walk is sampled. 10 Hz gives a ~5–20s correlation time after the
+#   short running average, which feels like slow band drift, not LFO
+#   wobble.
+# * _DYNAMIC_FLOOR_SMOOTHING — running-average kernel length applied
+#   to the low-rate sequence before linear upsampling to audio rate.
+_DYNAMIC_FLOOR_RANGE: Final = 0.25
+_DYNAMIC_FLOOR_UPDATE_HZ: Final = 10
+_DYNAMIC_FLOOR_SMOOTHING: Final = 7
+
+
+def _smooth_random_envelope(
+    n_samples: int,
+    *,
+    sample_rate_hz: int,
+    seed: int,
+) -> np.ndarray:
+    """Build a slow, smooth, mean-≈1.0 random envelope of length ``n_samples``.
+
+    The envelope is generated at a low rate, smoothed with a short
+    running average, tanh-squashed into
+    ``[1 - _DYNAMIC_FLOOR_RANGE, 1 + _DYNAMIC_FLOOR_RANGE]``, and
+    linearly interpolated up to the audio sample rate. tanh keeps the
+    floor strictly bounded without the flat-top artefact a hard clip
+    would introduce. The cheap low-rate generation keeps this O(n)
+    without scipy.
+
+    ``n_low`` is kept ``>= _DYNAMIC_FLOOR_SMOOTHING`` so the
+    ``mode="same"`` convolution returns exactly ``n_low`` samples
+    (numpy returns the length of the *longer* input under that mode,
+    not the first input).
+    """
+    if n_samples <= 0:
+        return np.ones(0, dtype=np.float32)
+
+    rng = np.random.default_rng(seed)
+    seconds = n_samples / float(sample_rate_hz)
+    n_low = max(
+        _DYNAMIC_FLOOR_SMOOTHING,
+        int(np.ceil(seconds * _DYNAMIC_FLOOR_UPDATE_HZ)) + 1,
+    )
+    raw = rng.standard_normal(n_low).astype(np.float32)
+    kernel = np.ones(_DYNAMIC_FLOOR_SMOOTHING, dtype=np.float32) / _DYNAMIC_FLOOR_SMOOTHING
+    smoothed = np.convolve(raw, kernel, mode="same").astype(np.float32)
+    std = float(smoothed.std())
+    if std > 0:
+        bounded = np.tanh(smoothed / std).astype(np.float32) * _DYNAMIC_FLOOR_RANGE
+    else:
+        bounded = np.zeros_like(smoothed)
+    centred = 1.0 + bounded
+    x_low = np.linspace(0.0, float(n_samples - 1), num=n_low, dtype=np.float64)
+    x_high = np.arange(n_samples, dtype=np.float64)
+    return np.interp(x_high, x_low, centred).astype(np.float32)
 
 
 def _validate_int_range(value: int, field: str, minimum: int, maximum: int) -> None:

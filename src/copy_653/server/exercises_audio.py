@@ -17,15 +17,26 @@ between exercises and that level shift becomes an audible "exercise
 ended" marker for learners on headphones or decent speakers — exactly
 the cue the bed exists to mask.
 
-Scaffold-break (gear 3, stage 1): when ``scaffold_break`` is enabled
-the assembler prepends a per-exercise random lead-in silence (drawn
-from :data:`SCAFFOLD_BREAK_LEAD_IN_RANGE_SECONDS`) before each
-exercise. The DE listening anchor is still the first word of the
-exercise string but no longer lands at the same offset each time, so
-the learner cannot use "DE arriving now" as a reliable start-of-
-exercise marker. Engages once the band-evidence signal goes green
+Scaffold-break (gear 3): when ``scaffold_break`` is enabled the
+assembler applies two probes intended to disrupt the scaffolding
+the early-Koch learner has built up around exercise structure:
+
+* Stage 1 (lead-in): prepend a per-exercise random lead-in silence
+  (drawn from :data:`SCAFFOLD_BREAK_LEAD_IN_RANGE_SECONDS`) before
+  each exercise. DE is still the first word of the exercise string
+  but no longer lands at the same offset each time, so the learner
+  cannot use "DE arriving now" as a reliable start-of-exercise
+  marker.
+* Stage 2 (dynamic floor): pass ``dynamic=True`` to
+  :func:`copy_653.audio.texture.add_receiver_bed` so the noise
+  floor amplitude is modulated by a slow smoothed random envelope
+  across the whole assembled buffer — the floor feels like band
+  conditions rather than a static sheet.
+
+Both engage once the band-evidence signal goes green
 (:func:`copy_653.server.records._next_symbol_evidence`) — the
-durability probe that runs through the 60-minute per-claimed-set ramp.
+durability probe that runs through the 60-minute per-claimed-set
+ramp.
 
 This module is pure: no I/O, no clock, no module-level random state.
 The WebSocket server decides when to start a session and how to emit
@@ -84,6 +95,7 @@ def build_exercises_audio(
         "scaffold_break": {
             "enabled": bool(scaffold_break),
             "lead_in_seconds": [],
+            "dynamic_floor": bool(scaffold_break),
         }
     }
 
@@ -139,6 +151,7 @@ def build_exercises_audio(
         samples,
         audio_params,
         context=f"exercises:{len(exercises)}:{'|'.join(exercises)}",
+        dynamic=scaffold_break,
     )
     audio_shape["scaffold_break"]["lead_in_seconds"] = lead_ins
     return samples, timeline, audio_shape
