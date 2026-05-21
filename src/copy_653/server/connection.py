@@ -55,6 +55,7 @@ from copy_653.server.records import (
     _ActiveCadenceSession,
     _finalize_cadence_session,
     _next_send_symbol_readiness,
+    _next_symbol_evidence,
     _next_symbol_readiness,
 )
 from copy_653.server.validation import (
@@ -236,12 +237,14 @@ async def handler(
     claimed = load_claimed_symbols(state.config_path)
     save_directory = load_save_directory(state.config_path)
     claimed_set_key = " ".join(sorted(claimed))
+    evidence_ready_for_next = _next_symbol_evidence(save_directory, claimed_set_key)
     ready_for_next = _next_symbol_readiness(save_directory, claimed_set_key)
     ready_for_next_send = _next_send_symbol_readiness(save_directory, claimed_set_key)
     await _send_event(
         ws,
         _claimed_symbols_event(
             claimed,
+            evidence_ready_for_next=evidence_ready_for_next,
             ready_for_next=ready_for_next,
             ready_for_next_send=ready_for_next_send,
         ),

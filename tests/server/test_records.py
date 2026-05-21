@@ -12,6 +12,7 @@ from copy_653.server import records as records_module
 from copy_653.server.records import (
     MIN_SECONDS_PER_CLAIMED_SET,
     _next_koch_run_index,
+    _next_symbol_evidence,
     _next_symbol_readiness,
     _resolve_session_gears,
     _seconds_on_claimed_set,
@@ -263,3 +264,40 @@ def test_next_symbol_readiness_stays_closed_when_evidence_not_ready_even_above_f
 
 def test_next_symbol_readiness_empty_key_returns_false(tmp_path: Path):
     assert _next_symbol_readiness(tmp_path, "") is False
+
+
+# ---- evidence-only signal (drives the in-contention box) -------------------
+
+
+def test_next_symbol_evidence_passes_through_band_evidence_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    # Empty records dir is fine — _next_symbol_evidence does not care
+    # about time on set, only what the evidence analysis returns.
+    monkeypatch.setattr(records_module, "is_ready_for_next_symbol", lambda *_, **__: True)
+    assert _next_symbol_evidence(tmp_path, "K M") is True
+
+    monkeypatch.setattr(records_module, "is_ready_for_next_symbol", lambda *_, **__: False)
+    assert _next_symbol_evidence(tmp_path, "K M") is False
+
+
+def test_next_symbol_evidence_ignores_time_floor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    # Even zero contact time is fine — that's the point: the box (which
+    # this signal drives) is supposed to appear *before* the time floor
+    # has been met, so the durability probe can run during the ramp.
+    monkeypatch.setattr(records_module, "is_ready_for_next_symbol", lambda *_, **__: True)
+    target = tmp_path / "koch-exercise"
+    target.mkdir()
+    _write_koch_json(
+        target,
+        "koch-exercise-20260518T100000Z.json",
+        _session_record("2026-05-18T10:00:00.000Z", claimed_set_key="K M", duration_seconds=0),
+    )
+    assert _next_symbol_evidence(tmp_path, "K M") is True
+    # And the full nudge gate stays closed at the same record — sanity
+    # check that the two signals diverge as designed.
+    assert _next_symbol_readiness(tmp_path, "K M") is False
+
+
+def test_next_symbol_evidence_empty_key_returns_false(tmp_path: Path):
+    assert _next_symbol_evidence(tmp_path, "") is False

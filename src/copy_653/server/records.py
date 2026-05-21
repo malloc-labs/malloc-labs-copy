@@ -280,6 +280,27 @@ def _seconds_on_claimed_set(records: list[dict[str, Any]], *, claimed_set_key: s
     return total
 
 
+def _next_symbol_evidence(save_directory: Path, claimed_set_key: str) -> bool:
+    """Whether saved band-evidence alone says the learner is ready.
+
+    Evidence-only counterpart to :func:`_next_symbol_readiness`: the raw
+    output of :func:`is_ready_for_next_symbol` without the per-set time
+    floor. Used to drive the "in contention" box around the next symbol —
+    the box appears as soon as evidence says the learner is in the right
+    territory, while the full nudge (the colour change) waits for the
+    time floor too. The audio-side gear 3 disruption is wired off the
+    same signal so the durability probe runs concurrently with the
+    60-min ramp.
+
+    Returns ``False`` for an empty claimed-set key for the same reason
+    :func:`_next_symbol_readiness` does (cold-start safety).
+    """
+    if not claimed_set_key:
+        return False
+    records = _iter_koch_records(save_directory)
+    return is_ready_for_next_symbol(records, claimed_set_key=claimed_set_key)
+
+
 def _next_symbol_readiness(save_directory: Path, claimed_set_key: str) -> bool:
     """Whether saved evidence says the learner is ready for the next symbol.
 

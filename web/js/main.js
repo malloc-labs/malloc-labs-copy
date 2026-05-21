@@ -78,19 +78,21 @@ function renderSequence(state) {
     claimedState = state;
     const claimedSet = new Set(state.symbols);
     claimedSymbolSet = claimedSet;
-    // Saved-evidence readiness for the next-symbol nudge. Painted as
-    // a row-level attribute so CSS toggles the box on the "next"
-    // token without per-token logic. Server defaults to false on
-    // insufficient evidence, and now also holds back under the
-    // per-claimed-set wall-clock floor (the soft gate — focused
-    // listening for a few minutes can satisfy the evidence analysis
-    // long before any meaningful contact time has accumulated).
+    // The next-symbol visual is layered onto two signals from the
+    // engine:
+    //   • evidence_ready_for_next — band-evidence alone says the
+    //     learner is in contention. Drives the row-level data-ready,
+    //     which CSS renders as the box around the suggested token.
+    //   • ready_for_next — full nudge gate (evidence AND the 60-min
+    //     per-claimed-set wall-clock floor). Drives the per-token
+    //     "next" colour change that confirms the candidate.
     //
-    // When the gate is closed, the suggested-next symbol is rendered
-    // the same as any other unclaimed symbol — no distinct colour,
-    // no box. The learner can still click to claim it; we are only
-    // suppressing the implication that they should.
-    sequenceRow.dataset.ready = state.ready_for_next ? "true" : "false";
+    // The layering matters because band-evidence can flip green after
+    // a single focused session — at which point the symbol is "in
+    // contention" (box appears, audio-side gear 3 disruption engages)
+    // but not yet confirmed. Only when contact time also crosses the
+    // floor under that disruption does the colour change land.
+    sequenceRow.dataset.ready = state.evidence_ready_for_next ? "true" : "false";
     const next = state.ready_for_next ? state.suggested_next : null;
 
     KOCH_ORDER.forEach((sym) => {

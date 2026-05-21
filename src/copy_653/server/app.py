@@ -54,7 +54,8 @@ Server → client, JSON over WS, one frame per event. Pushed
 unsolicited on connect, and after every change::
 
     {"type": "claimed-symbols", "symbols": ["K", "M"], "suggested_next": "U",
-     "ready_for_next": false, "ready_for_next_send": false}
+     "evidence_ready_for_next": false, "ready_for_next": false,
+     "ready_for_next_send": false}
     {"type": "audio-settings", "character_wpm": 20, "effective_wpm": 10,
      "farnsworth_enabled": true, "tone_shape": 2, "receiver_bed": 2,
      "cadence_variation": 1, "keyer_mode": "iambic_a",

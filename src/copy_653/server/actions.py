@@ -55,6 +55,7 @@ from copy_653.server.records import (
     _ActiveCadenceSession,
     _next_cadence_run_index,
     _next_send_symbol_readiness,
+    _next_symbol_evidence,
     _next_symbol_readiness,
     _resolve_cadence_session_gears,
     _resolve_session_gears,
@@ -356,12 +357,14 @@ async def _claim_symbol_action(
 
     save_directory = load_save_directory(config_path)
     claimed_set_key = " ".join(sorted(claimed))
+    evidence_ready_for_next = _next_symbol_evidence(save_directory, claimed_set_key)
     ready_for_next = _next_symbol_readiness(save_directory, claimed_set_key)
     ready_for_next_send = _next_send_symbol_readiness(save_directory, claimed_set_key)
     await _send_event(
         ws,
         _claimed_symbols_event(
             claimed,
+            evidence_ready_for_next=evidence_ready_for_next,
             ready_for_next=ready_for_next,
             ready_for_next_send=ready_for_next_send,
         ),
@@ -401,12 +404,14 @@ async def _unclaim_symbol_action(
 
     save_directory = load_save_directory(config_path)
     claimed_set_key = " ".join(sorted(claimed))
+    evidence_ready_for_next = _next_symbol_evidence(save_directory, claimed_set_key)
     ready_for_next = _next_symbol_readiness(save_directory, claimed_set_key)
     ready_for_next_send = _next_send_symbol_readiness(save_directory, claimed_set_key)
     await _send_event(
         ws,
         _claimed_symbols_event(
             claimed,
+            evidence_ready_for_next=evidence_ready_for_next,
             ready_for_next=ready_for_next,
             ready_for_next_send=ready_for_next_send,
         ),
