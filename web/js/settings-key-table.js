@@ -209,9 +209,12 @@ async function loadRecord(filename) {
 }
 
 async function deleteRecord(filename) {
+    // GET, not POST: the websockets legacy server we ride on accepts
+    // only GET (see read_request in websockets/legacy/http.py); the
+    // server-side handler is method-agnostic.
     const res = await fetch(
         `/api/delete-cadence-send?file=${encodeURIComponent(filename)}`,
-        { method: "POST", cache: "no-store" },
+        { cache: "no-store" },
     );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     detailCache.delete(filename);
