@@ -574,10 +574,12 @@ def _list_cadence_sends(config_path: Path | None) -> dict[str, Any]:
                 or not isinstance(exercises, list)
             ):
                 continue
+            ended_at = data.get("ended_at")
             records.append(
                 {
                     "filename": entry.name,
                     "started_at": started_at,
+                    "ended_at": ended_at if isinstance(ended_at, str) else None,
                     "claimed_set": [str(s) for s in claimed_set],
                     "exercise_count": len(exercises),
                 }
