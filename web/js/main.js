@@ -79,21 +79,27 @@ function renderSequence(state) {
     const claimedSet = new Set(state.symbols);
     claimedSymbolSet = claimedSet;
     // The next-symbol visual is layered onto two signals from the
-    // engine:
-    //   • evidence_ready_for_next — band-evidence alone says the
-    //     learner is in contention. Drives the row-level data-ready,
-    //     which CSS renders as the box around the suggested token.
-    //   • ready_for_next — full nudge gate (evidence AND the 60-min
-    //     per-claimed-set wall-clock floor). Drives the per-token
-    //     "next" colour change that confirms the candidate.
+    // engine, both painted as row-level attributes so the per-token
+    // render stays a simple data-state assignment:
+    //   • evidence_ready_for_next → data-evidence → box around the
+    //     suggested-next token (CSS: anchor-coloured border only).
+    //     Band-evidence alone; the durability probe is running.
+    //   • ready_for_next → data-ready → adds anchor colour and full
+    //     opacity to the same token (CSS: full nudge).
+    //     Evidence AND the 60-min per-claimed-set wall-clock floor.
     //
-    // The layering matters because band-evidence can flip green after
-    // a single focused session — at which point the symbol is "in
-    // contention" (box appears, audio-side gear 3 disruption engages)
-    // but not yet confirmed. Only when contact time also crosses the
-    // floor under that disruption does the colour change land.
-    sequenceRow.dataset.ready = state.evidence_ready_for_next ? "true" : "false";
-    const next = state.ready_for_next ? state.suggested_next : null;
+    // data-ready retains its original "full nudge" semantic — the Key
+    // page reuses it for its single-signal send-side nudge. The new
+    // data-evidence attribute is Koch-only, layered underneath.
+    //
+    // data-state="next" is always assigned to the engine's
+    // suggested-next symbol, regardless of either gate, so the CSS
+    // selectors above have a target to attach to. With both gates
+    // closed the token still renders identically to any other
+    // unclaimed symbol — neither rule matches.
+    sequenceRow.dataset.evidence = state.evidence_ready_for_next ? "true" : "false";
+    sequenceRow.dataset.ready = state.ready_for_next ? "true" : "false";
+    const next = state.suggested_next;
 
     KOCH_ORDER.forEach((sym) => {
         const btn = sequenceRow.querySelector(`[data-symbol="${CSS.escape(sym)}"]`);

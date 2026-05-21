@@ -665,10 +665,21 @@ copy-top-menu {
     opacity: 0.75;
 }
 
-/* Readiness nudge — when the saved-evidence signal says the learner
- * has cleared the next-symbol bar, paint the existing affordance
- * (anchor-coloured border around the "next" token). Driven by the
- * row's data-ready attribute so the per-token render stays simple. */
+/* In-contention box — the band-evidence signal alone (the durability
+ * probe is running, the time floor may not yet be met). Border picks
+ * up the anchor colour but the symbol itself stays at the unclaimed
+ * default colour and opacity, so the eye sees that something is
+ * happening here without committing to the "next" reading. Driven by
+ * the row's data-evidence attribute (Koch listen-side only). */
+.sequence-row[data-evidence="true"] .seq-token[data-state="next"] {
+    border-color: var(--mr-anchor);
+}
+
+/* Full nudge — evidence AND the 60-min per-claimed-set time floor.
+ * Layers anchor colour and full opacity on top of the in-contention
+ * box, so the same token transitions box → box + colour as the floor
+ * is crossed. Driven by the row's data-ready attribute; the send-side
+ * (Key) page uses the same attribute for its single-signal nudge. */
 .sequence-row[data-ready="true"] .seq-token[data-state="next"] {
     color: var(--mr-anchor);
     opacity: 1;
