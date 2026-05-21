@@ -54,6 +54,7 @@ from copy_653.server.actions import (
 from copy_653.server.records import (
     _ActiveCadenceSession,
     _finalize_cadence_session,
+    _next_send_symbol_readiness,
     _next_symbol_readiness,
 )
 from copy_653.server.validation import (
@@ -236,7 +237,15 @@ async def handler(
     save_directory = load_save_directory(state.config_path)
     claimed_set_key = " ".join(sorted(claimed))
     ready_for_next = _next_symbol_readiness(save_directory, claimed_set_key)
-    await _send_event(ws, _claimed_symbols_event(claimed, ready_for_next=ready_for_next))
+    ready_for_next_send = _next_send_symbol_readiness(save_directory, claimed_set_key)
+    await _send_event(
+        ws,
+        _claimed_symbols_event(
+            claimed,
+            ready_for_next=ready_for_next,
+            ready_for_next_send=ready_for_next_send,
+        ),
+    )
 
     try:
         async for raw in ws:
@@ -278,6 +287,14 @@ async def handler(
                 new_session = await _request_copy_exercises_action(ws, message, state.config_path)
                 if new_session is not None:
                     state.cadence = new_session
+            elif action == "complete-cadence-session":
+                # UI signals that the final exercise of the set has been
+                # matched. Finalize the in-flight session immediately so
+                # any further keying (while the learner reads the
+                # review, decides on New, etc.) is not attributed to
+                # the just-finished round. Idempotent — the closer is a
+                # no-op when there is no active session.
+                state.close_active_cadence_session()
             elif action == "start-key-input":
                 await supersede(state.key_input_task)
                 state.key_input_task = asyncio.create_task(
