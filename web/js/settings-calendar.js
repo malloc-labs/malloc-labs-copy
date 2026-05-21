@@ -14,6 +14,15 @@
 //   • exercise_count: sum across all sessions that day.
 //   • duration_seconds: sum of (ended_at − started_at) across all
 //     sessions that day, displayed as rounded minutes.
+//   • cumulative_seconds: per-claimed-set running total, in seconds.
+//     Each session attributes its duration to its own claimed_set
+//     (so transition-day sessions split correctly into their
+//     respective set buckets), and the day's stored value is the
+//     running total for the set the day's *last* session was on —
+//     which by construction matches the day's stored claimed_set.
+//     This resets visibly on a set transition, which is the
+//     intent: the right-column number answers "how much time on
+//     this exact set so far?"
 //
 // Data sources: /api/koch-exercises and /api/cadence-sends. Both return
 // the same shape (started_at, ended_at, claimed_set, exercise_count).
@@ -115,9 +124,13 @@ function mountCalendar({ root, endpoint, emptyLabel }) {
                 const claimed = entry.claimed_set.join(" ");
                 const minutesLabel = formatPracticeMinutes(entry.duration_seconds);
                 const durationLabel = minutesLabel ? `, ${minutesLabel} of practice` : "";
+                const cumulativeLabel = formatPracticeMinutes(entry.cumulative_seconds);
+                const cumulativeAria = cumulativeLabel
+                    ? `, ${cumulativeLabel} cumulative on ${claimed || "this set"}`
+                    : "";
                 cell.setAttribute(
                     "aria-label",
-                    `${d} ${MONTH_NAMES[viewMonth]} — claimed ${claimed || "none"}, ${entry.exercise_count} exercise${entry.exercise_count === 1 ? "" : "s"}${durationLabel}`,
+                    `${d} ${MONTH_NAMES[viewMonth]} — claimed ${claimed || "none"}, ${entry.exercise_count} exercise${entry.exercise_count === 1 ? "" : "s"}${durationLabel}${cumulativeAria}`,
                 );
             } else {
                 cell.setAttribute("aria-label", `${d} ${MONTH_NAMES[viewMonth]}`);
@@ -140,11 +153,28 @@ function mountCalendar({ root, endpoint, emptyLabel }) {
                 count.textContent = `${entry.exercise_count} ex`;
                 cell.appendChild(count);
 
+                // Bottom row pairs the day's minutes (left) with the
+                // per-claimed-set running total (right). The cumulative
+                // is rendered as secondary context (lighter weight); on
+                // the first day of a new set it equals the day's
+                // minutes, which is intentional — it marks the start of
+                // a fresh per-set counter.
+                const footer = document.createElement("div");
+                footer.className = "settings-calendar__day-footer";
+
                 const minutesLabel = formatPracticeMinutes(entry.duration_seconds);
                 const duration = document.createElement("span");
                 duration.className = "settings-calendar__day-duration";
                 duration.textContent = minutesLabel;
-                cell.appendChild(duration);
+                footer.appendChild(duration);
+
+                const cumulativeLabel = formatPracticeMinutes(entry.cumulative_seconds);
+                const cumulative = document.createElement("span");
+                cumulative.className = "settings-calendar__day-cumulative";
+                cumulative.textContent = cumulativeLabel;
+                footer.appendChild(cumulative);
+
+                cell.appendChild(footer);
             }
 
             gridEl.appendChild(cell);
@@ -160,8 +190,12 @@ function mountCalendar({ root, endpoint, emptyLabel }) {
             practiceDays.clear();
             // Both listing endpoints return newest-first. Walk oldest
             // first so the final claimed_set kept per day is the
-            // latest session's.
+            // latest session's, and per-set running totals accumulate
+            // in chronological order.
             const oldestFirst = [...records].reverse();
+            // setKey ("K M U" sorted) -> total seconds across all
+            // sessions on that exact set, walked forward in time.
+            const setRunningTotal = new Map();
             oldestFirst.forEach((rec) => {
                 const d = new Date(rec.started_at);
                 if (Number.isNaN(d.getTime())) return;
@@ -170,10 +204,14 @@ function mountCalendar({ root, endpoint, emptyLabel }) {
                 const count = Number.isFinite(rec.exercise_count) ? rec.exercise_count : 0;
                 const claimed = Array.isArray(rec.claimed_set) ? rec.claimed_set : [];
                 const duration = sessionDurationSeconds(rec.started_at, rec.ended_at);
+                const setKey = [...claimed].sort().join(" ");
+                const setTotal = (setRunningTotal.get(setKey) || 0) + duration;
+                setRunningTotal.set(setKey, setTotal);
                 practiceDays.set(key, {
                     claimed_set: claimed,
                     exercise_count: (prev?.exercise_count || 0) + count,
                     duration_seconds: (prev?.duration_seconds || 0) + duration,
+                    cumulative_seconds: setTotal,
                 });
             });
             if (records.length === 0) {

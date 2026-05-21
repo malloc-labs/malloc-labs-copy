@@ -1001,10 +1001,28 @@
     text-align: right;
 }
 
+.settings-calendar__day-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.4rem;
+}
+
 .settings-calendar__day-duration {
     font-size: 0.7rem;
     font-variant-numeric: tabular-nums;
     color: var(--mr-text);
     opacity: 0.75;
     text-align: left;
+}
+
+/* Per-claimed-set cumulative — lighter than the day's own minutes so
+   it reads as secondary context, not the headline number. Resets
+   visibly on a set transition. */
+.settings-calendar__day-cumulative {
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--mr-text);
+    opacity: 0.55;
+    text-align: right;
 }
