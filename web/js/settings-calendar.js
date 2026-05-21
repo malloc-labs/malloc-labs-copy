@@ -228,6 +228,21 @@ function mountCalendar({ root, endpoint, emptyLabel }) {
     prevBtn.addEventListener("click", () => stepMonth(-1));
     nextBtn.addEventListener("click", () => stepMonth(1));
 
+    // If this calendar lives inside a popup dialog, refresh from the
+    // server every time the dialog is opened. Without this, the
+    // calendar's snapshot is whatever was fetched at page load and a
+    // session run since then does not appear until the page is
+    // reloaded.
+    const containingDialog = root.closest("dialog");
+    if (containingDialog?.id) {
+        const selector = `[data-calendar-open="${CSS.escape(containingDialog.id)}"]`;
+        document.querySelectorAll(selector).forEach((trigger) => {
+            trigger.addEventListener("click", () => {
+                loadSessions();
+            });
+        });
+    }
+
     render();
     loadSessions();
 }

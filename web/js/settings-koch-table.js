@@ -41,6 +41,22 @@ function formatDuration(startedIso, endedIso) {
     return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 }
 
+function formatGear3(record) {
+    // Gear 3 (scaffold-break) was added in PRs #134/#135. Records
+    // before then carry no scaffold_break block; treat missing as
+    // "off" — that's the truth for those sessions.
+    const sb = record.generation?.scaffold_break;
+    if (!sb || !sb.enabled) return "Off";
+    const parts = [];
+    const leadIns = Array.isArray(sb.lead_in_seconds) ? sb.lead_in_seconds : [];
+    if (leadIns.length > 0) {
+        const mean = leadIns.reduce((a, b) => a + b, 0) / leadIns.length;
+        parts.push(`${leadIns.length} lead-ins (mean ${mean.toFixed(1)}s)`);
+    }
+    if (sb.dynamic_floor) parts.push("dynamic floor");
+    return parts.length > 0 ? `On — ${parts.join(", ")}` : "On";
+}
+
 function buildMetaPairs(record) {
     const audio = record.audio || {};
     const charWpm = audio.character_speed_wpm;
@@ -57,6 +73,7 @@ function buildMetaPairs(record) {
         ["Effective speed", Number.isFinite(effWpm) ? `${effWpm} WPM` : "—"],
         ["Farnsworth", farnsworth ? "on" : "off"],
         ["Tone", Number.isFinite(toneHz) ? `${toneHz} Hz` : "—"],
+        ["Gear 3", formatGear3(record)],
         ["Claimed set", claimed],
     ];
     if (record.engine_version) pairs.push(["Engine", `v${record.engine_version}`]);
