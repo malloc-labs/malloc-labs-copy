@@ -96,6 +96,26 @@
     font-size: var(--mr-size-small);
 }
 
+/* Row that pairs the saved-sessions meta line with its Back up
+ * button. The button is right-aligned so it sits at the end of the
+ * meta row without interrupting the existing left-aligned text. */
+.settings-records-meta {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--mr-space-3);
+    flex-wrap: wrap;
+    margin-bottom: var(--mr-space-3);
+}
+
+.settings-records-meta .settings-koch-meta {
+    margin-bottom: 0;
+}
+
+.settings-backup-btn {
+    flex: 0 0 auto;
+}
+
 .settings-koch-table-wrap {
     flex: 1 1 auto;
     min-height: 8rem;

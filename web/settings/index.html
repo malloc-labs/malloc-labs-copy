@@ -249,7 +249,13 @@
                     <tbody id="settings-koch-rollup-tbody"></tbody>
                 </table>
             </section>
-            <p class="settings-koch-meta" id="settings-koch-meta">Loading saved sessions…</p>
+            <div class="settings-records-meta">
+                <p class="settings-koch-meta" id="settings-koch-meta">Loading saved sessions…</p>
+                <button type="button"
+                        class="btn settings-backup-btn"
+                        id="settings-koch-backup"
+                        data-kind="koch-exercise">Back up</button>
+            </div>
             <div class="settings-koch-table-wrap">
                 <table class="settings-koch-table">
                     <thead>
@@ -330,7 +336,13 @@
                     <tbody id="settings-key-rollup-tbody"></tbody>
                 </table>
             </section>
-            <p class="settings-koch-meta" id="settings-key-meta">Loading saved send sessions…</p>
+            <div class="settings-records-meta">
+                <p class="settings-koch-meta" id="settings-key-meta">Loading saved send sessions…</p>
+                <button type="button"
+                        class="btn settings-backup-btn"
+                        id="settings-key-backup"
+                        data-kind="cadence-send">Back up</button>
+            </div>
             <div class="settings-koch-table-wrap">
                 <table class="settings-koch-table">
                     <thead>
@@ -424,5 +436,6 @@
     <script type="module" src="../js/settings-key-rollup.js"></script>
     <script type="module" src="../js/settings-key-lifetime.js"></script>
     <script type="module" src="../js/settings-calendar.js"></script>
+    <script type="module" src="../js/settings-backup.js"></script>
 </body>
 </html>

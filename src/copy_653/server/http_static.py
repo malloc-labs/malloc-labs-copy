@@ -7,10 +7,13 @@ in this module is pure — no engine state crosses the seam.
 
 from __future__ import annotations
 
+import io
 import json
 import logging
 import mimetypes
 import re
+import zipfile
+from datetime import datetime, timezone
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
@@ -160,6 +163,14 @@ def _build_static_handler(web_root: Path, config_path: Path | None = None):
                 )
             )
 
+        if clean_path == "/api/backup":
+            params = parse_qs(parsed_path.query)
+            kind_values = params.get("kind") or []
+            return _build_records_backup(
+                config_path,
+                kind=kind_values[0] if kind_values else "",
+            )
+
         target = "index.html" if clean_path == "/" else clean_path.lstrip("/")
         resolved = (web_root / target).resolve()
 
@@ -214,6 +225,77 @@ def _json_response(payload: dict[str, Any]) -> tuple[HTTPStatus, list[tuple[str,
         [
             ("Content-Type", "application/json; charset=utf-8"),
             ("Content-Length", str(len(body))),
+            ("Cache-Control", "no-store"),
+        ],
+        body,
+    )
+
+
+_BACKUP_KINDS: dict[str, str] = {
+    "koch-exercise": "koch-exercise",
+    "cadence-send": "cadence-send",
+}
+
+
+def _build_records_backup(
+    config_path: Path | None,
+    *,
+    kind: str,
+) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
+    """Build an in-memory zip of one record directory and return it as a download.
+
+    ``kind`` selects which subdirectory under the configured
+    ``save_directory`` is included — ``koch-exercise`` or
+    ``cadence-send``. An empty or unknown kind returns 400. The zip is
+    built in memory and returned as a single response: the dataset is
+    small enough that this is simpler than streaming. Zero records is
+    a legitimate outcome (e.g. first-run on a fresh install); the zip
+    is still returned, just empty inside, so the click is honest about
+    what's on disk.
+
+    File paths inside the zip are kept relative to ``save_directory``
+    so an unzip into the same directory restores the originals without
+    any path rewriting.
+    """
+    subdir = _BACKUP_KINDS.get(kind)
+    if subdir is None:
+        return _http_response(HTTPStatus.BAD_REQUEST, b"unknown backup kind")
+
+    try:
+        save_directory = load_save_directory(config_path)
+    except Exception:
+        logger.exception("could not resolve save_directory for backup")
+        return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"could not resolve save directory")
+
+    target_dir = save_directory / subdir
+    pattern = f"{subdir}-*.json"
+
+    buffer = io.BytesIO()
+    file_count = 0
+    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        if target_dir.is_dir():
+            for entry in sorted(target_dir.glob(pattern)):
+                try:
+                    payload = entry.read_bytes()
+                except OSError:
+                    logger.exception("skipping unreadable record in backup: %s", entry)
+                    continue
+                # Keep the directory prefix so the zip mirrors the
+                # on-disk layout — restoring is a flat unzip into the
+                # save directory.
+                archive.writestr(f"{subdir}/{entry.name}", payload)
+                file_count += 1
+
+    body = buffer.getvalue()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    filename = f"copy-653-{subdir}-backup-{stamp}.zip"
+    return (
+        HTTPStatus.OK,
+        [
+            ("Content-Type", "application/zip"),
+            ("Content-Length", str(len(body))),
+            ("Content-Disposition", f'attachment; filename="{filename}"'),
+            ("X-Copy-Backup-File-Count", str(file_count)),
             ("Cache-Control", "no-store"),
         ],
         body,
