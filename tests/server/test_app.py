@@ -9,8 +9,10 @@ import json
 import socket
 import textwrap
 import tomllib
+import urllib.error
 import urllib.request
 import wave
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -571,6 +573,104 @@ async def test_api_cadence_send_returns_full_record(tmp_path):
         payload = json.loads(response.read())
         assert payload["mode"] == "cadence-send"
         assert payload["exercises"][0]["target"] == "KM"
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_api_backup_returns_zip_of_record_directory(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    save_dir = tmp_path / "data"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    koch_dir = save_dir / "koch-exercise"
+    koch_dir.mkdir(parents=True)
+    (koch_dir / "koch-exercise-20260515T090000Z.json").write_text('{"mode":"koch-exercise"}')
+    (koch_dir / "koch-exercise-20260515T100000Z.json").write_text('{"mode":"koch-exercise"}')
+    # Stray non-record file in the same directory is excluded — only
+    # files matching the canonical glob make it into the zip.
+    (koch_dir / "stray.txt").write_text("ignored")
+
+    cadence_dir = save_dir / "cadence-send"
+    cadence_dir.mkdir(parents=True)
+    (cadence_dir / "cadence-send-20260515T120000Z.json").write_text('{"mode":"cadence-send"}')
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        # Happy path: koch-exercise kind returns a zip with two
+        # records, in the koch-exercise/ subpath, and announces the
+        # file count via the X-Copy-Backup-File-Count header.
+        response = await asyncio.to_thread(
+            urllib.request.urlopen,
+            f"http://127.0.0.1:{port}/api/backup?kind=koch-exercise",
+        )
+        assert response.status == 200
+        assert response.headers["Content-Type"] == "application/zip"
+        assert response.headers["X-Copy-Backup-File-Count"] == "2"
+        disposition = response.headers["Content-Disposition"]
+        assert disposition.startswith('attachment; filename="copy-653-koch-exercise-backup-')
+        assert disposition.endswith('.zip"')
+        body = response.read()
+        with zipfile.ZipFile(io.BytesIO(body)) as archive:
+            assert sorted(archive.namelist()) == [
+                "koch-exercise/koch-exercise-20260515T090000Z.json",
+                "koch-exercise/koch-exercise-20260515T100000Z.json",
+            ]
+
+        # cadence-send kind backs up its own directory only.
+        response = await asyncio.to_thread(
+            urllib.request.urlopen,
+            f"http://127.0.0.1:{port}/api/backup?kind=cadence-send",
+        )
+        assert response.headers["X-Copy-Backup-File-Count"] == "1"
+        with zipfile.ZipFile(io.BytesIO(response.read())) as archive:
+            assert archive.namelist() == ["cadence-send/cadence-send-20260515T120000Z.json"]
+
+        # Unknown kind is a 400 — the endpoint refuses to guess.
+        try:
+            await asyncio.to_thread(
+                urllib.request.urlopen,
+                f"http://127.0.0.1:{port}/api/backup?kind=mystery",
+            )
+            assert False, "expected HTTPError"
+        except urllib.error.HTTPError as exc:  # type: ignore[attr-defined]
+            assert exc.code == 400
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_api_backup_empty_directory_returns_empty_zip(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    save_dir = tmp_path / "data"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        response = await asyncio.to_thread(
+            urllib.request.urlopen,
+            f"http://127.0.0.1:{port}/api/backup?kind=koch-exercise",
+        )
+        assert response.status == 200
+        assert response.headers["X-Copy-Backup-File-Count"] == "0"
+        with zipfile.ZipFile(io.BytesIO(response.read())) as archive:
+            assert archive.namelist() == []
     finally:
         server.close()
         await server.wait_closed()
