@@ -78,12 +78,20 @@ function renderSequence(state) {
     claimedState = state;
     const claimedSet = new Set(state.symbols);
     claimedSymbolSet = claimedSet;
-    const next = state.suggested_next;
     // Saved-evidence readiness for the next-symbol nudge. Painted as
     // a row-level attribute so CSS toggles the box on the "next"
     // token without per-token logic. Server defaults to false on
-    // insufficient evidence.
+    // insufficient evidence, and now also holds back under the
+    // per-claimed-set wall-clock floor (the soft gate — focused
+    // listening for a few minutes can satisfy the evidence analysis
+    // long before any meaningful contact time has accumulated).
+    //
+    // When the gate is closed, the suggested-next symbol is rendered
+    // the same as any other unclaimed symbol — no distinct colour,
+    // no box. The learner can still click to claim it; we are only
+    // suppressing the implication that they should.
     sequenceRow.dataset.ready = state.ready_for_next ? "true" : "false";
+    const next = state.ready_for_next ? state.suggested_next : null;
 
     KOCH_ORDER.forEach((sym) => {
         const btn = sequenceRow.querySelector(`[data-symbol="${CSS.escape(sym)}"]`);
