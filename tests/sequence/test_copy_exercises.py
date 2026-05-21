@@ -276,6 +276,16 @@ def test_slot_range_gear_two_clamps_at_top_band_to_gear_one():
     assert _slot_range(4, 5, 20, 2) == _slot_range(4, 5, 20, 1) == (18, 20)
 
 
+def test_slot_range_gear_three_is_content_equivalent_to_gear_two():
+    # Gear 3 disrupts via session-level scaffold-break audio (lead-ins,
+    # dynamic floor) rather than content escalation, so the candidate
+    # slice is identical to gear 2 at every slot. Locked in here so a
+    # future "escalate content at gear 3" change is forced to update
+    # this test and confront the design decision.
+    for slot in range(5):
+        assert _slot_range(slot, 5, 20, 3) == _slot_range(slot, 5, 20, 2)
+
+
 def test_generator_gears_shift_scores_upward():
     # Gear 2 across the board should produce a score profile no lower
     # than the gear-0 baseline at every slot — each slot is drawing
@@ -300,14 +310,22 @@ def test_generator_gears_ignored_when_none():
 
 
 def test_generator_gears_clamped_to_supported_range():
-    # Gear 99 is treated as gear 2; gear -3 as gear 0.
+    # Gear 99 is treated as gear 3 (the ceiling). Because gear 3 is
+    # content-equivalent to gear 2 the rendered exercises match a
+    # gear-2 run with the same seed — but the *clamped* value is 3, so
+    # a downstream consumer reading the band-gear (audio assembler,
+    # session record, UI table) sees 3 and the scaffold-break trigger
+    # fires correctly. Gear -3 floors at 0.
     high = sequence.generate_copy_exercises(
         claimed_set=KMU, exercise_count=5, seed=11, gears=[99, 99, 99, 99, 99]
     )
     two = sequence.generate_copy_exercises(
         claimed_set=KMU, exercise_count=5, seed=11, gears=[2, 2, 2, 2, 2]
     )
-    assert high.exercises == two.exercises
+    three = sequence.generate_copy_exercises(
+        claimed_set=KMU, exercise_count=5, seed=11, gears=[3, 3, 3, 3, 3]
+    )
+    assert high.exercises == two.exercises == three.exercises
 
 
 def test_degenerate_single_symbol_set_does_not_crash():

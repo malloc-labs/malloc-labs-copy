@@ -355,6 +355,17 @@ def test_resolve_gears_caps_at_max_gear():
     assert resolved == {1: MAX_GEAR}
 
 
+def test_resolve_gears_advances_from_two_to_three_with_strong_streak():
+    # MAX_GEAR is now 3 (gear 3 = scaffold-break trigger, content-
+    # equivalent to gear 2). A band sitting at gear 2 with sustained
+    # strong evidence advances one more step, just like every earlier
+    # gear transition — no special-case branch for the new ceiling.
+    evidence = {"bands": [{"burden_band": 1, "strong_streak": 3, "low_streak": 0}]}
+    resolved = resolve_gears(evidence, current_gears={1: 2})
+    assert resolved == {1: 3}
+    assert MAX_GEAR == 3  # belt-and-braces sanity if MAX_GEAR ever moves again
+
+
 def test_resolve_gears_floors_at_zero():
     evidence = {"bands": [{"burden_band": 1, "strong_streak": 0, "low_streak": 5}]}
     resolved = resolve_gears(evidence, current_gears={1: 0})
@@ -431,6 +442,19 @@ def test_is_ready_returns_false_when_any_band_below_max_gear():
         _ready_session("2026-05-18T13:00:00Z", [MAX_GEAR, MAX_GEAR], [1.0, 1.0]),
         _ready_session("2026-05-18T13:10:00Z", [MAX_GEAR, MAX_GEAR], [1.0, 1.0]),
         _ready_session("2026-05-18T13:20:00Z", [MAX_GEAR, 1], [1.0, 1.0]),
+    ]
+    assert is_ready_for_next_symbol(sessions, claimed_set_key="K M") is False
+
+
+def test_is_ready_returns_false_at_gear_two_under_unified_axis():
+    # Gear 2 used to be the ceiling; now gear 3 is. Sessions that look
+    # ready under the old model (all bands at gear 2, strong fractions)
+    # must NOT trigger the nudge any more — the learner has to ride
+    # gear 3's scaffold-break before the next-symbol affordance opens.
+    sessions = [
+        _ready_session("2026-05-18T13:00:00Z", [2, 2], [1.0, 1.0]),
+        _ready_session("2026-05-18T13:10:00Z", [2, 2], [1.0, 1.0]),
+        _ready_session("2026-05-18T13:20:00Z", [2, 2], [1.0, 1.0]),
     ]
     assert is_ready_for_next_symbol(sessions, claimed_set_key="K M") is False
 
