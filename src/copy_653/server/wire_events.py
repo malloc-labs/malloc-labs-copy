@@ -43,29 +43,43 @@ async def _send_event(ws: WebSocketServerProtocol, event: dict[str, Any]) -> Non
 def _claimed_symbols_event(
     claimed: tuple[str, ...],
     *,
+    evidence_ready_for_next: bool = False,
     ready_for_next: bool = False,
     ready_for_next_send: bool = False,
 ) -> dict[str, Any]:
     """Build the ``claimed-symbols`` event payload from a claimed list.
 
-    ``ready_for_next`` is the saved-evidence judgment on whether the
-    learner has cleared the listen-side readiness bar for the
-    next-symbol nudge
-    (see :func:`copy_653.sequence.exercise_analysis.is_ready_for_next_symbol`).
+    Two listen-side readiness flags travel on the wire, gating different
+    parts of the next-symbol visual:
 
-    ``ready_for_next_send`` is the same judgment for the send side
-    (see :func:`copy_653.sequence.cadence_analysis.is_ready_for_next_symbol`).
-    The two signals are independent: each surface paints its own nudge
-    from its own channel of evidence, and one can lead or lag the other.
+    * ``evidence_ready_for_next`` — band-evidence alone says the learner
+      is in contention for the next symbol (see
+      :func:`copy_653.server.records._next_symbol_evidence`). Drives the
+      "in contention" box around the suggested symbol and engages the
+      audio-side gear 3 durability probe.
+    * ``ready_for_next`` — the full nudge gate: evidence *and* the
+      per-claimed-set wall-clock floor (see
+      :func:`copy_653.server.records._next_symbol_readiness`). Drives
+      the colour change that confirms the candidate.
 
-    Both default to ``False`` so callers without record access — tests
-    and the initial cold path — degrade to "no nudge", which is the
-    safe default.
+    The two signals are intentionally layered, not coupled: the box can
+    show without the colour while the durability probe runs over the
+    60-min ramp; the colour can only show with the box.
+
+    ``ready_for_next_send`` is the send-side readiness judgment (see
+    :func:`copy_653.sequence.cadence_analysis.is_ready_for_next_symbol`).
+    The send side is single-signal for now — no time floor, no
+    box/colour split — though that may change later.
+
+    All three default to ``False`` so callers without record access —
+    tests and the initial cold path — degrade to "no nudge", which is
+    the safe default.
     """
     return {
         "type": "claimed-symbols",
         "symbols": list(claimed),
         "suggested_next": patterns.next_koch_after(claimed),
+        "evidence_ready_for_next": evidence_ready_for_next,
         "ready_for_next": ready_for_next,
         "ready_for_next_send": ready_for_next_send,
     }
