@@ -202,7 +202,21 @@ async def _start_action(
         exercise_count=len(exercises),
         gears=gears,
     )
-    samples, timeline = build_exercises_audio(exercises, audio_params)
+    # Gear 3 stage 1: once band-evidence says the learner is in
+    # contention, engage the scaffold-break audio shape — per-exercise
+    # random lead-in silence so DE no longer reliably lands at the start
+    # of each exercise. The full nudge (60-min floor + evidence) is a
+    # separate gate; this probe runs through the build-up.
+    scaffold_break = _next_symbol_evidence(save_directory, claimed_set_key)
+    samples, timeline, audio_shape = build_exercises_audio(
+        exercises,
+        audio_params,
+        scaffold_break=scaffold_break,
+        rng_seed=result.seed if scaffold_break else None,
+    )
+    # Fold the assembly-time choices into the generation block so the
+    # session record carries enough to replay the exact audio.
+    generation.update(audio_shape)
 
     await _send_event(
         ws,
