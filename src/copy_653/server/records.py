@@ -39,6 +39,19 @@ from copy_653.session import (
 
 logger = logging.getLogger(__name__)
 
+# First soft gate on the listen-side next-symbol nudge: a per-claimed-set
+# wall-clock floor. The existing readiness signal is band-evidence-based —
+# it can flicker true after a single short, focused session, which the
+# learner can read as "I know this set" even though the contact time is
+# under a few minutes. The floor below holds the nudge back until at
+# least an hour of practice on the *exact* claimed set has accumulated.
+#
+# Suggestion, not gate (philosophy §3.7): the learner can still claim
+# any symbol they want; this only suppresses the highlight that *implies*
+# they should. Note this only applies to the Koch listen-side; the Key
+# send-side keeps its existing evidence-only behaviour for now.
+MIN_SECONDS_PER_CLAIMED_SET = 60 * 60
+
 
 class _ActiveCadenceSession:
     """In-flight Cadence (Key → Send) recording state for one WS connection."""
@@ -225,10 +238,58 @@ def _resolve_session_gears(
     return [resolved.get(i + 1, 0) for i in range(exercise_count)]
 
 
+def _seconds_on_claimed_set(records: list[dict[str, Any]], *, claimed_set_key: str) -> float:
+    """Sum wall-clock seconds across records matching ``claimed_set_key``.
+
+    Walks the same record list the readiness analysis already uses, so
+    no extra disk read. Records with missing or invalid timestamps
+    contribute 0, matching the calendar's client-side rule.
+
+    Legacy records (pre-``generation.claimed_set_key``) are bucketed by
+    deriving the key from ``claimed_set``, mirroring
+    :func:`_next_koch_run_index`.
+    """
+    if not claimed_set_key:
+        return 0.0
+    total = 0.0
+    for data in records:
+        generation = data.get("generation")
+        key: str | None = None
+        if isinstance(generation, dict):
+            stored = generation.get("claimed_set_key")
+            if isinstance(stored, str):
+                key = stored
+        if key is None:
+            claimed = data.get("claimed_set")
+            if isinstance(claimed, list):
+                key = " ".join(sorted(str(s) for s in claimed))
+        if key != claimed_set_key:
+            continue
+        started_at = data.get("started_at")
+        ended_at = data.get("ended_at")
+        if not isinstance(started_at, str) or not isinstance(ended_at, str):
+            continue
+        try:
+            start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+            end = datetime.fromisoformat(ended_at.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        delta = (end - start).total_seconds()
+        if delta > 0:
+            total += delta
+    return total
+
+
 def _next_symbol_readiness(save_directory: Path, claimed_set_key: str) -> bool:
     """Whether saved evidence says the learner is ready for the next symbol.
 
-    Thin disk-walking wrapper over :func:`is_ready_for_next_symbol`.
+    Thin disk-walking wrapper over :func:`is_ready_for_next_symbol`, with
+    an additional per-claimed-set wall-clock floor (see
+    :data:`MIN_SECONDS_PER_CLAIMED_SET`). Both signals must agree:
+    band-evidence can satisfy the readiness analysis after a short
+    focused session, but the time floor holds the nudge back until the
+    learner has accumulated real contact time on this exact set.
+
     Returns ``False`` for an empty claimed-set key — the WS layer calls
     this for every ``claimed-symbols`` push and the empty key path is a
     real one (cold start before any claim).
@@ -236,7 +297,12 @@ def _next_symbol_readiness(save_directory: Path, claimed_set_key: str) -> bool:
     if not claimed_set_key:
         return False
     records = _iter_koch_records(save_directory)
-    return is_ready_for_next_symbol(records, claimed_set_key=claimed_set_key)
+    if not is_ready_for_next_symbol(records, claimed_set_key=claimed_set_key):
+        return False
+    return (
+        _seconds_on_claimed_set(records, claimed_set_key=claimed_set_key)
+        >= MIN_SECONDS_PER_CLAIMED_SET
+    )
 
 
 def _next_send_symbol_readiness(save_directory: Path, claimed_set_key: str) -> bool:
