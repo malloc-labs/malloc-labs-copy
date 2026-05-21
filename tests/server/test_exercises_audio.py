@@ -74,8 +74,23 @@ def test_scaffold_break_off_by_default():
         exercises, params, scaffold_break=False
     )
     assert shape_off == shape_default
-    assert shape_off["scaffold_break"] == {"enabled": False, "lead_in_seconds": []}
+    assert shape_off["scaffold_break"] == {
+        "enabled": False,
+        "lead_in_seconds": [],
+        "dynamic_floor": False,
+    }
     assert len(samples_off) == len(samples_default)
+
+
+def test_scaffold_break_flags_dynamic_floor_on():
+    # Gear 3 stage 2: with scaffold_break on, the audio_shape records
+    # that the dynamic floor was engaged so a session record can
+    # reproduce the exact audio later. The bed itself is exercised
+    # in tests/audio/test_texture.py.
+    exercises = ["DE K M"]
+    params = AudioParameters(receiver_bed=4)
+    _, _, shape = build_exercises_audio(exercises, params, scaffold_break=True, rng_seed=1)
+    assert shape["scaffold_break"]["dynamic_floor"] is True
 
 
 def test_scaffold_break_inserts_lead_in_per_exercise():
@@ -147,4 +162,8 @@ def test_scaffold_break_empty_exercises_short_circuits_safely():
     )
     assert len(samples) == 0
     assert timeline == []
-    assert shape["scaffold_break"] == {"enabled": True, "lead_in_seconds": []}
+    assert shape["scaffold_break"] == {
+        "enabled": True,
+        "lead_in_seconds": [],
+        "dynamic_floor": True,
+    }
