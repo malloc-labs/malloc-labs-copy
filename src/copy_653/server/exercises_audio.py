@@ -10,6 +10,13 @@ the inter-word gap is inserted so the exercise boundary is perceptibly
 distinct from a within-exercise word boundary while still scaling with
 the configured Farnsworth settings.
 
+The receiver bed is applied once over the full assembled buffer rather
+than per exercise so the floor continues uninterrupted across
+inter-exercise silence. Otherwise the bed would dip to true zero
+between exercises and that level shift becomes an audible "exercise
+ended" marker for learners on headphones or decent speakers — exactly
+the cue the bed exists to mask.
+
 This module is pure: no I/O, no clock, no module-level random state.
 The WebSocket server decides when to start a session and how to emit
 events; this module decides what audio buffer and symbol schedule the
@@ -20,7 +27,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from copy_653.audio import synth, timing
+from copy_653.audio import synth, texture, timing
 from copy_653.audio.parameters import AudioParameters
 
 TimelineRow = tuple[str, float, float, int, int, str]
@@ -75,4 +82,9 @@ def build_exercises_audio(
         cursor += len(exercise_audio) / sample_rate
 
     samples = np.concatenate(parts).astype(np.float32, copy=False)
+    samples = texture.add_receiver_bed(
+        samples,
+        audio_params,
+        context=f"exercises:{len(exercises)}:{'|'.join(exercises)}",
+    )
     return samples, timeline

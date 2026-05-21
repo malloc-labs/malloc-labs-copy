@@ -31,7 +31,7 @@ from pathlib import Path
 
 import numpy as np
 
-from copy_653.audio import synth
+from copy_653.audio import synth, texture
 from copy_653.audio.parameters import AudioParameters
 from copy_653.letters.wav import load_wav
 
@@ -231,6 +231,9 @@ async def play_morse_sequence(
 
     upper = symbol.upper()
     morse_samples = synth.synthesize_sequence([upper], audio_params)
+    morse_samples = texture.add_receiver_bed(
+        morse_samples, audio_params, context=f"letter-bare:{upper}"
+    )
     morse_rate = audio_params.sample_rate_hz
     output_device = audio_params.output_device
 
@@ -290,6 +293,9 @@ async def play_letter_sequence(
 
     wav_samples, wav_rate = load_wav(wav_path)
     morse_samples = synth.synthesize_sequence([upper], audio_params)
+    morse_samples = texture.add_receiver_bed(
+        morse_samples, audio_params, context=f"letter-paired:{upper}"
+    )
     morse_rate = audio_params.sample_rate_hz
     output_device = audio_params.output_device
 

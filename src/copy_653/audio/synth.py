@@ -117,6 +117,12 @@ def synthesize_sequence(symbols: list[str], params: AudioParameters) -> np.ndarr
     ``symbols`` is a list of single-character strings. Word boundaries are
     intentionally handled by :func:`synthesize_words` so the legacy flat-symbol
     Koch stream keeps its original spacing contract.
+
+    The returned buffer is bed-free. Callers that want the receiver bed
+    must apply it themselves over the assembled session buffer (see
+    :func:`copy_653.audio.texture.add_receiver_bed`) — applying it here
+    would re-introduce the audible level dip across inter-segment
+    silences that the bed exists to mask.
     """
     if not symbols:
         return np.zeros(0, dtype=np.float32)
@@ -137,11 +143,16 @@ def synthesize_sequence(symbols: list[str], params: AudioParameters) -> np.ndarr
             gap_index += 1
             parts.append(synthesize_silence(gap_seconds, params))
         parts.append(synthesize_symbol(symbol, params))
-    return texture.add_receiver_bed(np.concatenate(parts), params, context=context)
+    return np.concatenate(parts)
 
 
 def synthesize_words(words: list[str], params: AudioParameters) -> np.ndarray:
-    """Render words with inter-character spacing inside words and word gaps between words."""
+    """Render words with inter-character spacing inside words and word gaps between words.
+
+    The returned buffer is bed-free; see :func:`synthesize_sequence` for
+    why callers apply the receiver bed once over the full session
+    buffer rather than per-segment.
+    """
 
     if not words:
         return np.zeros(0, dtype=np.float32)
@@ -173,8 +184,7 @@ def synthesize_words(words: list[str], params: AudioParameters) -> np.ndarray:
                 gap_index += 1
                 parts.append(synthesize_silence(gap_seconds, params))
             parts.append(synthesize_symbol(symbol, params))
-    samples = np.concatenate(parts) if parts else np.zeros(0, dtype=np.float32)
-    return texture.add_receiver_bed(samples, params, context=context)
+    return np.concatenate(parts) if parts else np.zeros(0, dtype=np.float32)
 
 
 def symbol_duration_seconds(symbol: str, params: AudioParameters) -> float:
