@@ -703,6 +703,75 @@ def latest_gears_for_claimed_set(
     return _gears_from_generation(matching[0].get("generation"))
 
 
+def is_ready_for_next_symbol(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+    strong_fraction: float = STRONG_FRACTION,
+    n_strong_required: int = N_CLEAN_RUNS_FOR_SHIFT,
+    max_gear: int = MAX_GEAR,
+    window_size: int = DEFAULT_EVIDENCE_WINDOW_SIZE,
+) -> bool:
+    """Whether send evidence says the learner is ready for the next symbol.
+
+    Sibling of
+    :func:`copy_653.sequence.exercise_analysis.is_ready_for_next_symbol`,
+    reading ``cadence-send`` records instead of ``koch-exercise``. The
+    Key (send) nudge is deliberately decoupled from the listen nudge —
+    send is a different skill, and the two channels can sit at
+    different points in the curriculum (philosophy §3.7).
+
+    Thresholds default to the listen-side constants. They are inherited
+    deliberately for the first cut so the two surfaces start at the same
+    bar, but send and listen are unlikely to need identical dials in
+    the long run — if real data shows this rule firing too eagerly or
+    too rarely on the send side, override these parameters here rather
+    than retuning the listen-side constants.
+
+    Returns ``True`` when, for the given ``claimed_set_key``:
+
+    * every burden band's current send gear is at ``max_gear``, and
+    * each band has at least ``n_strong_required`` recent sessions with
+      ``combined_fraction >= strong_fraction`` in a ``window_size``-deep
+      window, and
+    * each band's most-recent recorded fraction is also
+      ``>= strong_fraction``.
+
+    Returns ``False`` on insufficient evidence (empty records, empty
+    ``claimed_set_key``, no band data) — the WS layer only needs a
+    boolean and "no nudge" is the safe default.
+    """
+    if not claimed_set_key:
+        return False
+
+    current_gears = latest_gears_for_claimed_set(records, claimed_set_key=claimed_set_key)
+    if not current_gears:
+        return False
+    if any(gear < max_gear for gear in current_gears.values()):
+        return False
+
+    evidence = load_band_evidence(
+        records,
+        claimed_set_key=claimed_set_key,
+        window_size=window_size,
+    )
+    band_evidence = evidence.get("bands") or []
+    if len(band_evidence) != len(current_gears):
+        return False
+
+    for band in band_evidence:
+        fractions = band.get("recent_fractions") or []
+        if not fractions:
+            return False
+        if fractions[0] < strong_fraction:
+            return False
+        strong_count = sum(1 for f in fractions if f >= strong_fraction)
+        if strong_count < n_strong_required:
+            return False
+
+    return True
+
+
 def resolve_gears(
     evidence: dict[str, Any],
     *,

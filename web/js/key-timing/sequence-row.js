@@ -56,6 +56,14 @@ export function renderSequence(state) {
     // the currently playing symbol stands out; the claimed / next /
     // available tiering is a Cadence affordance tied to the curriculum.
     const uniform = !copyHistoryEl;
+    // Send-side readiness nudge: paints an anchor border around the
+    // "next" token when saved cadence-send evidence has cleared the
+    // bar. Independent from the listen-side `ready_for_next`, which
+    // the Koch page reads — one channel can lead or lag the other.
+    // The CSS hook is the same `data-ready="true"` selector used on
+    // the Koch row (web/css/copy-653.css), so uniform/Freeplay rows
+    // (no "next" token) silently render as no-op.
+    sequenceRow.dataset.ready = state.ready_for_next_send ? "true" : "false";
 
     KOCH_ORDER.forEach((sym) => {
         const token = sequenceRow.querySelector(`[data-symbol="${CSS.escape(sym)}"]`);

@@ -47,6 +47,15 @@ let selectedCopyIndex = 0;
 // sent-symbol events.
 let expectedCopySteps = [];
 let copyProgress = 0;
+// Once the final exercise of the set is fully matched, the page
+// stops processing further sent-symbol events until New requests a
+// fresh set. The Trinkey/sidetone path is unaffected (the engine
+// keeps decoding); we just refuse to attribute any further keying
+// to the just-finished round so the Sent line and rhythm review do
+// not accumulate post-completion noise. Cadence analysis on the
+// engine side already ignores trailing events past the last matched
+// target, so this flag is purely a UI concern.
+let sessionComplete = false;
 // One bucket of sent events per exercise (index-aligned to
 // copyExercises). Filled live as sends arrive into the currently
 // selected exercise; preserved across exercise selection so the
@@ -209,6 +218,18 @@ function noteCopySymbolForProgress(symbol, leadingGap) {
                 // the final set of attempts without first hitting X.
                 setSentExpanded(true);
                 clearImiCue();
+                // Freeze further sent-symbol processing until New
+                // opens a fresh set — see sessionComplete declaration.
+                sessionComplete = true;
+                // Tell the engine to finalize the in-flight cadence
+                // session right now so trailing keying (while the
+                // learner reads the review) is not appended to the
+                // record on disk. The next `request-copy-exercises`
+                // opens a fresh session normally.
+                const socket = getActiveSocket();
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ action: "complete-cadence-session" }));
+                }
             }
         }
         refreshImiCue();
@@ -238,6 +259,7 @@ export function renderCopyExercises(event) {
     sentEventsByExercise = exercises.map(() => []);
     updateExpectedCopySteps();
     clearImiCue();
+    sessionComplete = false;
     if (exercises.length === 0) {
         copySymbolEl.textContent = "—";
         updateCopyPositionLabel();
@@ -326,11 +348,17 @@ export function clearCopyExercises() {
     sentEventsByExercise = [];
     updateExpectedCopySteps();
     clearImiCue();
+    sessionComplete = false;
     updateCopyPositionLabel();
     renderRhythmReview();
 }
 
 export function renderSentSymbol(event) {
+    // Freeze post-completion until New opens a fresh set. The Sent
+    // line, history list, diagnostics row, per-exercise bucket, and
+    // rhythm-review are all skipped so the finished round's display
+    // stays exactly as the learner left it.
+    if (sessionComplete) return;
     const symbol = event.symbol || "?";
     const startedAt = Number(event.started_at);
     const endedAt = Number(event.ended_at);

@@ -48,12 +48,13 @@ Client → server, JSON over WS::
     {"action": "request-copy-exercises", "exercise_count": 5,
      "min_words": 4, "max_words": 7,
      "min_word_length": 1, "max_word_length": 4}
+    {"action": "complete-cadence-session"}
 
 Server → client, JSON over WS, one frame per event. Pushed
 unsolicited on connect, and after every change::
 
     {"type": "claimed-symbols", "symbols": ["K", "M"], "suggested_next": "U",
-     "ready_for_next": false}
+     "ready_for_next": false, "ready_for_next_send": false}
     {"type": "audio-settings", "character_wpm": 20, "effective_wpm": 10,
      "farnsworth_enabled": true, "tone_shape": 2, "receiver_bed": 2,
      "cadence_variation": 1, "keyer_mode": "iambic_a",

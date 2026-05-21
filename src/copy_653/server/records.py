@@ -18,6 +18,7 @@ from typing import Any
 from copy_653.audio.parameters import AudioParameters
 from copy_653.config import load_save_directory
 from copy_653.sequence.cadence_analysis import (
+    is_ready_for_next_symbol as cadence_is_ready_for_next_symbol,
     latest_gears_for_claimed_set as latest_cadence_gears_for_claimed_set,
     load_band_evidence as load_cadence_band_evidence,
     record_claimed_set_key as cadence_record_claimed_set_key,
@@ -236,6 +237,20 @@ def _next_symbol_readiness(save_directory: Path, claimed_set_key: str) -> bool:
         return False
     records = _iter_koch_records(save_directory)
     return is_ready_for_next_symbol(records, claimed_set_key=claimed_set_key)
+
+
+def _next_send_symbol_readiness(save_directory: Path, claimed_set_key: str) -> bool:
+    """Whether send-side evidence says the learner is ready for the next symbol.
+
+    Send sibling of :func:`_next_symbol_readiness`. Reads ``cadence-send``
+    records instead of ``koch-exercise``; the two readiness signals are
+    independent on purpose so the listen and send sides of the
+    curriculum can sit at different points (philosophy §3.7).
+    """
+    if not claimed_set_key:
+        return False
+    records = _iter_cadence_records(save_directory)
+    return cadence_is_ready_for_next_symbol(records, claimed_set_key=claimed_set_key)
 
 
 def _next_cadence_run_index(save_directory: Path, claimed_set_key: str) -> int:

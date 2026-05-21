@@ -54,6 +54,7 @@ from copy_653.midi import (
 from copy_653.server.records import (
     _ActiveCadenceSession,
     _next_cadence_run_index,
+    _next_send_symbol_readiness,
     _next_symbol_readiness,
     _resolve_cadence_session_gears,
     _resolve_session_gears,
@@ -356,7 +357,15 @@ async def _claim_symbol_action(
     save_directory = load_save_directory(config_path)
     claimed_set_key = " ".join(sorted(claimed))
     ready_for_next = _next_symbol_readiness(save_directory, claimed_set_key)
-    await _send_event(ws, _claimed_symbols_event(claimed, ready_for_next=ready_for_next))
+    ready_for_next_send = _next_send_symbol_readiness(save_directory, claimed_set_key)
+    await _send_event(
+        ws,
+        _claimed_symbols_event(
+            claimed,
+            ready_for_next=ready_for_next,
+            ready_for_next_send=ready_for_next_send,
+        ),
+    )
 
 
 async def _unclaim_symbol_action(
@@ -393,7 +402,15 @@ async def _unclaim_symbol_action(
     save_directory = load_save_directory(config_path)
     claimed_set_key = " ".join(sorted(claimed))
     ready_for_next = _next_symbol_readiness(save_directory, claimed_set_key)
-    await _send_event(ws, _claimed_symbols_event(claimed, ready_for_next=ready_for_next))
+    ready_for_next_send = _next_send_symbol_readiness(save_directory, claimed_set_key)
+    await _send_event(
+        ws,
+        _claimed_symbols_event(
+            claimed,
+            ready_for_next=ready_for_next,
+            ready_for_next_send=ready_for_next_send,
+        ),
+    )
 
 
 async def _request_copy_exercises_action(

@@ -44,13 +44,21 @@ def _claimed_symbols_event(
     claimed: tuple[str, ...],
     *,
     ready_for_next: bool = False,
+    ready_for_next_send: bool = False,
 ) -> dict[str, Any]:
     """Build the ``claimed-symbols`` event payload from a claimed list.
 
     ``ready_for_next`` is the saved-evidence judgment on whether the
-    learner has cleared the readiness bar for the next-symbol nudge
+    learner has cleared the listen-side readiness bar for the
+    next-symbol nudge
     (see :func:`copy_653.sequence.exercise_analysis.is_ready_for_next_symbol`).
-    Defaults to ``False`` so callers that have no record access — tests
+
+    ``ready_for_next_send`` is the same judgment for the send side
+    (see :func:`copy_653.sequence.cadence_analysis.is_ready_for_next_symbol`).
+    The two signals are independent: each surface paints its own nudge
+    from its own channel of evidence, and one can lead or lag the other.
+
+    Both default to ``False`` so callers without record access — tests
     and the initial cold path — degrade to "no nudge", which is the
     safe default.
     """
@@ -59,6 +67,7 @@ def _claimed_symbols_event(
         "symbols": list(claimed),
         "suggested_next": patterns.next_koch_after(claimed),
         "ready_for_next": ready_for_next,
+        "ready_for_next_send": ready_for_next_send,
     }
 
 
