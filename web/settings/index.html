@@ -41,14 +41,6 @@
                     aria-selected="false"
                     data-selected="false"
                     data-tab="key">Key Exercises</button>
-            <button type="button"
-                    class="settings-tab"
-                    role="tab"
-                    id="settings-tab-calendar"
-                    aria-controls="settings-panel-calendar"
-                    aria-selected="false"
-                    data-selected="false"
-                    data-tab="calendar">Calendar</button>
         </nav>
 
         <section class="settings-panel"
@@ -251,10 +243,15 @@
             </section>
             <div class="settings-records-meta">
                 <p class="settings-koch-meta" id="settings-koch-meta">Loading saved sessions…</p>
-                <button type="button"
-                        class="btn settings-backup-btn"
-                        id="settings-koch-backup"
-                        data-kind="koch-exercise">Back up</button>
+                <div class="settings-records-meta__actions">
+                    <button type="button"
+                            class="btn settings-calendar-btn"
+                            data-calendar-open="settings-koch-calendar-dialog">Calendar</button>
+                    <button type="button"
+                            class="btn settings-backup-btn"
+                            id="settings-koch-backup"
+                            data-kind="koch-exercise">Back up</button>
+                </div>
             </div>
             <div class="settings-koch-table-wrap">
                 <table class="settings-koch-table">
@@ -269,6 +266,37 @@
                     <tbody id="settings-koch-tbody"></tbody>
                 </table>
             </div>
+            <dialog class="settings-koch-dialog settings-calendar-dialog"
+                    id="settings-koch-calendar-dialog">
+                <form method="dialog" class="settings-koch-dialog__bar">
+                    <h2 class="settings-koch-dialog__title">Practice calendar</h2>
+                    <button type="submit"
+                            class="settings-koch-dialog__close"
+                            aria-label="Close calendar">Close</button>
+                </form>
+                <div class="settings-koch-dialog__body">
+                    <div class="settings-calendar" id="settings-koch-calendar">
+                        <div class="settings-calendar__header">
+                            <button type="button"
+                                    class="settings-calendar__nav"
+                                    data-calendar-prev
+                                    aria-label="Previous month">&larr;</button>
+                            <h3 class="settings-calendar__title" data-calendar-title>&nbsp;</h3>
+                            <button type="button"
+                                    class="settings-calendar__nav"
+                                    data-calendar-next
+                                    aria-label="Next month">&rarr;</button>
+                        </div>
+                        <p class="settings-calendar__meta" data-calendar-meta>Loading saved sessions…</p>
+                        <div class="settings-calendar__weekdays" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                        </div>
+                        <div class="settings-calendar__grid"
+                             data-calendar-grid
+                             role="grid"></div>
+                    </div>
+                </div>
+            </dialog>
             <dialog class="settings-koch-dialog" id="settings-koch-lifetime-dialog">
                 <form method="dialog" class="settings-koch-dialog__bar">
                     <h2 class="settings-koch-dialog__title" id="settings-koch-lifetime-title">
@@ -338,10 +366,15 @@
             </section>
             <div class="settings-records-meta">
                 <p class="settings-koch-meta" id="settings-key-meta">Loading saved send sessions…</p>
-                <button type="button"
-                        class="btn settings-backup-btn"
-                        id="settings-key-backup"
-                        data-kind="cadence-send">Back up</button>
+                <div class="settings-records-meta__actions">
+                    <button type="button"
+                            class="btn settings-calendar-btn"
+                            data-calendar-open="settings-key-calendar-dialog">Calendar</button>
+                    <button type="button"
+                            class="btn settings-backup-btn"
+                            id="settings-key-backup"
+                            data-kind="cadence-send">Back up</button>
+                </div>
             </div>
             <div class="settings-koch-table-wrap">
                 <table class="settings-koch-table">
@@ -357,6 +390,37 @@
                     <tbody id="settings-key-tbody"></tbody>
                 </table>
             </div>
+            <dialog class="settings-koch-dialog settings-calendar-dialog"
+                    id="settings-key-calendar-dialog">
+                <form method="dialog" class="settings-koch-dialog__bar">
+                    <h2 class="settings-koch-dialog__title">Send practice calendar</h2>
+                    <button type="submit"
+                            class="settings-koch-dialog__close"
+                            aria-label="Close calendar">Close</button>
+                </form>
+                <div class="settings-koch-dialog__body">
+                    <div class="settings-calendar" id="settings-key-calendar">
+                        <div class="settings-calendar__header">
+                            <button type="button"
+                                    class="settings-calendar__nav"
+                                    data-calendar-prev
+                                    aria-label="Previous month">&larr;</button>
+                            <h3 class="settings-calendar__title" data-calendar-title>&nbsp;</h3>
+                            <button type="button"
+                                    class="settings-calendar__nav"
+                                    data-calendar-next
+                                    aria-label="Next month">&rarr;</button>
+                        </div>
+                        <p class="settings-calendar__meta" data-calendar-meta>Loading saved send sessions…</p>
+                        <div class="settings-calendar__weekdays" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                        </div>
+                        <div class="settings-calendar__grid"
+                             data-calendar-grid
+                             role="grid"></div>
+                    </div>
+                </div>
+            </dialog>
             <dialog class="settings-koch-dialog" id="settings-key-lifetime-dialog">
                 <form method="dialog" class="settings-koch-dialog__bar">
                     <h2 class="settings-koch-dialog__title" id="settings-key-lifetime-title">
@@ -397,33 +461,6 @@
             </dialog>
         </section>
 
-        <section class="settings-panel"
-                 id="settings-panel-calendar"
-                 role="tabpanel"
-                 aria-labelledby="settings-tab-calendar"
-                 hidden>
-            <div class="settings-calendar">
-                <div class="settings-calendar__header">
-                    <button type="button"
-                            class="settings-calendar__nav"
-                            id="settings-calendar-prev"
-                            aria-label="Previous month">&larr;</button>
-                    <h3 class="settings-calendar__title" id="settings-calendar-title">&nbsp;</h3>
-                    <button type="button"
-                            class="settings-calendar__nav"
-                            id="settings-calendar-next"
-                            aria-label="Next month">&rarr;</button>
-                </div>
-                <p class="settings-calendar__meta" id="settings-calendar-meta">Loading saved sessions…</p>
-                <div class="settings-calendar__weekdays" aria-hidden="true">
-                    <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-                </div>
-                <div class="settings-calendar__grid"
-                     id="settings-calendar-grid"
-                     role="grid"
-                     aria-labelledby="settings-calendar-title"></div>
-            </div>
-        </section>
     </main>
     <script type="module" src="../js/partials/landing-header.js"></script>
     <script type="module" src="../js/partials/theme-btn.js"></script>

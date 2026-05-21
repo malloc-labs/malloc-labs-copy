@@ -80,8 +80,7 @@
     overflow: hidden;
 }
 
-#settings-panel-app:not([hidden]),
-#settings-panel-calendar:not([hidden]) {
+#settings-panel-app:not([hidden]) {
     overflow: auto;
 }
 
@@ -96,9 +95,9 @@
     font-size: var(--mr-size-small);
 }
 
-/* Row that pairs the saved-sessions meta line with its Back up
- * button. The button is right-aligned so it sits at the end of the
- * meta row without interrupting the existing left-aligned text. */
+/* Row that pairs the saved-sessions meta line with its action buttons
+ * (Calendar trigger + Back up). The buttons sit at the end of the row;
+ * the meta text keeps the left-aligned position it had pre-actions. */
 .settings-records-meta {
     display: flex;
     align-items: baseline;
@@ -112,8 +111,22 @@
     margin-bottom: 0;
 }
 
-.settings-backup-btn {
+.settings-records-meta__actions {
+    display: flex;
+    gap: var(--mr-space-2);
     flex: 0 0 auto;
+}
+
+.settings-backup-btn,
+.settings-calendar-btn {
+    flex: 0 0 auto;
+}
+
+/* Calendar popup — narrower than the session-detail dialog because
+ * the grid maxes out at seven columns of compact day cells. */
+.settings-calendar-dialog {
+    width: min(96vw, 720px);
+    max-height: min(86vh, 720px);
 }
 
 .settings-koch-table-wrap {

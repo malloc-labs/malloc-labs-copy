@@ -1,10 +1,12 @@
-// Settings page — Calendar tab.
+// Settings page — practice calendars.
 //
-// Dev-only monitoring view: per-day at-a-glance of practice activity
-// to help judge whether the next-symbol nudge is firing at sensible
-// moments. Renders one month at a time with prev/next navigation. Day
-// cells show the claimed-set in effect at the end of that day plus
-// the total exercises taken across all sessions on that day.
+// Renders one calendar widget per saved-sessions tab (Koch and Key/Send)
+// as a per-day at-a-glance of practice activity. Same component, two
+// instances: each is parameterised by the DOM root and the listing
+// endpoint. Day cells show the claimed-set in effect at the end of that
+// day plus the total exercises taken across all sessions on that day —
+// useful for judging whether the next-symbol nudge is firing at
+// sensible moments.
 //
 // Aggregation rules for days with multiple sessions:
 //   • claimed_set: the latest session's set (the state the learner
@@ -13,31 +15,17 @@
 //   • duration_seconds: sum of (ended_at − started_at) across all
 //     sessions that day, displayed as rounded minutes.
 //
-// Data source: /api/koch-exercises. The earliest navigable month is
-// 2026-01.
+// Data sources: /api/koch-exercises and /api/cadence-sends. Both return
+// the same shape (started_at, ended_at, claimed_set, exercise_count).
+// The earliest navigable month is 2026-01.
 
 const MIN_YEAR = 2026;
 const MIN_MONTH = 0; // January
-
-const titleEl = document.getElementById("settings-calendar-title");
-const metaEl = document.getElementById("settings-calendar-meta");
-const gridEl = document.getElementById("settings-calendar-grid");
-const prevBtn = document.getElementById("settings-calendar-prev");
-const nextBtn = document.getElementById("settings-calendar-next");
 
 const MONTH_NAMES = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December",
 ];
-
-const today = new Date();
-let viewYear = Math.max(today.getFullYear(), MIN_YEAR);
-let viewMonth = viewYear === today.getFullYear() ? today.getMonth() : MIN_MONTH;
-
-// Map<YYYY-MM-DD, {claimed_set: string[], exercise_count: number,
-// duration_seconds: number}>, in local time so calendar squares match
-// the wall clock the learner saw when they were practising.
-const practiceDays = new Map();
 
 function localDateKey(date) {
     const y = date.getFullYear();
@@ -46,7 +34,7 @@ function localDateKey(date) {
     return `${y}-${m}-${d}`;
 }
 
-// Wall-clock minutes between two ISO timestamps. Returns 0 if either
+// Wall-clock seconds between two ISO timestamps. Returns 0 if either
 // is missing/invalid or if ended_at precedes started_at (clock skew or
 // a record written before the engine populated ended_at).
 function sessionDurationSeconds(started_at, ended_at) {
@@ -63,126 +51,171 @@ function formatPracticeMinutes(seconds) {
     return `${minutes}m`;
 }
 
-function isAtMinMonth() {
-    return viewYear === MIN_YEAR && viewMonth === MIN_MONTH;
-}
+function mountCalendar({ root, endpoint, emptyLabel }) {
+    if (!root) return;
+    const titleEl = root.querySelector("[data-calendar-title]");
+    const metaEl = root.querySelector("[data-calendar-meta]");
+    const gridEl = root.querySelector("[data-calendar-grid]");
+    const prevBtn = root.querySelector("[data-calendar-prev]");
+    const nextBtn = root.querySelector("[data-calendar-next]");
+    if (!titleEl || !metaEl || !gridEl || !prevBtn || !nextBtn) return;
 
-function stepMonth(delta) {
-    let m = viewMonth + delta;
-    let y = viewYear;
-    while (m < 0) { m += 12; y -= 1; }
-    while (m > 11) { m -= 12; y += 1; }
-    if (y < MIN_YEAR || (y === MIN_YEAR && m < MIN_MONTH)) return;
-    viewYear = y;
-    viewMonth = m;
-    render();
-}
+    const today = new Date();
+    let viewYear = Math.max(today.getFullYear(), MIN_YEAR);
+    let viewMonth = viewYear === today.getFullYear() ? today.getMonth() : MIN_MONTH;
 
-function render() {
-    titleEl.textContent = `${MONTH_NAMES[viewMonth]} ${viewYear}`;
-    prevBtn.disabled = isAtMinMonth();
+    // Map<YYYY-MM-DD, {claimed_set, exercise_count, duration_seconds}>
+    // in local time so calendar squares match the wall clock the
+    // learner saw when they were practising.
+    const practiceDays = new Map();
 
-    const first = new Date(viewYear, viewMonth, 1);
-    // JS getDay: 0=Sun..6=Sat. Convert to Mon=0..Sun=6.
-    const leading = (first.getDay() + 6) % 7;
-    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-    const todayKey = localDateKey(today);
-
-    gridEl.replaceChildren();
-
-    // Leading blanks so day 1 lands under its weekday column.
-    for (let i = 0; i < leading; i += 1) {
-        const blank = document.createElement("div");
-        blank.className = "settings-calendar__day settings-calendar__day--blank";
-        blank.setAttribute("aria-hidden", "true");
-        gridEl.appendChild(blank);
+    function isAtMinMonth() {
+        return viewYear === MIN_YEAR && viewMonth === MIN_MONTH;
     }
 
-    for (let d = 1; d <= daysInMonth; d += 1) {
-        const cell = document.createElement("div");
-        cell.className = "settings-calendar__day";
-        cell.setAttribute("role", "gridcell");
-
-        const key = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-        const entry = practiceDays.get(key);
-        if (entry) {
-            cell.dataset.practice = "true";
-            const claimed = entry.claimed_set.join(" ");
-            const minutesLabel = formatPracticeMinutes(entry.duration_seconds);
-            const durationLabel = minutesLabel ? `, ${minutesLabel} of practice` : "";
-            cell.setAttribute(
-                "aria-label",
-                `${d} ${MONTH_NAMES[viewMonth]} — claimed ${claimed || "none"}, ${entry.exercise_count} exercise${entry.exercise_count === 1 ? "" : "s"}${durationLabel}`,
-            );
-        } else {
-            cell.setAttribute("aria-label", `${d} ${MONTH_NAMES[viewMonth]}`);
-        }
-        if (key === todayKey) cell.dataset.today = "true";
-
-        const num = document.createElement("span");
-        num.className = "settings-calendar__day-num";
-        num.textContent = String(d);
-        cell.appendChild(num);
-
-        if (entry) {
-            const claimed = document.createElement("span");
-            claimed.className = "settings-calendar__day-claimed";
-            claimed.textContent = entry.claimed_set.join(" ");
-            cell.appendChild(claimed);
-
-            const count = document.createElement("span");
-            count.className = "settings-calendar__day-count";
-            count.textContent = `${entry.exercise_count} ex`;
-            cell.appendChild(count);
-
-            const minutesLabel = formatPracticeMinutes(entry.duration_seconds);
-            const duration = document.createElement("span");
-            duration.className = "settings-calendar__day-duration";
-            duration.textContent = minutesLabel;
-            cell.appendChild(duration);
-        }
-
-        gridEl.appendChild(cell);
+    function stepMonth(delta) {
+        let m = viewMonth + delta;
+        let y = viewYear;
+        while (m < 0) { m += 12; y -= 1; }
+        while (m > 11) { m -= 12; y += 1; }
+        if (y < MIN_YEAR || (y === MIN_YEAR && m < MIN_MONTH)) return;
+        viewYear = y;
+        viewMonth = m;
+        render();
     }
-}
 
-async function loadSessions() {
-    try {
-        const res = await fetch("/api/koch-exercises", { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const records = Array.isArray(data.records) ? data.records : [];
-        practiceDays.clear();
-        // /api/koch-exercises returns newest-first. Walk oldest-first so
-        // the final claimed_set we keep per day is the latest session's.
-        const oldestFirst = [...records].reverse();
-        oldestFirst.forEach((rec) => {
-            const d = new Date(rec.started_at);
-            if (Number.isNaN(d.getTime())) return;
-            const key = localDateKey(d);
-            const prev = practiceDays.get(key);
-            const count = Number.isFinite(rec.exercise_count) ? rec.exercise_count : 0;
-            const claimed = Array.isArray(rec.claimed_set) ? rec.claimed_set : [];
-            const duration = sessionDurationSeconds(rec.started_at, rec.ended_at);
-            practiceDays.set(key, {
-                claimed_set: claimed,
-                exercise_count: (prev?.exercise_count || 0) + count,
-                duration_seconds: (prev?.duration_seconds || 0) + duration,
+    function render() {
+        titleEl.textContent = `${MONTH_NAMES[viewMonth]} ${viewYear}`;
+        prevBtn.disabled = isAtMinMonth();
+
+        const first = new Date(viewYear, viewMonth, 1);
+        // JS getDay: 0=Sun..6=Sat. Convert to Mon=0..Sun=6.
+        const leading = (first.getDay() + 6) % 7;
+        const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+        const todayKey = localDateKey(today);
+
+        gridEl.replaceChildren();
+
+        for (let i = 0; i < leading; i += 1) {
+            const blank = document.createElement("div");
+            blank.className = "settings-calendar__day settings-calendar__day--blank";
+            blank.setAttribute("aria-hidden", "true");
+            gridEl.appendChild(blank);
+        }
+
+        for (let d = 1; d <= daysInMonth; d += 1) {
+            const cell = document.createElement("div");
+            cell.className = "settings-calendar__day";
+            cell.setAttribute("role", "gridcell");
+
+            const key = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+            const entry = practiceDays.get(key);
+            if (entry) {
+                cell.dataset.practice = "true";
+                const claimed = entry.claimed_set.join(" ");
+                const minutesLabel = formatPracticeMinutes(entry.duration_seconds);
+                const durationLabel = minutesLabel ? `, ${minutesLabel} of practice` : "";
+                cell.setAttribute(
+                    "aria-label",
+                    `${d} ${MONTH_NAMES[viewMonth]} — claimed ${claimed || "none"}, ${entry.exercise_count} exercise${entry.exercise_count === 1 ? "" : "s"}${durationLabel}`,
+                );
+            } else {
+                cell.setAttribute("aria-label", `${d} ${MONTH_NAMES[viewMonth]}`);
+            }
+            if (key === todayKey) cell.dataset.today = "true";
+
+            const num = document.createElement("span");
+            num.className = "settings-calendar__day-num";
+            num.textContent = String(d);
+            cell.appendChild(num);
+
+            if (entry) {
+                const claimed = document.createElement("span");
+                claimed.className = "settings-calendar__day-claimed";
+                claimed.textContent = entry.claimed_set.join(" ");
+                cell.appendChild(claimed);
+
+                const count = document.createElement("span");
+                count.className = "settings-calendar__day-count";
+                count.textContent = `${entry.exercise_count} ex`;
+                cell.appendChild(count);
+
+                const minutesLabel = formatPracticeMinutes(entry.duration_seconds);
+                const duration = document.createElement("span");
+                duration.className = "settings-calendar__day-duration";
+                duration.textContent = minutesLabel;
+                cell.appendChild(duration);
+            }
+
+            gridEl.appendChild(cell);
+        }
+    }
+
+    async function loadSessions() {
+        try {
+            const res = await fetch(endpoint, { cache: "no-store" });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            const records = Array.isArray(data.records) ? data.records : [];
+            practiceDays.clear();
+            // Both listing endpoints return newest-first. Walk oldest
+            // first so the final claimed_set kept per day is the
+            // latest session's.
+            const oldestFirst = [...records].reverse();
+            oldestFirst.forEach((rec) => {
+                const d = new Date(rec.started_at);
+                if (Number.isNaN(d.getTime())) return;
+                const key = localDateKey(d);
+                const prev = practiceDays.get(key);
+                const count = Number.isFinite(rec.exercise_count) ? rec.exercise_count : 0;
+                const claimed = Array.isArray(rec.claimed_set) ? rec.claimed_set : [];
+                const duration = sessionDurationSeconds(rec.started_at, rec.ended_at);
+                practiceDays.set(key, {
+                    claimed_set: claimed,
+                    exercise_count: (prev?.exercise_count || 0) + count,
+                    duration_seconds: (prev?.duration_seconds || 0) + duration,
+                });
             });
-        });
-        if (records.length === 0) {
-            metaEl.textContent = `No saved Koch sessions in ${data.save_directory || "save directory"}.`;
-        } else {
-            metaEl.textContent = `${practiceDays.size} day${practiceDays.size === 1 ? "" : "s"} with practice across ${records.length} session${records.length === 1 ? "" : "s"}.`;
+            if (records.length === 0) {
+                metaEl.textContent = `No ${emptyLabel} in ${data.save_directory || "save directory"}.`;
+            } else {
+                metaEl.textContent = `${practiceDays.size} day${practiceDays.size === 1 ? "" : "s"} with practice across ${records.length} session${records.length === 1 ? "" : "s"}.`;
+            }
+        } catch (err) {
+            metaEl.textContent = `Could not load saved sessions: ${err.message}`;
         }
-    } catch (err) {
-        metaEl.textContent = `Could not load saved sessions: ${err.message}`;
+        render();
     }
+
+    prevBtn.addEventListener("click", () => stepMonth(-1));
+    nextBtn.addEventListener("click", () => stepMonth(1));
+
     render();
+    loadSessions();
 }
 
-prevBtn.addEventListener("click", () => stepMonth(-1));
-nextBtn.addEventListener("click", () => stepMonth(1));
+mountCalendar({
+    root: document.getElementById("settings-koch-calendar"),
+    endpoint: "/api/koch-exercises",
+    emptyLabel: "saved Koch sessions",
+});
 
-render();
-loadSessions();
+mountCalendar({
+    root: document.getElementById("settings-key-calendar"),
+    endpoint: "/api/cadence-sends",
+    emptyLabel: "saved send sessions",
+});
+
+// Wire each [data-calendar-open="<dialog-id>"] trigger to showModal()
+// the matching <dialog>. Clicking the backdrop closes the dialog —
+// matches the existing settings-koch-lifetime dialog behaviour.
+document.querySelectorAll("[data-calendar-open]").forEach((trigger) => {
+    const dialog = document.getElementById(trigger.dataset.calendarOpen);
+    if (!dialog) return;
+    trigger.addEventListener("click", () => {
+        if (!dialog.open) dialog.showModal();
+    });
+    dialog.addEventListener("click", (event) => {
+        if (event.target === dialog) dialog.close();
+    });
+});
