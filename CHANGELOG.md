@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.10.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.9.1...v0.10.0) (2026-05-22)
+
+
+### Features
+
+* **guided:** preview a symbol with Left Alt + key on Symbol Exposure ([#118](https://github.com/malloc-labs/malloc-labs-copy/issues/118)) ([d6315f2](https://github.com/malloc-labs/malloc-labs-copy/commit/d6315f2dd29510502bf593fa946e226b87a28e00))
+* **guided:** R keybind and layout polish for symbol-truth disclosure ([#121](https://github.com/malloc-labs/malloc-labs-copy/issues/121)) ([c0b28dc](https://github.com/malloc-labs/malloc-labs-copy/commit/c0b28dc493e379080e3e1ff50d5f73af96702a8d))
+* **key:** send-side readiness signal for the next-symbol nudge ([#125](https://github.com/malloc-labs/malloc-labs-copy/issues/125)) ([47ebd51](https://github.com/malloc-labs/malloc-labs-copy/commit/47ebd510d8d1cba48d004703c24af22fd0b0234f))
+* **koch:** 60-min per-claimed-set soft gate on the next-symbol nudge ([#131](https://github.com/malloc-labs/malloc-labs-copy/issues/131)) ([3f99a52](https://github.com/malloc-labs/malloc-labs-copy/commit/3f99a52680fc698ac5dad28c08228bf0332f9b44))
+* **koch:** gear 3 stage 1 — randomise DE lead-in once evidence is ready ([#134](https://github.com/malloc-labs/malloc-labs-copy/issues/134)) ([5551b60](https://github.com/malloc-labs/malloc-labs-copy/commit/5551b60c5581f285f2c9990605206eee6486eb9a))
+* **koch:** gear 3 stage 2 — dynamic noise floor under scaffold-break ([#135](https://github.com/malloc-labs/malloc-labs-copy/issues/135)) ([d16343b](https://github.com/malloc-labs/malloc-labs-copy/commit/d16343b5646b79160154a77921a87b2207999918))
+* **koch:** invert gear-down asymmetry — 4 low runs to retreat, RST sub-axis stays at 2 ([#140](https://github.com/malloc-labs/malloc-labs-copy/issues/140)) ([e1e0163](https://github.com/malloc-labs/malloc-labs-copy/commit/e1e01637af24fdbf2ae47ebc1f9b5e7bde186e9e))
+* **koch:** RST sub-axis at gear 3 + Settings RST relabel ([#138](https://github.com/malloc-labs/malloc-labs-copy/issues/138)) ([22a2c21](https://github.com/malloc-labs/malloc-labs-copy/commit/22a2c212e63ffd7c1eec8d5877069797f87d371c))
+* **koch:** S keybind and 5-second countdown for Start ([#123](https://github.com/malloc-labs/malloc-labs-copy/issues/123)) ([2275ec6](https://github.com/malloc-labs/malloc-labs-copy/commit/2275ec6cad84c4d6df88e58599d9a8c02bc1811e))
+* **koch:** split next-symbol signal into evidence-ready + full-gate ([#132](https://github.com/malloc-labs/malloc-labs-copy/issues/132)) ([6e92a8d](https://github.com/malloc-labs/malloc-labs-copy/commit/6e92a8ddc4b3660b1665464c9de74ecae6611152))
+* **koch:** two-column Answers/Sent review table with correctness colouring ([#139](https://github.com/malloc-labs/malloc-labs-copy/issues/139)) ([5d3b520](https://github.com/malloc-labs/malloc-labs-copy/commit/5d3b520018fb9d42ca0e0bebf103d2111ac5c866))
+* **settings:** Back up button for Koch and Key record directories ([#126](https://github.com/malloc-labs/malloc-labs-copy/issues/126)) ([6000de4](https://github.com/malloc-labs/malloc-labs-copy/commit/6000de45cc8d944dd2e70b52aa4c8b7655085cc2))
+* **settings:** per-claimed-set cumulative on practice calendars ([#130](https://github.com/malloc-labs/malloc-labs-copy/issues/130)) ([c66009e](https://github.com/malloc-labs/malloc-labs-copy/commit/c66009e26b0bd66ebc34765c58ef7a8341187388))
+* **settings:** per-day practice minutes on the Koch calendar ([#124](https://github.com/malloc-labs/malloc-labs-copy/issues/124)) ([9f6eb36](https://github.com/malloc-labs/malloc-labs-copy/commit/9f6eb368fcaadbfe6b95defd6a0c05da4ec83d42))
+* **settings:** practice calendars as popups on Koch and Key tabs ([#127](https://github.com/malloc-labs/malloc-labs-copy/issues/127)) ([7a8691b](https://github.com/malloc-labs/malloc-labs-copy/commit/7a8691b39dc0ab5fdb714b21259f34dfb9e90c80))
+* **settings:** surface gear 3 in detail dialog and refresh calendar on open ([#136](https://github.com/malloc-labs/malloc-labs-copy/issues/136)) ([8b6ef2d](https://github.com/malloc-labs/malloc-labs-copy/commit/8b6ef2d1086bd2b4ea8e794cd2a8dce5aa3147de))
+* **web:** keyboard accelerators across landing and back-links ([#122](https://github.com/malloc-labs/malloc-labs-copy/issues/122)) ([48f7232](https://github.com/malloc-labs/malloc-labs-copy/commit/48f7232ca46dbe6814333c0285ea9475fc2461fa))
+
+
+### Bug Fixes
+
+* **audio:** apply receiver bed once per session, not per exercise ([#129](https://github.com/malloc-labs/malloc-labs-copy/issues/129)) ([5c92e81](https://github.com/malloc-labs/malloc-labs-copy/commit/5c92e81c95f3964cb70ff6329d8de32ca36446d5))
+* **guided:** drop typographic dit/dah line from symbol truth ([#120](https://github.com/malloc-labs/malloc-labs-copy/issues/120)) ([1aab275](https://github.com/malloc-labs/malloc-labs-copy/commit/1aab2758b42ea050a972bfc11ea41b1a49716cc9))
+* **koch:** split CSS so the in-contention box renders without colour ([#133](https://github.com/malloc-labs/malloc-labs-copy/issues/133)) ([84be93b](https://github.com/malloc-labs/malloc-labs-copy/commit/84be93b05ca92e705d0858e45ab582296c8609a8))
+* **settings:** delete buttons request GET, not POST ([#128](https://github.com/malloc-labs/malloc-labs-copy/issues/128)) ([92982a7](https://github.com/malloc-labs/malloc-labs-copy/commit/92982a7743f8a78587d04cfb029454f182d944b3))
+
 ## [0.9.1](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.9.0...v0.9.1) (2026-05-20)
 
 
