@@ -52,9 +52,22 @@ MAX_CONTENT_GEAR = 2
 # unlikely. The MOC suggests 2-3; 3 is the cautious end.
 N_CLEAN_RUNS_FOR_SHIFT = 3
 # Consecutive low-band sessions required before a band drops one gear.
-# Asymmetric with N_CLEAN_RUNS_FOR_SHIFT: easier to step down than to
-# step up, so the system never feels punitive.
-N_LOW_RUNS_FOR_SHIFT_DOWN = 2
+# Inverted asymmetry with N_CLEAN_RUNS_FOR_SHIFT (3 to climb, 4 to
+# retreat): once a band has earned its current gear we trust it longer
+# than the climb required, because the higher gears layer audio
+# disruption on top of the content (scaffold-break at MAX_GEAR, RST
+# windows within it) and an isolated sub-0.70 run is an expected
+# outcome of that disruption rather than evidence the learner regressed.
+# The RST sub-axis carries its own, faster-reacting threshold
+# (N_LOW_RUNS_FOR_RST_STEP_DOWN) so within-gear-3 windows can still
+# slide back to give traction.
+N_LOW_RUNS_FOR_SHIFT_DOWN = 4
+# Consecutive low-band runs required before an RST window step slides
+# back one notch (toward an easier S/T window). Kept at 2 so the
+# within-gear-3 sub-axis can still accommodate quickly even while the
+# band itself sits at gear 3 for longer — the band-gear axis and the
+# RST sub-axis are intentionally on different reaction timescales.
+N_LOW_RUNS_FOR_RST_STEP_DOWN = 2
 
 # Per-band RST sub-axis at gear MAX_GEAR. Steps 0..MAX_RST_STEP each
 # anchor a 3-wide window on the RST 1-9 scale; step 0 is (7..9) and
@@ -1031,7 +1044,7 @@ def resolve_rst_steps(
     current_steps: dict[int, tuple[int, int]],
     max_step: int = MAX_RST_STEP,
     n_clean_runs_for_shift: int = N_CLEAN_RUNS_FOR_SHIFT,
-    n_low_runs_for_shift_down: int = N_LOW_RUNS_FOR_SHIFT_DOWN,
+    n_low_runs_for_shift_down: int = N_LOW_RUNS_FOR_RST_STEP_DOWN,
 ) -> dict[int, tuple[int, int]]:
     """Per-band ``(s_step, t_step)`` for the next session.
 
