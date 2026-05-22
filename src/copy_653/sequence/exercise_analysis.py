@@ -56,6 +56,18 @@ N_CLEAN_RUNS_FOR_SHIFT = 3
 # step up, so the system never feels punitive.
 N_LOW_RUNS_FOR_SHIFT_DOWN = 2
 
+# Per-band RST sub-axis at gear MAX_GEAR. Steps 0..MAX_RST_STEP each
+# anchor a 3-wide window on the RST 1-9 scale; step 0 is (7..9) and
+# every subsequent step slides one notch toward the harsher end so
+# step 5 is (2..4). S and T axes progress independently using the same
+# strong/low/single-step machinery as the gear axis; per-axis evidence
+# is gated on the per-exercise draw landing at the window bottom of
+# its current step (see :func:`is_eligible_for_axis`), so each axis
+# only advances on sessions that actually stressed it.
+MAX_RST_STEP = 5
+RST_WINDOW_WIDTH = 3
+RST_WINDOW_TOP = 9
+
 _SPACE_RE = re.compile(r"\s+")
 
 
@@ -87,10 +99,11 @@ def build_generation_profile(
     candidate_count: int,
     exercise_count: int,
     gears: list[int] | None = None,
+    rst_steps: dict[int, tuple[int, int]] | None = None,
 ) -> dict[str, Any]:
     """Build the generation metadata persisted with a Koch record."""
     resolved_gears = gears if gears is not None else [0] * exercise_count
-    return {
+    profile: dict[str, Any] = {
         "profile_version": GENERATION_PROFILE_VERSION,
         "claimed_set_key": " ".join(sorted(claimed_set)),
         "candidate_count": candidate_count,
@@ -102,6 +115,12 @@ def build_generation_profile(
             for idx in range(exercise_count)
         ],
     }
+    if rst_steps:
+        profile["rst_steps"] = [
+            {"index": band, "s_step": int(s_step), "t_step": int(t_step)}
+            for band, (s_step, t_step) in sorted(rst_steps.items())
+        ]
+    return profile
 
 
 def build_exercise_entries(
@@ -109,27 +128,35 @@ def build_exercise_entries(
     *,
     scores: list[int] | tuple[int, ...],
     gears: list[int] | None = None,
+    rst_draws: (
+        list[tuple[int | None, int | None]] | tuple[tuple[int | None, int | None], ...] | None
+    ) = None,
 ) -> list[dict[str, Any]]:
     """Build persisted per-exercise records before answers are saved."""
     resolved_gears = gears if gears is not None else [0] * len(exercises)
     entries: list[dict[str, Any]] = []
     for idx, played in enumerate(exercises):
         burden_score = scores[idx] if idx < len(scores) else burden_score_for_exercise(played)
-        entries.append(
-            {
-                "index": idx + 1,
-                "played": played,
-                "core": strip_fixed_anchor(played),
-                "burden_score": burden_score,
-                "burden_band": idx + 1,
-                "gear": resolved_gears[idx] if idx < len(resolved_gears) else 0,
-                "answer": "",
-                "analysis": {
-                    "version": ANALYSIS_VERSION,
-                    "saved": False,
-                },
-            }
-        )
+        entry: dict[str, Any] = {
+            "index": idx + 1,
+            "played": played,
+            "core": strip_fixed_anchor(played),
+            "burden_score": burden_score,
+            "burden_band": idx + 1,
+            "gear": resolved_gears[idx] if idx < len(resolved_gears) else 0,
+            "answer": "",
+            "analysis": {
+                "version": ANALYSIS_VERSION,
+                "saved": False,
+            },
+        }
+        if rst_draws is not None and idx < len(rst_draws):
+            s_draw, t_draw = rst_draws[idx]
+            if s_draw is not None:
+                entry["s"] = int(s_draw)
+            if t_draw is not None:
+                entry["t"] = int(t_draw)
+        entries.append(entry)
     return entries
 
 
@@ -760,4 +787,280 @@ def resolve_gears(
             resolved[burden_band] = current - 1
         else:
             resolved[burden_band] = current
+    return resolved
+
+
+def rst_window_for_step(step: int) -> tuple[int, int]:
+    """Return the inclusive (lo, hi) RST draw window for a sub-axis step.
+
+    Steps outside ``[0, MAX_RST_STEP]`` are clamped so callers can pass
+    raw values without pre-checking.
+    """
+    clamped = max(0, min(MAX_RST_STEP, int(step)))
+    hi = RST_WINDOW_TOP - clamped
+    lo = hi - RST_WINDOW_WIDTH + 1
+    return lo, hi
+
+
+def is_eligible_for_axis(drawn: int, step: int) -> bool:
+    """Whether a drawn S or T value sits at the bottom of its step's window.
+
+    Bottom-of-window is the routing rule that keeps the S and T sub-axes
+    genuinely independent: an exercise contributes to an axis's evidence
+    only when its draw landed at the harshest single value in the
+    current 3-wide window, so each axis only advances on sessions that
+    actually stressed it.
+    """
+    lo, _ = rst_window_for_step(step)
+    return int(drawn) == lo
+
+
+def _rst_steps_from_generation(generation: Any) -> dict[int, tuple[int, int]]:
+    """Extract ``{burden_band: (s_step, t_step)}`` from a generation profile.
+
+    Defensive against shape drift — non-conforming entries are silently
+    skipped. Pre-schema-2.1 sessions carry no ``rst_steps`` block; the
+    resolver treats absent bands as step ``(0, 0)``.
+    """
+    if not isinstance(generation, dict):
+        return {}
+    entries = generation.get("rst_steps")
+    if not isinstance(entries, list):
+        return {}
+    out: dict[int, tuple[int, int]] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        idx = entry.get("index")
+        s_step = entry.get("s_step")
+        t_step = entry.get("t_step")
+        if (
+            isinstance(idx, int)
+            and not isinstance(idx, bool)
+            and isinstance(s_step, int)
+            and not isinstance(s_step, bool)
+            and isinstance(t_step, int)
+            and not isinstance(t_step, bool)
+        ):
+            out[idx] = (s_step, t_step)
+    return out
+
+
+def latest_rst_steps_for_claimed_set(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+) -> dict[int, tuple[int, int]]:
+    """Per-band ``(s_step, t_step)`` from the most recent matching session.
+
+    Returns ``{}`` when no record matches or the most recent record has
+    no ``rst_steps`` block. A band that has dropped out of gear
+    ``MAX_GEAR`` between sessions will not appear in the most recent
+    record's ``rst_steps`` and is therefore reset to ``(0, 0)`` if it
+    climbs back — matching the philosophy of a clean re-entry rather
+    than a buried prior state.
+    """
+    matching = [
+        r
+        for r in records
+        if isinstance(r, dict)
+        and r.get("mode") == "koch-exercise"
+        and record_claimed_set_key(r) == claimed_set_key
+    ]
+    if not matching:
+        return {}
+    matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
+    return _rst_steps_from_generation(matching[0].get("generation"))
+
+
+def _exercise_rst_draw(exercise: Any) -> tuple[int | None, int | None]:
+    """Read per-exercise ``(s, t)`` draws if present and well-typed."""
+    if not isinstance(exercise, dict):
+        return None, None
+    raw_s = exercise.get("s")
+    raw_t = exercise.get("t")
+    s = raw_s if isinstance(raw_s, int) and not isinstance(raw_s, bool) else None
+    t = raw_t if isinstance(raw_t, int) and not isinstance(raw_t, bool) else None
+    return s, t
+
+
+def _step_axis_streak(
+    entries: list[tuple[float, int]],
+    predicate: Callable[[float], bool],
+) -> int:
+    """Streak of newest-first entries matching ``predicate`` at the current step.
+
+    A step change breaks the streak so the new step has to earn its own
+    evidence — mirrors :func:`_streak_at_current_gear`.
+    """
+    count = 0
+    current_step: int | None = None
+    for fraction, step in entries:
+        if current_step is None:
+            current_step = step
+        elif step != current_step:
+            return count
+        if not predicate(fraction):
+            return count
+        count += 1
+    return count
+
+
+def load_rst_axis_evidence(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+    window_size: int = DEFAULT_EVIDENCE_WINDOW_SIZE,
+) -> dict[str, Any]:
+    """Per-band per-axis evidence at gear ``MAX_GEAR`` for the RST sub-axis.
+
+    For each session matching ``claimed_set_key`` (newest first) and
+    each band at gear ``MAX_GEAR``, considers the band's exercise only
+    when its drawn ``s`` / ``t`` was at the bottom of the then-current
+    step's window. The first ``window_size`` eligible entries per
+    (band, axis) become that axis's recent evidence; strong / low
+    streaks are counted consecutively from newest while the step is
+    held constant.
+
+    Pre-schema-2.1 sessions (no ``generation.rst_steps`` and no per-
+    exercise ``s`` / ``t``) contribute nothing — RST evidence restarts
+    cleanly when the new pipeline ships.
+    """
+    matching: list[dict[str, Any]] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        if record.get("mode") != "koch-exercise":
+            continue
+        if record_claimed_set_key(record) != claimed_set_key:
+            continue
+        matching.append(record)
+    matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
+
+    s_entries: dict[int, list[tuple[float, int]]] = {}
+    t_entries: dict[int, list[tuple[float, int]]] = {}
+
+    for session in matching:
+        generation = session.get("generation")
+        session_gears = _gears_from_generation(generation)
+        session_steps = _rst_steps_from_generation(generation)
+        exercises = session.get("exercises")
+        if not isinstance(exercises, list):
+            continue
+        for exercise in exercises:
+            if not isinstance(exercise, dict):
+                continue
+            analysis = exercise.get("analysis")
+            if not isinstance(analysis, dict) or analysis.get("saved") is not True:
+                continue
+            burden_band = exercise.get("burden_band")
+            if not isinstance(burden_band, int) or isinstance(burden_band, bool):
+                continue
+            gear = session_gears.get(burden_band)
+            if gear is None:
+                raw_gear = exercise.get("gear", 0)
+                gear = (
+                    raw_gear if isinstance(raw_gear, int) and not isinstance(raw_gear, bool) else 0
+                )
+            if gear != MAX_GEAR:
+                continue
+            fraction = analysis.get("combined_fraction")
+            if not isinstance(fraction, (int, float)) or isinstance(fraction, bool):
+                continue
+            if burden_band not in session_steps:
+                continue
+            s_step, t_step = session_steps[burden_band]
+            drawn_s, drawn_t = _exercise_rst_draw(exercise)
+            if drawn_s is not None and is_eligible_for_axis(drawn_s, s_step):
+                bucket = s_entries.setdefault(burden_band, [])
+                if len(bucket) < window_size:
+                    bucket.append((float(fraction), s_step))
+            if drawn_t is not None and is_eligible_for_axis(drawn_t, t_step):
+                bucket = t_entries.setdefault(burden_band, [])
+                if len(bucket) < window_size:
+                    bucket.append((float(fraction), t_step))
+
+    bands_out: list[dict[str, Any]] = []
+    for band_index in sorted(set(s_entries) | set(t_entries)):
+        s_list = s_entries.get(band_index, [])
+        t_list = t_entries.get(band_index, [])
+        bands_out.append(
+            {
+                "burden_band": band_index,
+                "s_axis": {
+                    "recent_fractions": [round(f, 6) for f, _ in s_list],
+                    "strong_streak": _step_axis_streak(s_list, lambda v: v >= STRONG_FRACTION),
+                    "low_streak": _step_axis_streak(s_list, lambda v: v < LOW_FRACTION),
+                },
+                "t_axis": {
+                    "recent_fractions": [round(f, 6) for f, _ in t_list],
+                    "strong_streak": _step_axis_streak(t_list, lambda v: v >= STRONG_FRACTION),
+                    "low_streak": _step_axis_streak(t_list, lambda v: v < LOW_FRACTION),
+                },
+            }
+        )
+
+    return {
+        "claimed_set_key": claimed_set_key,
+        "window_size": window_size,
+        "bands": bands_out,
+    }
+
+
+def _shift_step(
+    current: int,
+    axis_evidence: Any,
+    *,
+    max_step: int,
+    n_clean: int,
+    n_low: int,
+) -> int:
+    axis = axis_evidence if isinstance(axis_evidence, dict) else {}
+    strong_streak = axis.get("strong_streak", 0)
+    low_streak = axis.get("low_streak", 0)
+    if isinstance(strong_streak, int) and strong_streak >= n_clean and current < max_step:
+        return current + 1
+    if isinstance(low_streak, int) and low_streak >= n_low and current > 0:
+        return current - 1
+    return current
+
+
+def resolve_rst_steps(
+    axis_evidence: dict[str, Any],
+    *,
+    current_steps: dict[int, tuple[int, int]],
+    max_step: int = MAX_RST_STEP,
+    n_clean_runs_for_shift: int = N_CLEAN_RUNS_FOR_SHIFT,
+    n_low_runs_for_shift_down: int = N_LOW_RUNS_FOR_SHIFT_DOWN,
+) -> dict[int, tuple[int, int]]:
+    """Per-band ``(s_step, t_step)`` for the next session.
+
+    Mirrors :func:`resolve_gears`: single-step ±1 per axis per call,
+    clamped to ``[0, max_step]``, evidence-driven via the same strong /
+    low streak thresholds. Bands not represented in ``axis_evidence``
+    keep whatever step pair was in ``current_steps``.
+    """
+    resolved: dict[int, tuple[int, int]] = dict(current_steps)
+    for band in axis_evidence.get("bands") or []:
+        if not isinstance(band, dict):
+            continue
+        burden_band = band.get("burden_band")
+        if not isinstance(burden_band, int) or isinstance(burden_band, bool):
+            continue
+        cur_s, cur_t = resolved.get(burden_band, (0, 0))
+        new_s = _shift_step(
+            cur_s,
+            band.get("s_axis"),
+            max_step=max_step,
+            n_clean=n_clean_runs_for_shift,
+            n_low=n_low_runs_for_shift_down,
+        )
+        new_t = _shift_step(
+            cur_t,
+            band.get("t_axis"),
+            max_step=max_step,
+            n_clean=n_clean_runs_for_shift,
+            n_low=n_low_runs_for_shift_down,
+        )
+        resolved[burden_band] = (new_s, new_t)
     return resolved

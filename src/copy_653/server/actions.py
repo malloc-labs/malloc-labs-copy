@@ -59,6 +59,7 @@ from copy_653.server.records import (
     _next_symbol_readiness,
     _resolve_cadence_session_gears,
     _resolve_session_gears,
+    _resolve_session_rst_steps,
     _save_koch_answers,
     _write_koch_record,
 )
@@ -84,7 +85,11 @@ from copy_653.sequence.cadence_analysis import (
     build_cadence_generation_profile,
 )
 from copy_653.sequence.copy_exercises import DEFAULT_EXERCISE_COUNT, DEFAULT_MAX_IDENTICAL_RUN
-from copy_653.sequence.exercise_analysis import build_exercise_entries, build_generation_profile
+from copy_653.sequence.exercise_analysis import (
+    MAX_GEAR,
+    build_exercise_entries,
+    build_generation_profile,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +186,17 @@ async def _start_action(
     save_directory = load_save_directory(config_path)
     claimed_set_key = " ".join(sorted(claimed))
     gears = _resolve_session_gears(save_directory, claimed_set_key, exercise_count=5)
+    # The RST sub-axis is per-band, scoped to bands at MAX_GEAR for this
+    # session. Bands below MAX_GEAR contribute no entry, which the
+    # generator and audio layer both read as "use the configured S/T".
+    rst_steps_for_session: dict[int, tuple[int, int]] = {}
+    if any(g == MAX_GEAR for g in gears):
+        resolved_rst = _resolve_session_rst_steps(save_directory, claimed_set_key)
+        rst_steps_for_session = {
+            band: resolved_rst.get(band, (0, 0))
+            for band, gear in enumerate(gears, start=1)
+            if gear == MAX_GEAR
+        }
 
     result = sequence.generate_copy_exercises(
         claimed_set=claimed,
@@ -189,18 +205,25 @@ async def _start_action(
         min_word_length=1,
         max_word_length=3,
         gears=gears,
+        rst_steps=rst_steps_for_session or None,
     )
     # Prepend the fixed ``DE`` listening anchor (spec §2.5). Unlike the
     # uniform draw, this is deliberate structural framing — the same two
     # letters open every exercise so the learner enters the listening
     # frame from a known shape regardless of their claimed set.
     exercises = [f"DE {exercise}" for exercise in result.exercises]
-    exercise_entries = build_exercise_entries(exercises, scores=result.scores, gears=gears)
+    exercise_entries = build_exercise_entries(
+        exercises,
+        scores=result.scores,
+        gears=gears,
+        rst_draws=list(result.rst_draws) if result.rst_draws else None,
+    )
     generation = build_generation_profile(
         claimed_set=claimed,
         candidate_count=result.candidate_count,
         exercise_count=len(exercises),
         gears=gears,
+        rst_steps=rst_steps_for_session or None,
     )
     # Scaffold-break audio engages when every burden band is at the
     # top gear (3) and the learner is still copying strongly. That
@@ -210,11 +233,15 @@ async def _start_action(
     # nudge (60-min floor + evidence) is a separate gate; scaffold-
     # break runs through that ramp.
     scaffold_break = _next_symbol_evidence(save_directory, claimed_set_key)
+    rst_draws_for_audio: list[tuple[int | None, int | None]] | None = (
+        list(result.rst_draws) if any(d != (None, None) for d in result.rst_draws) else None
+    )
     samples, timeline, audio_shape = build_exercises_audio(
         exercises,
         audio_params,
         scaffold_break=scaffold_break,
         rng_seed=result.seed if scaffold_break else None,
+        rst_draws=rst_draws_for_audio,
     )
     # Fold the assembly-time choices into the generation block so the
     # session record carries enough to replay the exact audio.

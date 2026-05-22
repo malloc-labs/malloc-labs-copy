@@ -339,3 +339,68 @@ def test_degenerate_single_symbol_set_does_not_crash():
     for exercise in result.exercises:
         for ch in exercise.replace(" ", ""):
             assert ch == "K"
+
+
+def test_rst_draws_all_none_when_rst_steps_not_passed():
+    # Parallel to exercises so downstream consumers don't have to handle
+    # two possible shapes — every entry is (None, None) when the caller
+    # didn't opt in to the RST sub-axis.
+    result = sequence.generate_copy_exercises(claimed_set=KMU, exercise_count=5, seed=7)
+    assert result.rst_draws == ((None, None),) * 5
+
+
+def test_rst_draws_none_for_bands_below_max_gear():
+    result = sequence.generate_copy_exercises(
+        claimed_set=KMU,
+        exercise_count=5,
+        seed=7,
+        gears=[0, 1, 2, 2, 3],
+        rst_steps={1: (0, 0), 2: (0, 0), 3: (0, 0), 4: (0, 0), 5: (0, 0)},
+    )
+    # 5 entries returned, parallel to exercises. Bands at gear < 3 must
+    # report (None, None) so the audio layer falls back to configured S/T.
+    assert len(result.rst_draws) == 5
+    # Score-sort means the band-order alignment isn't guaranteed, but
+    # exactly one band (the gear-3 one) should have non-None draws.
+    drawn = [d for d in result.rst_draws if d != (None, None)]
+    assert len(drawn) == 1
+
+
+def test_rst_draws_land_inside_step_windows():
+    # All bands at gear 3 with varying steps. Every draw must land
+    # inside its band's window — step 0 → (7..9), step 5 → (2..4).
+    rst_steps = {1: (0, 0), 2: (1, 2), 3: (3, 3), 4: (4, 4), 5: (5, 5)}
+    result = sequence.generate_copy_exercises(
+        claimed_set=KMU,
+        exercise_count=5,
+        seed=11,
+        gears=[3, 3, 3, 3, 3],
+        rst_steps=rst_steps,
+    )
+    assert all(draw != (None, None) for draw in result.rst_draws)
+    for draw in result.rst_draws:
+        s, t = draw
+        # Draw must come from one of the configured step windows;
+        # we don't know post-sort which one without re-running, but
+        # both axes must be in the union range [2, 9].
+        assert 2 <= s <= 9
+        assert 2 <= t <= 9
+
+
+def test_rst_draws_reproducible_under_same_seed():
+    rst_steps = {i: (2, 1) for i in range(1, 6)}
+    a = sequence.generate_copy_exercises(
+        claimed_set=KMU,
+        exercise_count=5,
+        seed=99,
+        gears=[3, 3, 3, 3, 3],
+        rst_steps=rst_steps,
+    )
+    b = sequence.generate_copy_exercises(
+        claimed_set=KMU,
+        exercise_count=5,
+        seed=99,
+        gears=[3, 3, 3, 3, 3],
+        rst_steps=rst_steps,
+    )
+    assert a.rst_draws == b.rst_draws

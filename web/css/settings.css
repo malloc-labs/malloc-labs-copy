@@ -830,6 +830,70 @@
     color: var(--mr-muted);
 }
 
+.settings-field--rst {
+    grid-template-columns: auto minmax(4rem, 6rem) auto minmax(4rem, 6rem);
+    align-items: center;
+    column-gap: var(--mr-space-4);
+}
+
+.settings-field--rst input {
+    width: 100%;
+}
+
+.rst-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    margin-top: var(--mr-space-3);
+}
+
+.rst-table th,
+.rst-table td {
+    border-top: var(--mr-border-rule);
+    padding: var(--mr-space-2);
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+
+.rst-table thead th {
+    color: var(--mr-muted);
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.rst-table tbody th {
+    color: var(--mr-muted);
+    font-weight: 400;
+    width: 2.5rem;
+    text-align: right;
+}
+
+.rst-table tbody td {
+    color: var(--mr-text);
+}
+
+.rst-table tbody td[aria-hidden="true"] {
+    color: var(--mr-muted);
+}
+
+.rst-table tbody tr[data-mark-s="true"] td:nth-of-type(2) {
+    color: var(--mr-anchor);
+    font-weight: 600;
+}
+
+.rst-table tbody tr[data-mark-t="true"] td:nth-of-type(3) {
+    color: var(--mr-anchor);
+    font-weight: 600;
+}
+
+.rst-table tbody tr[data-mark-s="true"] th,
+.rst-table tbody tr[data-mark-t="true"] th {
+    color: var(--mr-text);
+}
+
 .settings-test {
     display: grid;
     gap: var(--mr-space-3);

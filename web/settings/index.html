@@ -83,36 +83,104 @@
 
             <details class="settings-section">
                 <summary>Signal Texture</summary>
+                <p class="settings-section__desc">RST mirrors how a CW operator reports a signal back: Strength of the signal against the noise floor, Tone of the keyed note. R (Readability) is what the listener experiences — Copy does not synthesise it.</p>
 
-                <div class="settings-field">
-                    <label for="tone-shape">Tone Shape</label>
+                <div class="settings-field settings-field--rst">
+                    <label for="signal-strength">Strength (S)</label>
                     <input
-                        id="tone-shape"
-                        name="tone_shape"
+                        id="signal-strength"
+                        name="signal_strength"
                         type="number"
                         inputmode="numeric"
-                        min="0"
-                        max="10"
+                        min="1"
+                        max="9"
                         step="1"
                         required
                     >
-                    <p>Softens the keying edge so the signal has material presence. Range: 0-10.</p>
-                </div>
-
-                <div class="settings-field">
-                    <label for="receiver-bed">Receiver Bed</label>
+                    <label for="signal-tone">Tone (T)</label>
                     <input
-                        id="receiver-bed"
-                        name="receiver_bed"
+                        id="signal-tone"
+                        name="signal_tone"
                         type="number"
                         inputmode="numeric"
-                        min="0"
-                        max="10"
+                        min="1"
+                        max="9"
                         step="1"
                         required
                     >
-                    <p>Adds a very quiet listening floor beneath the signal. Range: 0-10.</p>
                 </div>
+
+                <table class="rst-table" aria-label="RST signal report reference">
+                    <thead>
+                        <tr>
+                            <th scope="col">#</th>
+                            <th scope="col">Readability (R)</th>
+                            <th scope="col">Strength (S)</th>
+                            <th scope="col">Tone (T)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rst-table-body">
+                        <tr data-row="1">
+                            <th scope="row">1</th>
+                            <td>Unreadable</td>
+                            <td>Faint signals, barely perceptible</td>
+                            <td>Sixty cycle AC or less, very rough and broad</td>
+                        </tr>
+                        <tr data-row="2">
+                            <th scope="row">2</th>
+                            <td>Barely readable, occasional words distinguishable</td>
+                            <td>Very weak signals</td>
+                            <td>Very rough AC, very harsh and broad</td>
+                        </tr>
+                        <tr data-row="3">
+                            <th scope="row">3</th>
+                            <td>Readable with considerable difficulty</td>
+                            <td>Weak signals</td>
+                            <td>Rough AC tone, rectified but not filtered</td>
+                        </tr>
+                        <tr data-row="4">
+                            <th scope="row">4</th>
+                            <td>Readable with practically no difficulty</td>
+                            <td>Fair signals</td>
+                            <td>Rough note, some trace of filtering</td>
+                        </tr>
+                        <tr data-row="5">
+                            <th scope="row">5</th>
+                            <td>Perfectly readable</td>
+                            <td>Fairly good signals</td>
+                            <td>Filtered rectified AC but strongly ripple-modulated</td>
+                        </tr>
+                        <tr data-row="6">
+                            <th scope="row">6</th>
+                            <td aria-hidden="true">—</td>
+                            <td>Good signals</td>
+                            <td>Filtered tone, definite trace of ripple modulation</td>
+                        </tr>
+                        <tr data-row="7">
+                            <th scope="row">7</th>
+                            <td aria-hidden="true">—</td>
+                            <td>Moderately strong signals</td>
+                            <td>Near pure tone, trace of ripple modulation</td>
+                        </tr>
+                        <tr data-row="8">
+                            <th scope="row">8</th>
+                            <td aria-hidden="true">—</td>
+                            <td>Strong signals</td>
+                            <td>Near perfect tone, slight trace of modulation</td>
+                        </tr>
+                        <tr data-row="9">
+                            <th scope="row">9</th>
+                            <td aria-hidden="true">—</td>
+                            <td>Extremely strong signals</td>
+                            <td>Perfect tone, no trace of ripple or modulation of any kind</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </details>
+
+            <details class="settings-section">
+                <summary>Operator / Fist</summary>
+                <p class="settings-section__desc">How the sender's hand behaves — distinct from RST, which describes the channel.</p>
 
                 <div class="settings-field">
                     <label for="cadence-variation">Cadence Variation</label>

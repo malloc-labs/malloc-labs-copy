@@ -46,6 +46,7 @@ learner hears.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from random import Random
 from typing import Any
 
@@ -68,6 +69,7 @@ def build_exercises_audio(
     *,
     scaffold_break: bool = False,
     rng_seed: int | None = None,
+    rst_draws: list[tuple[int | None, int | None]] | None = None,
 ) -> tuple[np.ndarray, list[TimelineRow], dict[str, Any]]:
     """Render the audio for a session of exercises and the per-symbol timeline.
 
@@ -91,11 +93,14 @@ def build_exercises_audio(
     reproduce the exact audio later. When ``scaffold_break`` is off the
     dict reports ``enabled: false`` and an empty list.
     """
+    rst_active = rst_draws is not None and any(s is not None or t is not None for s, t in rst_draws)
     audio_shape: dict[str, Any] = {
         "scaffold_break": {
             "enabled": bool(scaffold_break),
             "lead_in_seconds": [],
-            "dynamic_floor": bool(scaffold_break),
+            # RST sub-axis supersedes the random dynamic floor — per-exercise
+            # S targets are a more structured version of the same idea.
+            "dynamic_floor": bool(scaffold_break) and not rst_active,
         }
     }
 
@@ -104,6 +109,12 @@ def build_exercises_audio(
 
     if scaffold_break and rng_seed is None:
         raise ValueError("scaffold_break=True requires rng_seed to be provided")
+
+    if rst_draws is not None and len(rst_draws) != len(exercises):
+        raise ValueError(
+            "rst_draws length must match exercises length, "
+            f"got rst_draws={len(rst_draws)} exercises={len(exercises)}"
+        )
 
     rng = Random(rng_seed) if scaffold_break else None
     lead_in_min, lead_in_max = SCAFFOLD_BREAK_LEAD_IN_RANGE_SECONDS
@@ -114,6 +125,10 @@ def build_exercises_audio(
     cursor = 0.0
     sample_rate = audio_params.sample_rate_hz
     lead_ins: list[float] = []
+    # Each entry is (start_sample, end_sample, bed_level) for the exercise
+    # audio region only. Lead-in / inter-exercise silence is the cross-fade
+    # gap between adjacent entries.
+    bed_schedule: list[tuple[int, int, float]] = []
 
     for exercise_index, exercise in enumerate(exercises, start=1):
         if exercise_index > 1:
@@ -129,9 +144,11 @@ def build_exercises_audio(
             lead_ins.append(lead_in_seconds)
 
         words = exercise.split(" ")
-        exercise_audio = synth.synthesize_words(words, audio_params)
-        exercise_timeline = synth.compute_word_timeline(words, audio_params)
+        exercise_params = _params_for_exercise(audio_params, rst_draws, exercise_index)
+        exercise_audio = synth.synthesize_words(words, exercise_params)
+        exercise_timeline = synth.compute_word_timeline(words, exercise_params)
         exercise_offset = cursor
+        exercise_start_sample = int(round(exercise_offset * sample_rate))
         for symbol, t_on_rel, t_off_rel, word_index, word in exercise_timeline:
             timeline.append(
                 (
@@ -146,12 +163,62 @@ def build_exercises_audio(
         parts.append(exercise_audio)
         cursor += len(exercise_audio) / sample_rate
 
+        if rst_active:
+            bed_schedule.append(
+                (
+                    exercise_start_sample,
+                    exercise_start_sample + len(exercise_audio),
+                    _bed_level_for_exercise(audio_params, rst_draws, exercise_index),
+                )
+            )
+
     samples = np.concatenate(parts).astype(np.float32, copy=False)
     samples = texture.add_receiver_bed(
         samples,
         audio_params,
         context=f"exercises:{len(exercises)}:{'|'.join(exercises)}",
-        dynamic=scaffold_break,
+        dynamic=scaffold_break and not rst_active,
+        level_schedule=bed_schedule if rst_active else None,
     )
     audio_shape["scaffold_break"]["lead_in_seconds"] = lead_ins
     return samples, timeline, audio_shape
+
+
+def _params_for_exercise(
+    audio_params: AudioParameters,
+    rst_draws: list[tuple[int | None, int | None]] | None,
+    exercise_index: int,
+) -> AudioParameters:
+    """Per-exercise AudioParameters override for the T sub-axis.
+
+    Returns the same instance when no T override applies so the
+    common case skips a dataclass copy.
+    """
+    if rst_draws is None:
+        return audio_params
+    if not 1 <= exercise_index <= len(rst_draws):
+        return audio_params
+    _, t = rst_draws[exercise_index - 1]
+    if t is None:
+        return audio_params
+    return replace(audio_params, envelope_ramp_seconds=texture.envelope_seconds_for_rst_tone(t))
+
+
+def _bed_level_for_exercise(
+    audio_params: AudioParameters,
+    rst_draws: list[tuple[int | None, int | None]] | None,
+    exercise_index: int,
+) -> float:
+    """Per-exercise bed level (float, may be fractional) for the S sub-axis.
+
+    Falls back to the configured ``receiver_bed`` when there's no S
+    override for this exercise — keeps mixed sessions (some bands at
+    gear 3, others below) feeling like a single coherent floor that
+    just drifts up or down at the gear-3 bands.
+    """
+    if rst_draws is None or not 1 <= exercise_index <= len(rst_draws):
+        return float(audio_params.receiver_bed)
+    s, _ = rst_draws[exercise_index - 1]
+    if s is None:
+        return float(audio_params.receiver_bed)
+    return texture.bed_level_for_rst_strength(s)

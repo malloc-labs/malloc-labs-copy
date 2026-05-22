@@ -167,3 +167,73 @@ def test_scaffold_break_empty_exercises_short_circuits_safely():
         "lead_in_seconds": [],
         "dynamic_floor": True,
     }
+
+
+def test_rst_draws_suppress_dynamic_floor_in_audio_shape():
+    exercises = ["K M", "M K"]
+    params = AudioParameters(
+        character_speed_wpm=20,
+        effective_speed_wpm=20,
+        receiver_bed=2,
+        cadence_variation=0,
+    )
+    _, _, shape = build_exercises_audio(
+        exercises,
+        params,
+        scaffold_break=True,
+        rng_seed=42,
+        rst_draws=[(7, 3), (7, 3)],
+    )
+    assert shape["scaffold_break"]["enabled"] is True
+    # dynamic_floor must be off — per-exercise S levels are a more
+    # structured version of the same band-conditions probe.
+    assert shape["scaffold_break"]["dynamic_floor"] is False
+
+
+def test_rst_draws_none_entries_fall_back_to_configured_floor():
+    # Mixed gear session: only the second exercise has an S override;
+    # the first uses the configured receiver_bed. Verify the assembly
+    # accepts a partially populated rst_draws and produces a non-empty
+    # buffer with no dropouts at the inter-exercise boundary.
+    exercises = ["K M", "M K"]
+    params = AudioParameters(
+        character_speed_wpm=20,
+        effective_speed_wpm=20,
+        receiver_bed=2,
+        cadence_variation=0,
+    )
+    samples, _, _ = build_exercises_audio(
+        exercises,
+        params,
+        rst_draws=[(None, None), (5, 5)],
+    )
+    start, end = _inter_exercise_window(params, exercises[0])
+    inner = samples[start + 8 : end - 8]
+    rms = float(np.sqrt(np.mean(np.square(inner.astype(np.float64)))))
+    assert rms > 0
+
+
+def test_rst_draws_length_mismatch_raises():
+    import pytest
+
+    params = AudioParameters(receiver_bed=2, cadence_variation=0)
+    with pytest.raises(ValueError):
+        build_exercises_audio(["K M", "M K"], params, rst_draws=[(7, 3)])
+
+
+def test_rst_t_override_changes_envelope_per_exercise():
+    # Two single-tone exercises, identical content. With different T
+    # values per exercise the rendered exercise audio should differ
+    # because the envelope ramp time changes per exercise.
+    exercises = ["K", "K"]
+    params = AudioParameters(
+        character_speed_wpm=20,
+        effective_speed_wpm=20,
+        receiver_bed=0,  # disable bed so we isolate the envelope difference
+        cadence_variation=0,
+    )
+    same_t, _, _ = build_exercises_audio(exercises, params, rst_draws=[(7, 3), (7, 3)])
+    diff_t, _, _ = build_exercises_audio(exercises, params, rst_draws=[(7, 1), (7, 9)])
+    # Same-T render uses one envelope across both exercises; diff-T
+    # render uses two. The full buffers must differ.
+    assert not np.array_equal(same_t, diff_t)

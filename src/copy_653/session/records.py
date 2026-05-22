@@ -42,7 +42,7 @@ from copy_653.audio.parameters import AudioParameters
 from copy_653.sequence.cadence_analysis import apply_cadence_analysis
 from copy_653.sequence.exercise_analysis import apply_answers_to_entries
 
-SCHEMA_VERSION = "2.0"
+SCHEMA_VERSION = "2.1"
 
 
 def _audio_snapshot(params: AudioParameters) -> dict[str, Any]:
