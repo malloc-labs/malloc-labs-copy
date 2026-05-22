@@ -945,7 +945,7 @@ async def test_start_action_writes_koch_record_to_save_directory(tmp_path, patch
 
         record = json.loads(files[0].read_text())
         assert record["mode"] == "koch-exercise"
-        assert record["schema_version"] == "2.0"
+        assert record["schema_version"] == "2.1"
         assert "duration_seconds" not in record
         assert record["claimed_set"] == ["K", "M"]
         assert isinstance(record["seed"], int)
@@ -1572,7 +1572,7 @@ async def test_cadence_session_writes_analyzed_record_on_close(
         assert len(files) == 1
         record = json.loads(files[0].read_text())
         assert record["mode"] == "cadence-send"
-        assert record["schema_version"] == "2.0"
+        assert record["schema_version"] == "2.1"
         assert record["generation"]["profile_version"] == "cadence-burden-v1"
         assert record["generation"]["claimed_set_key"] == "K M"
         assert record["generation"]["run_index"] == 1

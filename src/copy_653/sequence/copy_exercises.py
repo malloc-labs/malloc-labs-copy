@@ -43,6 +43,22 @@ from copy_653.audio import patterns
 MAX_GEAR = 3
 MAX_CONTENT_GEAR = 2
 
+# RST sub-axis window primitives — same circular-import reason as the
+# gear ceilings. Canonical definitions live on
+# :data:`copy_653.sequence.exercise_analysis.MAX_RST_STEP` /
+# :func:`copy_653.sequence.exercise_analysis.rst_window_for_step`.
+MAX_RST_STEP = 5
+RST_WINDOW_WIDTH = 3
+RST_WINDOW_TOP = 9
+
+
+def _rst_window_for_step(step: int) -> tuple[int, int]:
+    clamped = max(0, min(MAX_RST_STEP, int(step)))
+    hi = RST_WINDOW_TOP - clamped
+    lo = hi - RST_WINDOW_WIDTH + 1
+    return lo, hi
+
+
 DEFAULT_EXERCISE_COUNT = 5
 DEFAULT_MIN_WORDS = 1
 # Cap the default sentence at two groups. Three-group exercises like
@@ -94,6 +110,11 @@ class CopyExercises:
     claimed_set: tuple[str, ...]
     scores: tuple[int, ...] = ()
     candidate_count: int = 0
+    # Per-exercise RST draws, parallel to ``exercises`` (post-sort).
+    # Each entry is ``(s, t)`` for gear-3 bands with rst_steps supplied,
+    # or ``(None, None)`` for bands below MAX_GEAR or when rst_steps is
+    # absent. Non-empty only when the caller passed ``rst_steps``.
+    rst_draws: tuple[tuple[int | None, int | None], ...] = ()
 
 
 def _slot_range(
@@ -190,6 +211,7 @@ def generate_copy_exercises(
     candidate_count: int | None = None,
     seed: int | None = None,
     gears: list[int] | None = None,
+    rst_steps: dict[int, tuple[int, int]] | None = None,
     max_identical_run: int | None = None,
 ) -> CopyExercises:
     """Generate ``exercise_count`` sentence-shaped exercises.
@@ -330,7 +352,7 @@ def generate_copy_exercises(
     # Contiguous equal-width bands over the sorted index range. Each
     # band has either ``candidate_count // exercise_count`` or one
     # more entries; with the default 20/5 every band has exactly 4.
-    picks: list[tuple[int, str]] = []
+    picks: list[tuple[int, str, tuple[int | None, int | None]]] = []
     for band_index in range(exercise_count):
         gear = 0
         if gears is not None and band_index < len(gears):
@@ -339,16 +361,28 @@ def generate_copy_exercises(
                 gear = max(0, min(MAX_GEAR, raw_gear))
         lo, hi = _slot_range(band_index, exercise_count, candidate_count, gear)
         score, _idx, exercise = rng.choice(scored[lo:hi])
-        picks.append((score, exercise))
+        # The RST sub-axis engages only at MAX_GEAR — bands below it draw
+        # ``(None, None)`` so the audio layer falls back to the configured
+        # Strength/Tone from audio_params for those exercises.
+        draw: tuple[int | None, int | None] = (None, None)
+        if rst_steps is not None and gear == MAX_GEAR:
+            step_pair = rst_steps.get(band_index + 1)
+            if step_pair is not None:
+                s_step, t_step = step_pair
+                s_lo, s_hi = _rst_window_for_step(s_step)
+                t_lo, t_hi = _rst_window_for_step(t_step)
+                draw = (rng.randint(s_lo, s_hi), rng.randint(t_lo, t_hi))
+        picks.append((score, exercise, draw))
 
     # ``picks`` already comes out in band order; sort by score to
     # normalise display order across the band-boundary tie case.
-    picks.sort(key=lambda pair: pair[0])
+    picks.sort(key=lambda triple: triple[0])
 
     return CopyExercises(
-        exercises=tuple(ex for _, ex in picks),
+        exercises=tuple(ex for _, ex, _ in picks),
         seed=seed,
         claimed_set=claimed_tuple,
-        scores=tuple(score for score, _ in picks),
+        scores=tuple(score for score, _, _ in picks),
         candidate_count=candidate_count,
+        rst_draws=tuple(draw for _, _, draw in picks),
     )

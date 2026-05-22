@@ -177,8 +177,8 @@ def test_cadence_record_carries_exercises_sent_and_key_events(tmp_path: Path):
     }
 
 
-def test_schema_version_is_two_zero():
-    assert SCHEMA_VERSION == "2.0"
+def test_schema_version_is_two_one():
+    assert SCHEMA_VERSION == "2.1"
 
 
 def test_koch_record_serialises_unsaved_analysis(tmp_path: Path):

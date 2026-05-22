@@ -136,3 +136,74 @@ def test_smooth_random_envelope_short_buffer_safe():
     )
     assert len(envelope) == 8
     assert envelope.dtype == np.float32
+
+
+def test_envelope_seconds_for_rst_tone_round_trips_default():
+    # UI default T=3 matches tone_shape=2 which matches 0.005s — the
+    # same audio Copy plays today.
+    assert texture.envelope_seconds_for_rst_tone(3) == texture.envelope_seconds_for_tone_shape(2)
+
+
+def test_envelope_seconds_for_rst_tone_extremes():
+    assert texture.envelope_seconds_for_rst_tone(1) == 0.0
+    # T=9 should map to the smoothest envelope (tone_shape=10).
+    assert texture.envelope_seconds_for_rst_tone(9) == texture.envelope_seconds_for_tone_shape(10)
+
+
+def test_bed_level_for_rst_strength_inverts_strength():
+    # S=9 (strongest signal) → bed=0 (no floor). S=1 → bed=10.
+    assert texture.bed_level_for_rst_strength(9) == 0.0
+    assert texture.bed_level_for_rst_strength(1) == 10.0
+    # Default S=7 corresponds to bed=2.5 — between integer Tone Shape
+    # values, captured as a float for envelope-friendly cross-fading.
+    assert texture.bed_level_for_rst_strength(7) == 2.5
+
+
+def test_add_receiver_bed_level_schedule_applies_dB_ramp_through_gap():
+    sample_rate = 48_000
+    params = AudioParameters(sample_rate_hz=sample_rate, receiver_bed=5)
+    # Two exercise spans with a silent gap; the gap should ramp the
+    # floor level in dB, not jump-cut.
+    samples = np.zeros(sample_rate, dtype=np.float32)  # 1 second of silence
+    schedule = [
+        (0, sample_rate // 3, 2.0),  # quiet floor first
+        (2 * sample_rate // 3, sample_rate, 8.0),  # louder floor second
+    ]
+    out = texture.add_receiver_bed(samples, params, context="ramp-test", level_schedule=schedule)
+    # The gap region must have at least one sample whose magnitude sits
+    # strictly between the segment levels — proof of the ramp.
+    gap_lo = sample_rate // 3
+    gap_hi = 2 * sample_rate // 3
+    first_rms = float(np.sqrt(np.mean(np.square(out[:gap_lo]))))
+    second_rms = float(np.sqrt(np.mean(np.square(out[gap_hi:]))))
+    gap_rms = float(np.sqrt(np.mean(np.square(out[gap_lo:gap_hi]))))
+    assert first_rms < gap_rms < second_rms
+
+
+def test_add_receiver_bed_level_schedule_suppresses_dynamic_envelope():
+    sample_rate = 48_000
+    params = AudioParameters(sample_rate_hz=sample_rate, receiver_bed=5)
+    samples = np.zeros(sample_rate // 2, dtype=np.float32)
+    schedule = [(0, sample_rate // 2, 5.0)]
+    # dynamic=True should be ignored when a schedule is provided; the
+    # output must match the no-dynamic schedule render exactly.
+    a = texture.add_receiver_bed(
+        samples, params, context="dyn-vs-sched", dynamic=True, level_schedule=schedule
+    )
+    b = texture.add_receiver_bed(
+        samples, params, context="dyn-vs-sched", dynamic=False, level_schedule=schedule
+    )
+    assert np.array_equal(a, b)
+
+
+def test_add_receiver_bed_zero_configured_still_applies_schedule():
+    # Even when params.receiver_bed == 0 (which short-circuits the
+    # legacy path), an explicit schedule must engage — the schedule is
+    # the authoritative level when present.
+    sample_rate = 48_000
+    params = AudioParameters(sample_rate_hz=sample_rate, receiver_bed=0)
+    samples = np.zeros(sample_rate // 4, dtype=np.float32)
+    schedule = [(0, sample_rate // 4, 5.0)]
+    out = texture.add_receiver_bed(samples, params, context="zero-cfg", level_schedule=schedule)
+    rms = float(np.sqrt(np.mean(np.square(out))))
+    assert rms > 0

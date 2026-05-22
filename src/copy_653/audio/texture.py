@@ -56,6 +56,32 @@ def tone_shape_for_envelope_seconds(seconds: float) -> int:
     return distances.index(min(distances))
 
 
+def envelope_seconds_for_rst_tone(t: int) -> float:
+    """Map an RST Tone value (1..9) to envelope ramp seconds.
+
+    Goes through the Tone Shape lookup so the per-exercise audio render
+    stays on the same physical scale as the configured baseline; the
+    UI's 1..9 → 0..10 conversion is linear-rounded (see settings.js).
+    """
+    if not isinstance(t, int) or isinstance(t, bool):
+        raise ValueError(f"rst tone must be an integer 1..9, got {t!r}")
+    if not 1 <= t <= 9:
+        raise ValueError(f"rst tone must be in 1..9, got {t}")
+    tone_shape = max(MIN_TONE_SHAPE, min(MAX_TONE_SHAPE, round((t - 1) * 10 / 8)))
+    return _TONE_SHAPE_SECONDS[tone_shape]
+
+
+def bed_level_for_rst_strength(s: int | float) -> float:
+    """Map an RST Strength value (1..9) to a (fractional) bed level (0..10).
+
+    Inverted (higher S = lower bed), linear, matches the UI conversion.
+    Returned as a float so the audio envelope can carry continuous
+    cross-fades between integer S values without quantisation steps.
+    """
+    s_clamped = max(1.0, min(9.0, float(s)))
+    return (9.0 - s_clamped) * 10.0 / 8.0
+
+
 def cadence_gap_seconds(
     base_seconds: float,
     params: AudioParameters,
@@ -83,24 +109,33 @@ def add_receiver_bed(
     *,
     context: str,
     dynamic: bool = False,
+    level_schedule: list[tuple[int, int, float]] | None = None,
 ) -> np.ndarray:
     """Mix a very quiet deterministic listening floor under ``samples``.
 
-    With ``dynamic=False`` (default) the floor RMS is constant across
-    the buffer — the existing well-tested behaviour.
+    With ``dynamic=False`` and no ``level_schedule`` (default) the floor
+    RMS is constant across the buffer.
 
     With ``dynamic=True`` the floor amplitude is modulated by a slow
     smoothed random envelope (gear 3 stage 2: scaffold-break dynamic
-    floor). The configured ``receiver_bed`` value becomes the *centre*
-    of the range rather than the absolute target; the envelope drifts
-    around it within ~±2 dB so the floor feels like band conditions
-    instead of a static sheet. The envelope is seeded from the same
-    context as the noise so replay reproduces the exact modulation.
+    floor). The configured ``receiver_bed`` becomes the *centre* of
+    the range; the envelope drifts around it within ~±2 dB so the
+    floor feels like band conditions instead of a static sheet.
 
-    The tone itself is never modulated — only the noise floor
-    multiplied by the envelope. Bed continuity is preserved end-to-end.
+    With ``level_schedule`` (gear 3 RST sub-axis) the floor target is
+    piecewise: each ``(start_sample, end_sample, bed_level)`` segment
+    is held flat at its level, and the gaps between adjacent segments
+    cross-fade linearly in dB. Segments may overlap or share endpoints;
+    the last value written wins for any shared sample. Suppresses
+    ``dynamic`` since the schedule itself is the (now deterministic)
+    band-conditions envelope.
+
+    The tone itself is never modulated — only the noise floor.
+    Bed continuity is preserved end-to-end.
     """
-    if params.receiver_bed == 0 or len(samples) == 0:
+    if len(samples) == 0:
+        return samples.astype(np.float32, copy=False)
+    if level_schedule is None and params.receiver_bed == 0:
         return samples.astype(np.float32, copy=False)
 
     rng = np.random.default_rng(_seed_int("receiver-bed", context, str(params.receiver_bed)))
@@ -110,13 +145,19 @@ def add_receiver_bed(
     floor_rms = float(np.sqrt(np.mean(np.square(floor), dtype=np.float64)))
     if floor_rms == 0:
         return samples.astype(np.float32, copy=False)
+    floor = (floor / np.float32(floor_rms)).astype(np.float32)
 
-    # Level 1 sits around -48 dB below the tone; level 10 reaches about -35 dB.
-    relative_db = -50.0 + (params.receiver_bed * 1.5)
-    target_rms = params.amplitude * (10.0 ** (relative_db / 20.0))
-    floor = floor * np.float32(target_rms / floor_rms)
+    if level_schedule is not None:
+        target_rms = _build_bed_target_rms_envelope(len(samples), params.amplitude, level_schedule)
+    else:
+        # Level 1 sits around -48 dB below the tone; level 10 reaches about -35 dB.
+        relative_db = -50.0 + (params.receiver_bed * 1.5)
+        target_rms_value = params.amplitude * (10.0 ** (relative_db / 20.0))
+        target_rms = np.full(len(samples), target_rms_value, dtype=np.float32)
 
-    if dynamic:
+    floor = (floor * target_rms).astype(np.float32)
+
+    if dynamic and level_schedule is None:
         envelope = _smooth_random_envelope(
             len(samples),
             sample_rate_hz=params.sample_rate_hz,
@@ -126,6 +167,61 @@ def add_receiver_bed(
 
     mixed = samples.astype(np.float32, copy=False) + floor
     return np.clip(mixed, -1.0, 1.0).astype(np.float32, copy=False)
+
+
+def _bed_level_to_relative_db(bed_level: float) -> float:
+    """Inverse of the constant-bed relative_db formula, accepting floats."""
+    return -50.0 + (float(bed_level) * 1.5)
+
+
+def _build_bed_target_rms_envelope(
+    n_samples: int,
+    amplitude: float,
+    schedule: list[tuple[int, int, float]],
+) -> np.ndarray:
+    """Per-sample bed target RMS, linearly interpolated in dB across gaps.
+
+    Each schedule entry ``(start, end, bed_level)`` holds the target at
+    that level across ``[start, end)``. Adjacent entries with a gap
+    have the dB ramp written across the gap; before the first segment
+    and after the last, the envelope is clamped to the nearest
+    segment's level so leading silence and trailing buffer get a
+    consistent floor.
+    """
+    if n_samples <= 0 or not schedule:
+        return np.zeros(max(0, n_samples), dtype=np.float32)
+
+    db_envelope = np.zeros(n_samples, dtype=np.float32)
+    sorted_segments = sorted(schedule, key=lambda seg: seg[0])
+
+    first_start, _, first_level = sorted_segments[0]
+    _, last_end, last_level = sorted_segments[-1]
+    db_envelope[: max(0, first_start)] = _bed_level_to_relative_db(first_level)
+    db_envelope[min(n_samples, last_end) :] = _bed_level_to_relative_db(last_level)
+
+    for start, end, level in sorted_segments:
+        lo = max(0, min(n_samples, start))
+        hi = max(lo, min(n_samples, end))
+        db_envelope[lo:hi] = _bed_level_to_relative_db(level)
+
+    for prev_seg, next_seg in zip(sorted_segments, sorted_segments[1:]):
+        prev_end = prev_seg[1]
+        next_start = next_seg[0]
+        if next_start <= prev_end:
+            continue
+        ramp_lo = max(0, min(n_samples, prev_end))
+        ramp_hi = max(ramp_lo, min(n_samples, next_start))
+        if ramp_hi <= ramp_lo:
+            continue
+        db_envelope[ramp_lo:ramp_hi] = np.linspace(
+            _bed_level_to_relative_db(prev_seg[2]),
+            _bed_level_to_relative_db(next_seg[2]),
+            num=ramp_hi - ramp_lo,
+            dtype=np.float32,
+        )
+
+    target_rms = float(amplitude) * np.power(10.0, db_envelope / 20.0, dtype=np.float32)
+    return target_rms.astype(np.float32)
 
 
 def _soften_floor(samples: np.ndarray) -> np.ndarray:

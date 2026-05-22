@@ -27,8 +27,11 @@ from copy_653.sequence.cadence_analysis import (
 from copy_653.sequence.exercise_analysis import (
     is_ready_for_next_symbol,
     latest_gears_for_claimed_set,
+    latest_rst_steps_for_claimed_set,
     load_band_evidence,
+    load_rst_axis_evidence,
     resolve_gears,
+    resolve_rst_steps,
 )
 from copy_653.session import (
     CadenceSendRecord,
@@ -236,6 +239,22 @@ def _resolve_session_gears(
     current_gears = latest_gears_for_claimed_set(records, claimed_set_key=claimed_set_key)
     resolved = resolve_gears(evidence, current_gears=current_gears)
     return [resolved.get(i + 1, 0) for i in range(exercise_count)]
+
+
+def _resolve_session_rst_steps(
+    save_directory: Path, claimed_set_key: str
+) -> dict[int, tuple[int, int]]:
+    """Compute per-band ``(s_step, t_step)`` for the next session.
+
+    Mirrors :func:`_resolve_session_gears` for the RST sub-axis. Returns
+    a dict keyed by 1-based burden band — bands the caller will run at
+    gear ``MAX_GEAR`` should look themselves up, with ``(0, 0)`` as the
+    safe default for first-time entrants.
+    """
+    records = _iter_koch_records(save_directory)
+    axis_evidence = load_rst_axis_evidence(records, claimed_set_key=claimed_set_key)
+    current_steps = latest_rst_steps_for_claimed_set(records, claimed_set_key=claimed_set_key)
+    return resolve_rst_steps(axis_evidence, current_steps=current_steps)
 
 
 def _seconds_on_claimed_set(records: list[dict[str, Any]], *, claimed_set_key: str) -> float:
