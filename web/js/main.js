@@ -212,17 +212,41 @@ tabButtons.forEach((btn) => {
 setActiveTab("answers");
 
 function buildAnswerInputs(exercises) {
+    // Two-column table (Answer | Sent) with a leading row-header showing
+    // the exercise number. The Sent column starts empty; it's filled
+    // post-save by revealSent() once the engine acks koch-answers-saved.
     answersEl.replaceChildren();
+
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    const cornerTh = document.createElement("th");
+    cornerTh.scope = "col";
+    cornerTh.className = "answers-table__corner";
+    const answerTh = document.createElement("th");
+    answerTh.scope = "col";
+    answerTh.textContent = "Answer";
+    const sentTh = document.createElement("th");
+    sentTh.scope = "col";
+    sentTh.textContent = "Sent";
+    headerRow.append(cornerTh, answerTh, sentTh);
+    thead.appendChild(headerRow);
+
+    const tbody = document.createElement("tbody");
     exercises.forEach((_, idx) => {
-        const li = document.createElement("li");
-        li.className = "answer-row";
+        const tr = document.createElement("tr");
+        tr.className = "answer-row";
 
-        const label = document.createElement("label");
+        const rowHeader = document.createElement("th");
+        rowHeader.scope = "row";
+        rowHeader.className = "answer-row__label";
         const inputId = `answer-${idx + 1}`;
-        label.htmlFor = inputId;
-        label.className = "answer-row__label";
-        label.textContent = `Exercise ${idx + 1}:`;
+        const labelLink = document.createElement("label");
+        labelLink.htmlFor = inputId;
+        labelLink.textContent = String(idx + 1);
+        rowHeader.appendChild(labelLink);
 
+        const answerCell = document.createElement("td");
+        answerCell.className = "answer-row__cell";
         const input = document.createElement("input");
         input.type = "text";
         input.id = inputId;
@@ -244,9 +268,28 @@ function buildAnswerInputs(exercises) {
             }
             if (saveBtn.dataset.state === "saved") setSaveState("ready");
         });
+        answerCell.appendChild(input);
 
-        li.append(label, input);
-        answersEl.appendChild(li);
+        const sentCell = document.createElement("td");
+        sentCell.className = "answer-row__sent";
+        sentCell.dataset.sentFor = String(idx);
+
+        tr.append(rowHeader, answerCell, sentCell);
+        tbody.appendChild(tr);
+    });
+
+    answersEl.append(thead, tbody);
+}
+
+function revealSentColumn() {
+    answersEl.querySelectorAll("[data-sent-for]").forEach((cell) => {
+        const idx = Number(cell.dataset.sentFor);
+        const sent = currentExercises[idx] || "";
+        cell.textContent = sent;
+        const input = document.getElementById(`answer-${idx + 1}`);
+        const answer = (input ? input.value : "").trim().toUpperCase();
+        const isCorrect = answer === sent.trim().toUpperCase();
+        cell.dataset.correct = isCorrect ? "true" : "false";
     });
 }
 
@@ -388,6 +431,7 @@ function appendEvent(event) {
 
     } else if (event.type === "koch-answers-saved") {
         setSaveState("saved");
+        revealSentColumn();
         return;
 
     } else if (event.type === "error") {

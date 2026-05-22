@@ -757,17 +757,13 @@ copy-top-menu {
  */
 .timeline-body {
     margin-top: var(--mr-space-2);
-    height: 18rem;
-    overflow-y: auto;
-    /* Subtle inset border so the scroll region reads as contained */
+    /* Container sizes to whichever panel is active. Answers naturally fits
+     * its 5 rows + Save; Truth caps its own scroll region (see
+     * #timeline-panel-truth below) so a long symbol stream doesn't push the
+     * page. The box height changes between tabs — intended, since each tab
+     * has its own content shape. */
     border: var(--mr-border-rule);
-    /* Padding lives on the tab strip and each panel — keeping it off the
-     * scroll container lets the sticky tab strip sit flush with the visible
-     * top edge so scrolling content can't peek through above it. */
     padding: 0;
-    /* Thin scrollbar on supporting browsers */
-    scrollbar-width: thin;
-    scrollbar-color: var(--mr-muted) transparent;
 }
 
 /* Tabs inside the timeline disclosure. Answers (input) and Truth (the rendered
@@ -811,6 +807,16 @@ copy-top-menu {
     padding: var(--mr-space-3);
 }
 
+/* Truth can grow long (one row per played symbol). Cap its scroll inside
+ * the panel so the container's height tracks the Answers tab's natural
+ * size while Truth still has a contained read area. */
+#timeline-panel-truth {
+    max-height: 24rem;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--mr-muted) transparent;
+}
+
 .timeline-panel[hidden] {
     display: none;
 }
@@ -838,35 +844,62 @@ copy-top-menu {
     margin: var(--mr-space-3) 0;
 }
 
-/* Tab 1 (Answers) — one labeled text input per exercise. Inputs are
- * disabled while the session is in flight and enabled on session-end so
- * the learner can write what they heard before flipping to Truth. */
-.answers-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-.answer-row {
-    display: flex;
-    align-items: baseline;
-    gap: var(--mr-space-3);
-    padding: var(--mr-space-2) 0;
+/* Tab 1 (Answers) — two-column table (Answer | Sent) with a leading
+ * row-header showing the exercise number. Inputs are disabled while the
+ * session is in flight and enabled on session-end. The Sent column
+ * stays empty until the engine acks koch-answers-saved; then the row
+ * fills with the actual transmitted exercise so the learner can compare
+ * side-by-side against what they wrote. */
+.answers-table {
+    width: 100%;
+    border-collapse: collapse;
     font-family: var(--mr-font-mono);
     font-size: var(--mr-size-mono);
 }
 
+.answers-table thead th {
+    color: var(--mr-muted);
+    font-weight: normal;
+    text-align: left;
+    padding: var(--mr-space-1) var(--mr-space-2);
+    border-bottom: var(--mr-border-rule);
+}
+
+.answers-table thead .answers-table__corner {
+    width: 2ch;
+}
+
+/* Global `td { border-bottom: ... }` in core.css would otherwise stack a
+ * row separator below each input's own underline — two lines per row.
+ * Kill the row separator; the input's bottom border is the affordance. */
+.answers-table td,
+.answers-table tbody th {
+    border-bottom: 0;
+}
+
 .answer-row__label {
     color: var(--mr-text);
-    flex-shrink: 0;
+    font-weight: normal;
+    text-align: right;
+    padding: var(--mr-space-2);
+    white-space: nowrap;
+    vertical-align: baseline;
+}
+
+.answer-row__cell {
+    padding: var(--mr-space-1) var(--mr-space-2);
+    vertical-align: baseline;
+    width: 50%;
 }
 
 .answer-row__input {
-    flex: 1;
-    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
     background: none;
     border: 0;
-    border-bottom: var(--mr-border-rule);
+    /* Softer than --mr-border-rule so the underline reads as an affordance,
+     * not a heavy table rule. Focus restores full anchor colour. */
+    border-bottom: 1px solid color-mix(in srgb, var(--mr-border) 50%, transparent);
     color: var(--mr-text);
     font-family: var(--mr-font-mono);
     font-size: var(--mr-size-mono);
@@ -882,6 +915,21 @@ copy-top-menu {
     color: var(--mr-muted);
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+/* Sent cell colour signals correctness. Default (and `data-correct="true"`)
+ * is muted — a correct copy needs no second look. A miss
+ * (`data-correct="false"`) goes to --mr-text so it visually pairs with the
+ * learner's input in the Answer cell for side-by-side comparison. */
+.answer-row__sent {
+    padding: var(--mr-space-1) var(--mr-space-2);
+    color: var(--mr-muted);
+    vertical-align: baseline;
+    width: 50%;
+}
+
+.answer-row__sent[data-correct="false"] {
+    color: var(--mr-text);
 }
 
 /* Save button row beneath the answer inputs. Lives inside the Answers
