@@ -339,10 +339,13 @@ def test_resolve_gears_advances_after_strong_streak():
 
 
 def test_resolve_gears_drops_after_low_streak():
+    # Inverted asymmetry: koch needs four consecutive low runs before a
+    # band drops one gear. Band 1 meets the threshold and steps back;
+    # band 2 (3 low runs, one short) holds.
     evidence = {
         "bands": [
-            {"burden_band": 1, "strong_streak": 0, "low_streak": 2},
-            {"burden_band": 2, "strong_streak": 0, "low_streak": 1},
+            {"burden_band": 1, "strong_streak": 0, "low_streak": 4},
+            {"burden_band": 2, "strong_streak": 0, "low_streak": 3},
         ],
     }
     resolved = resolve_gears(evidence, current_gears={1: 2, 2: 1})

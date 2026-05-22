@@ -16,7 +16,6 @@ from copy_653.sequence.exercise_analysis import (
     LOW_FRACTION,
     MAX_GEAR,
     N_CLEAN_RUNS_FOR_SHIFT,
-    N_LOW_RUNS_FOR_SHIFT_DOWN,
     STRONG_FRACTION,
     _levenshtein,
     _streak_at_current_gear,
@@ -25,6 +24,15 @@ from copy_653.sequence.exercise_analysis import (
 ANALYSIS_VERSION = "cadence-analysis-v1"
 GENERATION_PROFILE_VERSION = "cadence-burden-v1"
 DEFAULT_EVIDENCE_WINDOW_SIZE = 5
+
+# Consecutive low-band sessions required before a band drops one gear
+# in cadence-send. Asymmetric with N_CLEAN_RUNS_FOR_SHIFT (3 to climb,
+# 2 to retreat): easier to step down than to step up, so the system
+# never feels punitive. Held separately from the koch threshold (which
+# is inverted to 4 because koch's higher gears layer audio disruption
+# the cadence axis does not have) so each mode's down-trigger can move
+# independently as the curricula evolve.
+N_LOW_RUNS_FOR_SHIFT_DOWN = 2
 
 
 def build_cadence_generation_profile(
