@@ -17,9 +17,10 @@ const wsUrl = `${wsProtocol}//${location.host}/ws`;
 const form = document.getElementById("audio-settings-form");
 const characterInput = document.getElementById("character-wpm");
 const effectiveInput = document.getElementById("effective-wpm");
-const toneShapeInput = document.getElementById("tone-shape");
-const receiverBedInput = document.getElementById("receiver-bed");
+const signalStrengthInput = document.getElementById("signal-strength");
+const signalToneInput = document.getElementById("signal-tone");
 const cadenceVariationInput = document.getElementById("cadence-variation");
+const rstTableBody = document.getElementById("rst-table-body");
 const keyerModeRadios = document.querySelectorAll('input[name="keyer_mode"]');
 const keyerModeSyncButton = document.getElementById("keyer-mode-sync");
 const keyerModeSyncStatusEl = document.getElementById("keyer-mode-sync-status");
@@ -51,11 +52,41 @@ function setStatus(status, text) {
     statusEl.textContent = text;
 }
 
+// Backend stores receiver_bed and tone_shape as 0-10; UI exposes the
+// standard RST scale (1-9) for Strength and Tone. Mapping is linear and
+// rounded; S is inverted because a higher bed level means a quieter
+// signal-to-noise ratio. The 11→9 collapse is lossy at the seams (e.g.
+// bed=3 ↔ S7 ↔ bed=2 on roundtrip), so backendPayload() preserves the
+// loaded backend value when the user has not visibly changed the input.
+function sFromBed(bed) {
+    return Math.max(1, Math.min(9, Math.round(9 - (8 * bed) / 10)));
+}
+function bedFromS(s) {
+    return Math.max(0, Math.min(10, Math.round(((9 - s) * 10) / 8)));
+}
+function tFromToneShape(toneShape) {
+    return Math.max(1, Math.min(9, Math.round(1 + (8 * toneShape) / 10)));
+}
+function toneShapeFromT(t) {
+    return Math.max(0, Math.min(10, Math.round(((t - 1) * 10) / 8)));
+}
+
+function updateRstMarker() {
+    if (!rstTableBody) return;
+    const s = Number(signalStrengthInput.value);
+    const t = Number(signalToneInput.value);
+    for (const row of rstTableBody.querySelectorAll("tr")) {
+        const n = Number(row.dataset.row);
+        row.dataset.markS = n === s ? "true" : "false";
+        row.dataset.markT = n === t ? "true" : "false";
+    }
+}
+
 function setInputsEnabled(enabled) {
     characterInput.disabled = !enabled;
     effectiveInput.disabled = !enabled;
-    toneShapeInput.disabled = !enabled;
-    receiverBedInput.disabled = !enabled;
+    signalStrengthInput.disabled = !enabled;
+    signalToneInput.disabled = !enabled;
     cadenceVariationInput.disabled = !enabled;
     keyerModeRadios.forEach((radio) => { radio.disabled = !enabled; });
     keyerModeSyncButton.disabled = !enabled;
@@ -101,8 +132,8 @@ function describeSyncResult(outcome) {
 function currentSettings() {
     const character = Number(characterInput.value);
     const effective = Number(effectiveInput.value);
-    const toneShape = Number(toneShapeInput.value);
-    const receiverBed = Number(receiverBedInput.value);
+    const s = Number(signalStrengthInput.value);
+    const t = Number(signalToneInput.value);
     const cadenceVariation = Number(cadenceVariationInput.value);
     const keyerMode = getKeyerMode();
     const hhClearEnabled = hhClearInput.checked;
@@ -110,12 +141,33 @@ function currentSettings() {
     return {
         character,
         effective,
-        toneShape,
-        receiverBed,
+        s,
+        t,
         cadenceVariation,
         keyerMode,
         hhClearEnabled,
         saveDirectory,
+    };
+}
+
+function backendPayload() {
+    const { character, effective, s, t, cadenceVariation, keyerMode, hhClearEnabled, saveDirectory } =
+        currentSettings();
+    const receiverBed = savedSettings && s === savedSettings.s
+        ? savedSettings.bed
+        : bedFromS(s);
+    const toneShape = savedSettings && t === savedSettings.t
+        ? savedSettings.toneShape
+        : toneShapeFromT(t);
+    return {
+        character_wpm: character,
+        effective_wpm: effective,
+        tone_shape: toneShape,
+        receiver_bed: receiverBed,
+        cadence_variation: cadenceVariation,
+        keyer_mode: keyerMode,
+        hh_clear_enabled: hhClearEnabled,
+        save_directory: saveDirectory,
     };
 }
 
@@ -128,8 +180,7 @@ function updateSummaries() {
 }
 
 function validateSettings() {
-    const { character, effective, toneShape, receiverBed, cadenceVariation, saveDirectory } =
-        currentSettings();
+    const { character, effective, s, t, cadenceVariation, saveDirectory } = currentSettings();
     if (!Number.isInteger(character) || character <= 0) {
         return "Character speed must be a positive whole number.";
     }
@@ -139,11 +190,11 @@ function validateSettings() {
     if (effective > character) {
         return "Effective speed cannot exceed character speed.";
     }
-    if (!Number.isInteger(toneShape) || toneShape < 0 || toneShape > 10) {
-        return "Tone Shape must be between 0 and 10.";
+    if (!Number.isInteger(s) || s < 1 || s > 9) {
+        return "Strength (S) must be between 1 and 9.";
     }
-    if (!Number.isInteger(receiverBed) || receiverBed < 0 || receiverBed > 10) {
-        return "Receiver Bed must be between 0 and 10.";
+    if (!Number.isInteger(t) || t < 1 || t > 9) {
+        return "Tone (T) must be between 1 and 9.";
     }
     if (!Number.isInteger(cadenceVariation) || cadenceVariation < 0 || cadenceVariation > 5) {
         return "Cadence Variation must be between 0 and 5.";
@@ -154,10 +205,21 @@ function validateSettings() {
     return "";
 }
 
+const DIRTY_FIELDS = [
+    "character",
+    "effective",
+    "s",
+    "t",
+    "cadenceVariation",
+    "keyerMode",
+    "hhClearEnabled",
+    "saveDirectory",
+];
+
 function isDirty() {
     if (!savedSettings) return false;
     const current = currentSettings();
-    return Object.keys(savedSettings).some((key) => current[key] !== savedSettings[key]);
+    return DIRTY_FIELDS.some((key) => current[key] !== savedSettings[key]);
 }
 
 function updateSaveState() {
@@ -210,8 +272,10 @@ function saveBase64Wav(chunks, filename) {
 function renderAudioSettings(event) {
     characterInput.value = event.character_wpm;
     effectiveInput.value = event.effective_wpm;
-    toneShapeInput.value = event.tone_shape;
-    receiverBedInput.value = event.receiver_bed;
+    const s = sFromBed(event.receiver_bed);
+    const t = tFromToneShape(event.tone_shape);
+    signalStrengthInput.value = s;
+    signalToneInput.value = t;
     cadenceVariationInput.value = event.cadence_variation;
     const incomingKeyerMode = typeof event.keyer_mode === "string" ? event.keyer_mode : "iambic_a";
     keyerModeRadios.forEach((radio) => {
@@ -227,14 +291,17 @@ function renderAudioSettings(event) {
     savedSettings = {
         character: event.character_wpm,
         effective: event.effective_wpm,
+        s,
+        t,
+        bed: event.receiver_bed,
         toneShape: event.tone_shape,
-        receiverBed: event.receiver_bed,
         cadenceVariation: event.cadence_variation,
         keyerMode: incomingKeyerMode,
         hhClearEnabled: Boolean(event.hh_clear_enabled),
         saveDirectory: event.save_directory || "",
     };
     updateSummaries();
+    updateRstMarker();
     const prefix = isSaving ? "saved" : "ready";
     const justSaved = isSaving;
     isSaving = false;
@@ -354,16 +421,6 @@ form.addEventListener("submit", (event) => {
     }
     if (!isDirty()) return;
 
-    const {
-        character,
-        effective,
-        toneShape,
-        receiverBed,
-        cadenceVariation,
-        keyerMode,
-        hhClearEnabled,
-        saveDirectory,
-    } = currentSettings();
     setInputsEnabled(false);
     isSaving = true;
     updateSaveState();
@@ -371,14 +428,7 @@ form.addEventListener("submit", (event) => {
     socket.send(
         JSON.stringify({
             action: "set-audio-settings",
-            character_wpm: character,
-            effective_wpm: effective,
-            tone_shape: toneShape,
-            receiver_bed: receiverBed,
-            cadence_variation: cadenceVariation,
-            keyer_mode: keyerMode,
-            hh_clear_enabled: hhClearEnabled,
-            save_directory: saveDirectory,
+            ...backendPayload(),
         })
     );
 });
@@ -398,13 +448,19 @@ keyerModeSyncButton.addEventListener("click", () => {
 });
 
 function testMessagePayload() {
-    const { character, effective, toneShape, receiverBed, cadenceVariation } = currentSettings();
+    const {
+        character_wpm,
+        effective_wpm,
+        tone_shape,
+        receiver_bed,
+        cadence_variation,
+    } = backendPayload();
     return {
-        character_wpm: character,
-        effective_wpm: effective,
-        tone_shape: toneShape,
-        receiver_bed: receiverBed,
-        cadence_variation: cadenceVariation,
+        character_wpm,
+        effective_wpm,
+        tone_shape,
+        receiver_bed,
+        cadence_variation,
     };
 }
 
@@ -440,6 +496,7 @@ saveTestButton.addEventListener("click", () => {
 
 function onSettingsInput() {
     updateSummaries();
+    updateRstMarker();
     if (!savedSettings) return;
 
     const { validationError, dirty } = updateSaveState();
@@ -458,8 +515,8 @@ function onSettingsInput() {
 [
     characterInput,
     effectiveInput,
-    toneShapeInput,
-    receiverBedInput,
+    signalStrengthInput,
+    signalToneInput,
     cadenceVariationInput,
     saveDirectoryInput,
 ].forEach((input) => input.addEventListener("input", onSettingsInput));
