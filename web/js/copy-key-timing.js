@@ -85,11 +85,15 @@ let exercises = [];
 let sessionActive = false;
 let currentExerciseIndex = 0;
 let exercisePlaying = false;
+let advanceTimer = null;
+let lastSentSymbol = "";
 
 // Sent tracking — per-exercise buckets for the rhythm review.
 let sentByExercise = [];
 const MAX_SENT_HISTORY = 48;
 let sentCount = 0;
+
+const ADVANCE_DELAY_MS = 2000;
 
 const KEYER_MODE_DISPLAY = {
     iambic_a: "Iambic A",
@@ -174,8 +178,44 @@ function clearSentSymbols() {
     sentCount = 0;
 }
 
+function clearAdvanceTimer() {
+    if (advanceTimer !== null) {
+        clearTimeout(advanceTimer);
+        advanceTimer = null;
+    }
+}
+
 function renderSentSymbol(event) {
     if (!event.symbol) return;
+
+    // BK detection: B immediately followed by K signals "go ahead."
+    // Strip both from the exercise record and advance after a pause.
+    if (event.symbol === "K" && lastSentSymbol === "B") {
+        lastSentSymbol = "";
+        // Remove the B that was already pushed to the exercise bucket.
+        if (currentExerciseIndex > 0 && currentExerciseIndex <= sentByExercise.length) {
+            const bucket = sentByExercise[currentExerciseIndex - 1];
+            if (bucket.length > 0 && bucket[bucket.length - 1].symbol === "B") {
+                bucket.pop();
+            }
+        }
+        // Remove the B from the sent history display.
+        if (sentHistoryEl.lastChild) {
+            sentHistoryEl.removeChild(sentHistoryEl.lastChild);
+        }
+        sentSymbolEl.textContent = "BK";
+        primedEl.textContent = exercisePlaying
+            ? `Exercise ${currentExerciseIndex} of ${exercises.length}`
+            : `BK — next in ${(ADVANCE_DELAY_MS / 1000).toFixed(0)}s`;
+        clearAdvanceTimer();
+        advanceTimer = setTimeout(() => {
+            advanceTimer = null;
+            playNextExercise();
+        }, ADVANCE_DELAY_MS);
+        return;
+    }
+
+    lastSentSymbol = event.symbol;
     sentSymbolEl.textContent = event.symbol;
     sentCount++;
     const li = document.createElement("li");
@@ -184,7 +224,6 @@ function renderSentSymbol(event) {
     while (sentHistoryEl.children.length > MAX_SENT_HISTORY) {
         sentHistoryEl.removeChild(sentHistoryEl.firstChild);
     }
-    // Track for rhythm review.
     if (currentExerciseIndex > 0 && currentExerciseIndex <= sentByExercise.length) {
         sentByExercise[currentExerciseIndex - 1].push(event);
     }
@@ -196,14 +235,16 @@ function onCopyKeyExercises(event) {
     sentByExercise = exercises.map(() => []);
     currentExerciseIndex = 0;
     sessionActive = true;
+    lastSentSymbol = "";
+    clearAdvanceTimer();
     setStartButtonMode("active");
     clearSentSymbols();
     primedEl.textContent = `Exercise — of ${exercises.length}`;
-    // Play the first exercise.
     playNextExercise();
 }
 
 function playNextExercise() {
+    lastSentSymbol = "";
     currentExerciseIndex++;
     if (currentExerciseIndex > exercises.length) {
         endSession();
@@ -221,6 +262,8 @@ function playNextExercise() {
 function endSession() {
     sessionActive = false;
     exercisePlaying = false;
+    lastSentSymbol = "";
+    clearAdvanceTimer();
     if (activeSocket && activeSocket.readyState === WebSocket.OPEN) {
         activeSocket.send(JSON.stringify({ action: "complete-copy-key-session" }));
     }
@@ -317,6 +360,8 @@ function connect() {
         startBtn.disabled = true;
         sessionActive = false;
         exercisePlaying = false;
+        lastSentSymbol = "";
+        clearAdvanceTimer();
     });
 }
 
