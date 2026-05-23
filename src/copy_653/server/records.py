@@ -161,6 +161,7 @@ class _ActiveCopyKeySession:
         "symbols",
         "sent",
         "key_events",
+        "_per_exercise_audio",
     )
 
     def __init__(
@@ -183,6 +184,7 @@ class _ActiveCopyKeySession:
         self.symbols = symbols
         self.sent: list[dict[str, Any]] = []
         self.key_events: list[dict[str, Any]] = []
+        self._per_exercise_audio: list[tuple] = []
 
     def record_event(self, payload: dict[str, Any]) -> None:
         """Capture a relevant WS event payload into the session record."""
