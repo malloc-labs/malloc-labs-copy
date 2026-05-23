@@ -675,7 +675,7 @@ async def _request_copy_key_exercises_action(
         seed=result.seed,
         generation=generation,
         exercises=exercise_entries,
-        symbols=all_symbols,
+        symbols=[],
     )
     session._per_exercise_audio = per_exercise_audio
     return session
@@ -712,6 +712,7 @@ async def _play_copy_key_exercise(
             if wait > 0:
                 await asyncio.sleep(wait)
             cursor = entry["t_on"]
+            session.symbols.append(entry)
             await _send_event(ws, {"type": "symbol", **entry})
 
         await audio_task
