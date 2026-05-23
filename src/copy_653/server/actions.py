@@ -23,7 +23,7 @@ from typing import Any, Callable, Iterator
 from websockets.server import WebSocketServerProtocol
 
 from copy_653 import sequence
-from copy_653.audio import patterns, playback, texture, timing
+from copy_653.audio import patterns, playback, synth, texture, timing
 from copy_653.audio.parameters import AudioParameters
 from copy_653.audio.wav import encode_pcm16_wav
 from copy_653.config import (
@@ -53,11 +53,14 @@ from copy_653.midi import (
 )
 from copy_653.server.records import (
     _ActiveCadenceSession,
+    _ActiveCopyKeySession,
     _next_cadence_run_index,
+    _next_copy_key_run_index,
     _next_send_symbol_readiness,
     _next_symbol_evidence,
     _next_symbol_readiness,
     _resolve_cadence_session_gears,
+    _resolve_copy_key_session_gears,
     _resolve_session_gears,
     _resolve_session_rst_steps,
     _save_koch_answers,
@@ -85,6 +88,9 @@ from copy_653.sequence.cadence_analysis import (
     build_cadence_generation_profile,
 )
 from copy_653.sequence.copy_exercises import DEFAULT_EXERCISE_COUNT, DEFAULT_MAX_IDENTICAL_RUN
+from copy_653.sequence.copy_key_exercises import (
+    DEFAULT_EXERCISE_COUNT as COPY_KEY_DEFAULT_EXERCISE_COUNT,
+)
 from copy_653.sequence.exercise_analysis import (
     MAX_GEAR,
     build_exercise_entries,
@@ -558,6 +564,172 @@ async def _request_copy_exercises_action(
             gears=gears,
         ),
     )
+
+
+async def _request_copy_key_exercises_action(
+    ws: WebSocketServerProtocol,
+    config_path: Path,
+) -> _ActiveCopyKeySession | None:
+    """Generate Copy Key exercises and open a session.
+
+    Generates short head-copy exercises (single words, 1-3 symbols,
+    max 2 words / 5 total symbols), synthesises the audio for each,
+    and sends the exercise list to the client. Returns an active
+    session holding the pre-rendered per-exercise audio buffers so
+    ``play-copy-key-exercise`` can play them on demand.
+    """
+    audio_params = load_audio_parameters(config_path)
+    claimed = load_claimed_symbols(config_path)
+
+    if not claimed:
+        await _send_event(ws, {"type": "error", "reason": "no-claimed-symbols"})
+        return None
+
+    exercise_count = COPY_KEY_DEFAULT_EXERCISE_COUNT
+    save_directory = load_save_directory(config_path)
+    claimed_set_key = " ".join(sorted(claimed))
+    gears = _resolve_copy_key_session_gears(
+        save_directory, claimed_set_key, exercise_count=exercise_count
+    )
+
+    try:
+        result = sequence.generate_copy_key_exercises(
+            claimed_set=claimed,
+            gears=gears,
+        )
+    except ValueError as exc:
+        await _send_event(
+            ws,
+            {"type": "error", "reason": "invalid-copy-key-request", "detail": str(exc)},
+        )
+        return None
+
+    exercises = list(result.exercises)
+    exercise_entries: list[dict[str, Any]] = []
+    for idx, target in enumerate(exercises):
+        exercise_entries.append(
+            {
+                "index": idx + 1,
+                "target": target,
+                "burden_score": result.scores[idx] if idx < len(result.scores) else 0,
+                "burden_band": idx + 1,
+                "gear": gears[idx] if idx < len(gears) else 0,
+            }
+        )
+
+    generation: dict[str, Any] = {
+        "profile_version": "copy-key-burden-v1",
+        "claimed_set_key": claimed_set_key,
+        "candidate_count": result.candidate_count,
+        "bands": [
+            {"index": idx + 1, "gear": gears[idx] if idx < len(gears) else 0}
+            for idx in range(len(exercises))
+        ],
+        "run_index": _next_copy_key_run_index(save_directory, claimed_set_key),
+    }
+
+    # Build per-exercise audio and timelines. Each exercise is short
+    # (1-5 symbols) so we render them individually rather than as a
+    # single concatenated buffer — the learner hears one, keys it back,
+    # then hears the next.
+    per_exercise_audio: list[tuple[Any, list[Any]]] = []
+    all_symbols: list[dict[str, Any]] = []
+    for exercise_index, exercise in enumerate(exercises, start=1):
+        words = exercise.split(" ")
+        exercise_audio = synth.synthesize_words(words, audio_params)
+        exercise_audio = texture.add_receiver_bed(
+            exercise_audio,
+            audio_params,
+            context=f"copy-key:{exercise_index}:{exercise}",
+        )
+        exercise_timeline = synth.compute_word_timeline(words, audio_params)
+        symbols_for_exercise: list[dict[str, Any]] = []
+        for symbol, t_on, t_off, word_index, word in exercise_timeline:
+            entry = {
+                "symbol": symbol,
+                "t_on": t_on,
+                "t_off": t_off,
+                "exercise_index": exercise_index,
+                "word_index": word_index,
+                "word": word,
+            }
+            symbols_for_exercise.append(entry)
+            all_symbols.append(entry)
+        per_exercise_audio.append((exercise_audio, symbols_for_exercise))
+
+    await _send_event(
+        ws,
+        {
+            "type": "copy-key-exercises",
+            "exercises": exercises,
+            "exercise_count": len(exercises),
+            "seed": result.seed,
+            "claimed_set": list(result.claimed_set),
+        },
+    )
+
+    session = _ActiveCopyKeySession(
+        started_at=datetime.now(timezone.utc),
+        audio=audio_params,
+        claimed=claimed,
+        seed=result.seed,
+        generation=generation,
+        exercises=exercise_entries,
+        symbols=all_symbols,
+    )
+    # Stash the pre-rendered audio on the session for play-on-demand.
+    # This is a list of (samples, timeline) tuples parallel to exercises.
+    session._per_exercise_audio = per_exercise_audio  # type: ignore[attr-defined]
+    return session
+
+
+async def _play_copy_key_exercise(
+    ws: WebSocketServerProtocol,
+    session: _ActiveCopyKeySession,
+    exercise_index: int,
+) -> None:
+    """Play one pre-rendered Copy Key exercise and emit symbol events."""
+    audio_data = getattr(session, "_per_exercise_audio", None)
+    if audio_data is None or exercise_index < 1 or exercise_index > len(audio_data):
+        await _send_event(
+            ws,
+            {"type": "error", "reason": "invalid-copy-key-exercise-index"},
+        )
+        return
+
+    samples, timeline = audio_data[exercise_index - 1]
+    audio_params = session.audio
+
+    await _send_event(
+        ws,
+        {"type": "copy-key-exercise-start", "exercise_index": exercise_index},
+    )
+
+    audio_task = asyncio.create_task(asyncio.to_thread(playback.play, samples, audio_params))
+
+    try:
+        cursor = 0.0
+        for entry in timeline:
+            wait = entry["t_on"] - cursor
+            if wait > 0:
+                await asyncio.sleep(wait)
+            cursor = entry["t_on"]
+            await _send_event(ws, {"type": "symbol", **entry})
+
+        await audio_task
+        await _send_event(
+            ws,
+            {"type": "copy-key-exercise-end", "exercise_index": exercise_index},
+        )
+    except asyncio.CancelledError:
+        try:
+            import sounddevice as sd
+
+            sd.stop()
+        except Exception:
+            pass
+        audio_task.cancel()
+        raise
 
 
 async def _get_audio_settings_action(

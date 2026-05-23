@@ -35,6 +35,7 @@ from copy_653.sequence.exercise_analysis import (
 )
 from copy_653.session import (
     CadenceSendRecord,
+    CopyKeyRecord,
     KochExerciseRecord,
     update_koch_answers,
     write_record,
@@ -145,6 +146,140 @@ def _finalize_cadence_session(
         write_record(record, save_directory)
     except Exception:
         logger.exception("failed to write cadence-send record")
+
+
+class _ActiveCopyKeySession:
+    """In-flight Copy Key (head-copy-then-send) recording state."""
+
+    __slots__ = (
+        "started_at",
+        "audio",
+        "claimed",
+        "seed",
+        "generation",
+        "exercises",
+        "symbols",
+        "sent",
+        "key_events",
+    )
+
+    def __init__(
+        self,
+        *,
+        started_at: datetime,
+        audio: AudioParameters,
+        claimed: tuple[str, ...],
+        seed: int,
+        generation: dict[str, Any],
+        exercises: list[dict[str, Any]],
+        symbols: list[dict[str, Any]],
+    ) -> None:
+        self.started_at = started_at
+        self.audio = audio
+        self.claimed = claimed
+        self.seed = seed
+        self.generation = generation
+        self.exercises = exercises
+        self.symbols = symbols
+        self.sent: list[dict[str, Any]] = []
+        self.key_events: list[dict[str, Any]] = []
+
+    def record_event(self, payload: dict[str, Any]) -> None:
+        """Capture a relevant WS event payload into the session record."""
+        kind = payload.get("type")
+        if kind == "sent-symbol":
+            self.sent.append(
+                {
+                    "symbol": payload["symbol"],
+                    "pattern": payload["pattern"],
+                    "started_at": payload["started_at"],
+                    "ended_at": payload["ended_at"],
+                    "leading_gap": payload["leading_gap"],
+                }
+            )
+        elif kind == "key-event":
+            entry = {
+                "kind": payload["kind"],
+                "note": payload["note"],
+                "pressed": payload["pressed"],
+                "timestamp": payload["timestamp"],
+            }
+            if "duration_ms" in payload:
+                entry["duration_ms"] = payload["duration_ms"]
+            if "ratio_dits" in payload:
+                entry["ratio_dits"] = payload["ratio_dits"]
+            self.key_events.append(entry)
+
+
+def _finalize_copy_key_session(
+    session: _ActiveCopyKeySession,
+    config_path: Path,
+) -> None:
+    """Persist a Copy Key session record. Best-effort; failures are logged."""
+    if not session.sent and not session.key_events:
+        return
+    try:
+        save_directory = load_save_directory(config_path)
+        record = CopyKeyRecord(
+            started_at=session.started_at,
+            ended_at=datetime.now(timezone.utc),
+            audio=session.audio,
+            claimed_set=session.claimed,
+            seed=session.seed,
+            generation=session.generation,
+            exercises=session.exercises,
+            symbols=session.symbols,
+            sent=session.sent,
+            key_events=session.key_events,
+        )
+        write_record(record, save_directory)
+    except Exception:
+        logger.exception("failed to write copy-key record")
+
+
+def _iter_copy_key_records(save_directory: Path) -> list[dict[str, Any]]:
+    """Load every parseable copy-key record under ``save_directory``."""
+    target_dir = save_directory / "copy-key"
+    records: list[dict[str, Any]] = []
+    if not target_dir.is_dir():
+        return records
+    for entry in target_dir.glob("copy-key-*.json"):
+        try:
+            data = json.loads(entry.read_text())
+        except (OSError, ValueError):
+            logger.exception("skipping unreadable copy-key record: %s", entry)
+            continue
+        if isinstance(data, dict) and data.get("mode") == "copy-key":
+            records.append(data)
+    return records
+
+
+def _next_copy_key_run_index(save_directory: Path, claimed_set_key: str) -> int:
+    count = 0
+    for data in _iter_copy_key_records(save_directory):
+        generation = data.get("generation")
+        key: str | None = None
+        if isinstance(generation, dict):
+            stored = generation.get("claimed_set_key")
+            if isinstance(stored, str):
+                key = stored
+        if key is None:
+            claimed = data.get("claimed_set")
+            if isinstance(claimed, list):
+                key = " ".join(sorted(str(s) for s in claimed))
+        if key == claimed_set_key:
+            count += 1
+    return count + 1
+
+
+def _resolve_copy_key_session_gears(
+    save_directory: Path, claimed_set_key: str, exercise_count: int
+) -> list[int]:
+    records = _iter_copy_key_records(save_directory)
+    evidence = load_cadence_band_evidence(records, claimed_set_key=claimed_set_key)
+    current_gears = latest_cadence_gears_for_claimed_set(records, claimed_set_key=claimed_set_key)
+    resolved = resolve_cadence_gears(evidence, current_gears=current_gears)
+    return [resolved.get(i + 1, 0) for i in range(exercise_count)]
 
 
 def _save_koch_answers(path: Path, answers: list[str]) -> int:
