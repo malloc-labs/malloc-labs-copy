@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.1](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.10.0...v0.10.1) (2026-05-23)
+
+
+### Bug Fixes
+
+* **koch:** wire scaffold-break to gear state, not next-symbol evidence ([32248b7](https://github.com/malloc-labs/malloc-labs-copy/commit/32248b7e1a0c9be85e097d69e3abbd2e3f9615da))
+* **koch:** wire scaffold-break to gear state, not next-symbol evidence ([7ca83e7](https://github.com/malloc-labs/malloc-labs-copy/commit/7ca83e713fa9c1b1d4ac88260e796c074898aa1d))
+
 ## [0.10.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.9.1...v0.10.0) (2026-05-22)
 
 
