@@ -191,6 +191,10 @@ function clearAdvanceTimer() {
 function renderSentSymbol(event) {
     if (!event.symbol) return;
 
+    // TODO: IMI detection (I M I) — replay the current exercise audio
+    // so the learner gets a second listen without advancing. Strip I M I
+    // from the exercise record the same way BK is stripped below.
+
     // BK detection: B immediately followed by K signals "go ahead."
     // Strip both from the exercise record and advance after a pause.
     if (event.symbol === "K" && lastSentSymbol === "B") {
