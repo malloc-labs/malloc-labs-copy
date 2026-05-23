@@ -41,6 +41,15 @@ function fraction(value) {
     return Number.isFinite(value) ? value.toFixed(3) : "-";
 }
 
+function formatSentWithGaps(bucket) {
+    let out = "";
+    for (const event of bucket) {
+        if (out && event.leading_gap === "word") out += " ";
+        out += event.symbol || "?";
+    }
+    return out;
+}
+
 // Split the flat sent array into per-exercise buckets by detecting BK
 // (B immediately followed by K) boundaries. BK pairs are stripped.
 function splitSentByExercise(sent) {
@@ -164,6 +173,8 @@ function buildExercisesTable(record, sentBuckets) {
                     ditMs,
                 }),
             );
+        } else if (bucket.length > 0) {
+            sentCell.textContent = formatSentWithGaps(bucket);
         }
         row.appendChild(sentCell);
 
