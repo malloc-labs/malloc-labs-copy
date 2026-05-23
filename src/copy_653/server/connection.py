@@ -340,6 +340,9 @@ async def handler(
             elif action == "complete-copy-key-session":
                 await supersede(state.copy_key_play_task)
                 state.close_active_copy_key_session()
+            elif action == "abort-copy-key-session":
+                await supersede(state.copy_key_play_task)
+                state.copy_key = None
             elif action == "start-key-input":
                 await supersede(state.key_input_task)
                 state.key_input_task = asyncio.create_task(
