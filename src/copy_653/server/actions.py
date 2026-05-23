@@ -677,9 +677,7 @@ async def _request_copy_key_exercises_action(
         exercises=exercise_entries,
         symbols=all_symbols,
     )
-    # Stash the pre-rendered audio on the session for play-on-demand.
-    # This is a list of (samples, timeline) tuples parallel to exercises.
-    session._per_exercise_audio = per_exercise_audio  # type: ignore[attr-defined]
+    session._per_exercise_audio = per_exercise_audio
     return session
 
 
@@ -689,8 +687,8 @@ async def _play_copy_key_exercise(
     exercise_index: int,
 ) -> None:
     """Play one pre-rendered Copy Key exercise and emit symbol events."""
-    audio_data = getattr(session, "_per_exercise_audio", None)
-    if audio_data is None or exercise_index < 1 or exercise_index > len(audio_data):
+    audio_data = session._per_exercise_audio
+    if not audio_data or exercise_index < 1 or exercise_index > len(audio_data):
         await _send_event(
             ws,
             {"type": "error", "reason": "invalid-copy-key-exercise-index"},
