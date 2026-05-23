@@ -42,7 +42,7 @@ from typing import Any
 
 from copy_653 import __version__
 from copy_653.audio.parameters import AudioParameters
-from copy_653.sequence.cadence_analysis import apply_cadence_analysis
+from copy_653.sequence.cadence_analysis import apply_cadence_analysis, apply_copy_key_analysis
 from copy_653.sequence.exercise_analysis import apply_answers_to_entries
 
 SCHEMA_VERSION = "2.1"
@@ -193,6 +193,12 @@ class CopyKeyRecord:
     mode: str = "copy-key"
 
     def to_dict(self) -> dict[str, Any]:
+        exercises = apply_copy_key_analysis(
+            [dict(exercise) for exercise in self.exercises],
+            sent=list(self.sent),
+            key_events=list(self.key_events),
+            character_wpm=self.audio.character_speed_wpm,
+        )
         return {
             "schema_version": SCHEMA_VERSION,
             "engine_version": __version__,
@@ -203,7 +209,7 @@ class CopyKeyRecord:
             "claimed_set": list(self.claimed_set),
             "seed": self.seed,
             "generation": dict(self.generation),
-            "exercises": [dict(exercise) for exercise in self.exercises],
+            "exercises": exercises,
             "symbols": list(self.symbols),
             "sent": list(self.sent),
             "key_events": list(self.key_events),

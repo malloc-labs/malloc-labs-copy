@@ -278,8 +278,10 @@ def _resolve_copy_key_session_gears(
     save_directory: Path, claimed_set_key: str, exercise_count: int
 ) -> list[int]:
     records = _iter_copy_key_records(save_directory)
-    evidence = load_cadence_band_evidence(records, claimed_set_key=claimed_set_key)
-    current_gears = latest_cadence_gears_for_claimed_set(records, claimed_set_key=claimed_set_key)
+    evidence = load_cadence_band_evidence(records, claimed_set_key=claimed_set_key, mode="copy-key")
+    current_gears = latest_cadence_gears_for_claimed_set(
+        records, claimed_set_key=claimed_set_key, mode="copy-key"
+    )
     resolved = resolve_cadence_gears(evidence, current_gears=current_gears)
     return [resolved.get(i + 1, 0) for i in range(exercise_count)]
 

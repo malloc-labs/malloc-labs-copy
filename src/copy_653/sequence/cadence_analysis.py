@@ -85,6 +85,72 @@ def build_cadence_exercise_entries(
     return entries
 
 
+def apply_copy_key_analysis(
+    entries: list[dict[str, Any]],
+    *,
+    sent: list[dict[str, Any]],
+    key_events: list[dict[str, Any]],
+    character_wpm: int,
+) -> list[dict[str, Any]]:
+    """Return copy-key exercise entries with finalized attempts/analysis.
+
+    Copy-key sent streams use BK (B followed by K) prosign boundaries
+    to delimit exercises, unlike cadence-send which walks targets
+    sequentially. This function splits the stream by those boundaries,
+    then analyses each bucket independently using the same per-attempt
+    helpers as cadence analysis.
+    """
+    normalised = [_normalise_sent_event(event) for event in sent]
+    dit_seconds = timing.dit_seconds(character_wpm)
+    buckets = _split_sent_by_bk_boundary(normalised)
+    updated: list[dict[str, Any]] = []
+
+    for idx, raw_entry in enumerate(entries):
+        entry = dict(raw_entry)
+        target = str(entry.get("target", ""))
+        bucket = buckets[idx] if idx < len(buckets) else []
+        attempts = _segment_attempts(target, bucket)
+        analysed_attempts = [
+            _analyse_attempt(target, attempt, key_events=key_events, dit_seconds=dit_seconds)
+            for attempt in attempts
+        ]
+        selected_index = _select_attempt_index(analysed_attempts)
+        selected = analysed_attempts[selected_index] if selected_index is not None else None
+
+        entry["attempts"] = analysed_attempts
+        entry["analysis"] = _build_exercise_analysis(
+            entry,
+            selected,
+            attempt_count=len(analysed_attempts),
+            selected_attempt_index=selected_index,
+        )
+        updated.append(entry)
+
+    return updated
+
+
+def _split_sent_by_bk_boundary(
+    sent: list[dict[str, Any]],
+) -> list[list[dict[str, Any]]]:
+    """Split a flat sent stream into per-exercise buckets by BK boundaries.
+
+    Copy-key sessions delimit exercise boundaries with a BK prosign
+    (B immediately followed by K). The B and K events themselves are
+    stripped — they are protocol, not learner keying.
+    """
+    buckets: list[list[dict[str, Any]]] = [[]]
+    for i, event in enumerate(sent):
+        symbol = event.get("symbol", "")
+        if symbol == "K" and i > 0 and sent[i - 1].get("symbol") == "B":
+            bucket = buckets[-1]
+            if bucket and bucket[-1].get("symbol") == "B":
+                bucket.pop()
+            buckets.append([])
+            continue
+        buckets[-1].append(event)
+    return buckets
+
+
 def apply_cadence_analysis(
     entries: list[dict[str, Any]],
     *,
@@ -525,8 +591,9 @@ def load_band_evidence(
     *,
     claimed_set_key: str,
     window_size: int = DEFAULT_EVIDENCE_WINDOW_SIZE,
+    mode: str = "cadence-send",
 ) -> dict[str, Any]:
-    matching = _matching_records(records, claimed_set_key=claimed_set_key)
+    matching = _matching_records(records, claimed_set_key=claimed_set_key, mode=mode)
     matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
     window = matching[: max(0, window_size)]
 
@@ -598,8 +665,9 @@ def load_band_history(
     records: list[dict[str, Any]],
     *,
     claimed_set_key: str,
+    mode: str = "cadence-send",
 ) -> dict[str, Any]:
-    """Chronological per-band history for one cadence claimed-set key.
+    """Chronological per-band history for one claimed-set key.
 
     Mirrors :func:`copy_653.sequence.exercise_analysis.load_band_history`
     so the Settings full-history modal renders identically on the Key
@@ -608,7 +676,7 @@ def load_band_history(
     chronological list. Records with no analysis surface as ``fraction
     = None`` and the cell renders as missing client-side.
     """
-    matching = _matching_records(records, claimed_set_key=claimed_set_key)
+    matching = _matching_records(records, claimed_set_key=claimed_set_key, mode=mode)
     matching.sort(key=lambda r: str(r.get("started_at") or ""))
 
     sessions_meta: list[dict[str, Any]] = []
@@ -703,8 +771,9 @@ def latest_gears_for_claimed_set(
     records: list[dict[str, Any]],
     *,
     claimed_set_key: str,
+    mode: str = "cadence-send",
 ) -> dict[int, int]:
-    matching = _matching_records(records, claimed_set_key=claimed_set_key)
+    matching = _matching_records(records, claimed_set_key=claimed_set_key, mode=mode)
     if not matching:
         return {}
     matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
@@ -719,6 +788,7 @@ def is_ready_for_next_symbol(
     n_strong_required: int = N_CLEAN_RUNS_FOR_SHIFT,
     max_gear: int = MAX_GEAR,
     window_size: int = DEFAULT_EVIDENCE_WINDOW_SIZE,
+    mode: str = "cadence-send",
 ) -> bool:
     """Whether send evidence says the learner is ready for the next symbol.
 
@@ -752,7 +822,9 @@ def is_ready_for_next_symbol(
     if not claimed_set_key:
         return False
 
-    current_gears = latest_gears_for_claimed_set(records, claimed_set_key=claimed_set_key)
+    current_gears = latest_gears_for_claimed_set(
+        records, claimed_set_key=claimed_set_key, mode=mode
+    )
     if not current_gears:
         return False
     if any(gear < max_gear for gear in current_gears.values()):
@@ -762,6 +834,7 @@ def is_ready_for_next_symbol(
         records,
         claimed_set_key=claimed_set_key,
         window_size=window_size,
+        mode=mode,
     )
     band_evidence = evidence.get("bands") or []
     if len(band_evidence) != len(current_gears):
@@ -814,13 +887,16 @@ def resolve_gears(
 
 
 def _matching_records(
-    records: list[dict[str, Any]], *, claimed_set_key: str
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+    mode: str = "cadence-send",
 ) -> list[dict[str, Any]]:
     return [
         record
         for record in records
         if isinstance(record, dict)
-        and record.get("mode") == "cadence-send"
+        and record.get("mode") == mode
         and record_claimed_set_key(record) == claimed_set_key
     ]
 

@@ -31,6 +31,7 @@ from copy_653.sequence.exercise_analysis import (
 )
 from copy_653.sequence.cadence_analysis import (
     DEFAULT_EVIDENCE_WINDOW_SIZE as CADENCE_EVIDENCE_WINDOW_SIZE,
+    apply_copy_key_analysis,
     load_band_evidence as load_cadence_band_evidence,
     load_band_history as load_cadence_band_history,
     record_claimed_set_key as cadence_record_claimed_set_key,
@@ -832,6 +833,23 @@ def _read_copy_key_session(
     if not isinstance(data, dict) or data.get("mode") != "copy-key":
         return _http_response(HTTPStatus.NOT_FOUND, b"not found")
 
+    # Records saved before analysis was added lack per-exercise
+    # attempts/analysis — compute on the fly so the settings UI can
+    # show metrics for all records, not just newly written ones.
+    exercises = data.get("exercises")
+    if isinstance(exercises, list) and exercises:
+        first_analysis = (
+            (exercises[0].get("analysis") or {}) if isinstance(exercises[0], dict) else {}
+        )
+        if not first_analysis.get("saved"):
+            audio = data.get("audio") or {}
+            data["exercises"] = apply_copy_key_analysis(
+                exercises,
+                sent=data.get("sent") or [],
+                key_events=data.get("key_events") or [],
+                character_wpm=audio.get("character_speed_wpm", 20),
+            )
+
     return _json_response(data)
 
 
@@ -845,6 +863,31 @@ def _delete_copy_key_session(
         subdirectory="copy-key",
         mode="copy-key",
     )
+
+
+def _backfill_copy_key_analysis(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Apply copy-key analysis to records that were saved without it.
+
+    Records written before analysis was wired into CopyKeyRecord.to_dict()
+    lack per-exercise attempts/analysis. This patches them in-memory so
+    evidence and history calculations see complete data. Records that
+    already carry analysis are returned unchanged.
+    """
+    for record in records:
+        exercises = record.get("exercises")
+        if not isinstance(exercises, list) or not exercises:
+            continue
+        first = exercises[0] if isinstance(exercises[0], dict) else {}
+        if (first.get("analysis") or {}).get("saved"):
+            continue
+        audio = record.get("audio") or {}
+        record["exercises"] = apply_copy_key_analysis(
+            exercises,
+            sent=record.get("sent") or [],
+            key_events=record.get("key_events") or [],
+            character_wpm=audio.get("character_speed_wpm", 20),
+        )
+    return records
 
 
 def _read_copy_key_band_evidence(
@@ -866,7 +909,7 @@ def _read_copy_key_band_evidence(
             "bands": [],
         }
 
-    records = _iter_copy_key_records(save_directory)
+    records = _backfill_copy_key_analysis(_iter_copy_key_records(save_directory))
     resolved_key = claimed_set_key
     if not resolved_key:
         latest = max(records, key=lambda r: str(r.get("started_at") or ""), default=None)
@@ -885,6 +928,7 @@ def _read_copy_key_band_evidence(
         records,
         claimed_set_key=resolved_key,
         window_size=window_size,
+        mode="copy-key",
     )
     evidence["save_directory"] = str(save_directory)
     return evidence
@@ -909,7 +953,7 @@ def _read_copy_key_band_history(
             "current_gears": {},
         }
 
-    records = _iter_copy_key_records(save_directory)
+    records = _backfill_copy_key_analysis(_iter_copy_key_records(save_directory))
     resolved_key = claimed_set_key
     if not resolved_key:
         latest = max(
@@ -919,6 +963,6 @@ def _read_copy_key_band_history(
         )
         resolved_key = cadence_record_claimed_set_key(latest) if latest else ""
 
-    history = load_cadence_band_history(records, claimed_set_key=resolved_key)
+    history = load_cadence_band_history(records, claimed_set_key=resolved_key, mode="copy-key")
     history["save_directory"] = str(save_directory)
     return history
