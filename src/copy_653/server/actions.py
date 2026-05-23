@@ -686,7 +686,12 @@ async def _play_copy_key_exercise(
     session: _ActiveCopyKeySession,
     exercise_index: int,
 ) -> None:
-    """Play one pre-rendered Copy Key exercise and emit symbol events."""
+    """Play one pre-rendered Copy Key exercise and emit symbol events.
+
+    Called once per exercise as the learner advances with BK. The same
+    function can be called again with the same ``exercise_index`` to
+    replay — the client will use this for IMI (repeat) support.
+    """
     audio_data = session._per_exercise_audio
     if not audio_data or exercise_index < 1 or exercise_index > len(audio_data):
         await _send_event(
