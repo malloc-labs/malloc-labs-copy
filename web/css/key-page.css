@@ -386,6 +386,14 @@
 }
 
 .key-rhythm-baseline__exercise {
+    --zone-group-width: 5ch;
+    --zone-green-frac: 1.2fr;
+    --zone-amber-frac: 1.6fr;
+    --zone-red-frac: 2.2fr;
+    --zone-group-height: 0.9rem;
+    --key-rhythm-green: color-mix(in srgb, var(--mr-anchor) 62%, var(--mr-muted));
+    --key-rhythm-amber: color-mix(in srgb, var(--mr-warning) 58%, var(--mr-muted));
+    --key-rhythm-red: color-mix(in srgb, #b36a5e 52%, var(--mr-muted));
     margin-bottom: var(--mr-space-4);
 }
 
