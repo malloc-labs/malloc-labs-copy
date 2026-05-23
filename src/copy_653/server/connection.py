@@ -39,9 +39,11 @@ from copy_653.server.actions import (
     _claim_symbol_action,
     _flush_key_symbol,
     _get_audio_settings_action,
+    _play_copy_key_exercise,
     _play_test_message_action,
     _push_key_note_event,
     _request_copy_exercises_action,
+    _request_copy_key_exercises_action,
     _run_key_input_action,
     _run_letter_sequence,
     _run_morse_repeat,
@@ -53,7 +55,9 @@ from copy_653.server.actions import (
 )
 from copy_653.server.records import (
     _ActiveCadenceSession,
+    _ActiveCopyKeySession,
     _finalize_cadence_session,
+    _finalize_copy_key_session,
     _next_send_symbol_readiness,
     _next_symbol_evidence,
     _next_symbol_readiness,
@@ -160,6 +164,8 @@ class ConnectionState:
     key_input_task: asyncio.Task[None] | None = None
     browser: BrowserKeyInputState | None = None
     cadence: _ActiveCadenceSession | None = None
+    copy_key: _ActiveCopyKeySession | None = None
+    copy_key_play_task: asyncio.Task[None] | None = None
     # Path to the koch-exercise record written at the last session-end,
     # awaiting a `save-koch-answers` rewrite. Cleared on a new `start`,
     # on successful save, or when the connection closes.
@@ -170,11 +176,29 @@ class ConnectionState:
         if self.cadence is not None:
             self.cadence.record_event(event)
 
+    def copy_key_recorder(self, event: dict[str, Any]) -> None:
+        """Forward an outbound key/sent event to the active Copy Key record."""
+        if self.copy_key is not None:
+            self.copy_key.record_event(event)
+
+    def active_recorder(self, event: dict[str, Any]) -> None:
+        """Forward a key/sent event to whichever session is active."""
+        if self.copy_key is not None:
+            self.copy_key.record_event(event)
+        elif self.cadence is not None:
+            self.cadence.record_event(event)
+
     def close_active_cadence_session(self) -> None:
         """Persist and clear any in-flight Cadence session."""
         if self.cadence is not None:
             _finalize_cadence_session(self.cadence, self.config_path)
             self.cadence = None
+
+    def close_active_copy_key_session(self) -> None:
+        """Persist and clear any in-flight Copy Key session."""
+        if self.copy_key is not None:
+            _finalize_copy_key_session(self.copy_key, self.config_path)
+            self.copy_key = None
 
 
 async def _run_start_session(state: ConnectionState) -> None:
@@ -291,13 +315,31 @@ async def handler(
                 if new_session is not None:
                     state.cadence = new_session
             elif action == "complete-cadence-session":
-                # UI signals that the final exercise of the set has been
-                # matched. Finalize the in-flight session immediately so
-                # any further keying (while the learner reads the
-                # review, decides on New, etc.) is not attributed to
-                # the just-finished round. Idempotent — the closer is a
-                # no-op when there is no active session.
                 state.close_active_cadence_session()
+            elif action == "request-copy-key-exercises":
+                state.close_active_copy_key_session()
+                await supersede(state.copy_key_play_task)
+                new_session = await _request_copy_key_exercises_action(ws, state.config_path)
+                if new_session is not None:
+                    state.copy_key = new_session
+            elif action == "play-copy-key-exercise":
+                if state.copy_key is None:
+                    await _send_event(ws, {"type": "error", "reason": "no-active-copy-key-session"})
+                else:
+                    exercise_index = message.get("exercise_index")
+                    if not isinstance(exercise_index, int) or isinstance(exercise_index, bool):
+                        await _send_event(
+                            ws,
+                            {"type": "error", "reason": "invalid-copy-key-exercise-index"},
+                        )
+                    else:
+                        await supersede(state.copy_key_play_task)
+                        state.copy_key_play_task = asyncio.create_task(
+                            _play_copy_key_exercise(ws, state.copy_key, exercise_index)
+                        )
+            elif action == "complete-copy-key-session":
+                await supersede(state.copy_key_play_task)
+                state.close_active_copy_key_session()
             elif action == "start-key-input":
                 await supersede(state.key_input_task)
                 state.key_input_task = asyncio.create_task(
@@ -305,7 +347,7 @@ async def handler(
                         ws,
                         state.config_path,
                         state.key_note_source,
-                        recorder=state.cadence_recorder,
+                        recorder=state.active_recorder,
                     )
                 )
             elif action == "start-browser-key-input":
@@ -345,7 +387,7 @@ async def handler(
                         ),
                     ),
                     clock_offset=clock_offset,
-                    recorder=state.cadence_recorder,
+                    recorder=state.active_recorder,
                 )
                 await _send_event(
                     ws,
@@ -379,7 +421,7 @@ async def handler(
                     audio_params=state.browser.audio_params,
                     assembler=state.browser.assembler,
                     decoder=state.browser.decoder,
-                    recorder=state.cadence_recorder,
+                    recorder=state.active_recorder,
                 )
                 # Only arm the character-gap flush after a completed element
                 # (note-off). On note-on we're mid-stroke; rearming the timer
@@ -400,6 +442,7 @@ async def handler(
                 if state.key_input_task is not None and not state.key_input_task.done():
                     state.key_input_task.cancel()
                 state.close_active_cadence_session()
+                state.close_active_copy_key_session()
             elif action == "play-test-message":
                 await supersede(state.test_message_task)
                 state.test_message_task = asyncio.create_task(
@@ -464,18 +507,16 @@ async def handler(
     except ConnectionClosed:
         pass
     finally:
-        # Connection closing — cancel any orphan tasks so playback stops
-        # when the learner closes the tab.
         for task in (
             state.session_task,
             state.letter_task,
             state.test_message_task,
             state.key_input_task,
+            state.copy_key_play_task,
         ):
             if task is not None and not task.done():
                 task.cancel()
         if state.browser is not None:
             await state.browser.cancel_flush()
-        # Persist any in-flight Cadence session before the connection
-        # disappears. The learner may have closed the tab mid-keying.
         state.close_active_cadence_session()
+        state.close_active_copy_key_session()

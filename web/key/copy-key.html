@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Copy 653 — Key — Copy Key</title>
+    <link rel="stylesheet" href="../css/core.css">
+    <link rel="stylesheet" href="../css/copy-653.css">
+    <link rel="stylesheet" href="../css/key-page.css">
+    <!-- Runs blocking before CSS paint to prevent theme flash -->
+    <script src="../js/theme.js"></script>
+    <script src="../js/landing-keybinds.js" defer></script>
+</head>
+<body class="landing-body">
+    <copy-theme-btn></copy-theme-btn>
+    <main class="landing-shell exercises-shell copy-key-shell">
+        <copy-header eyebrow="Key" eyebrow-key="K" title="Copy Key" speaker keyer-mode></copy-header>
+
+        <copy-top-menu show-new></copy-top-menu>
+
+        <copy-koch-sequence section-label="Known symbol sequence" collapsible read-only></copy-koch-sequence>
+
+        <section class="controls" aria-label="Listening controls">
+            <button type="button"
+                    id="start"
+                    disabled
+                    data-mode="idle"
+                    aria-keyshortcuts="A"
+                    title="Start (A)">St<u>a</u>rt</button>
+            <span class="countdown" id="countdown" hidden aria-live="polite"></span>
+        </section>
+        <p class="primed" id="primed">Primed: —</p>
+
+        <copy-sent></copy-sent>
+
+        <copy-rhythm-review
+            meta="no symbols"
+            tabs-label="Exercise review tabs"
+            symbols-label="Baseline rhythm for the active exercise"
+        ></copy-rhythm-review>
+
+        <copy-diagnostics></copy-diagnostics>
+    </main>
+    <script type="module" src="../js/partials/diagnostics.js"></script>
+    <script type="module" src="../js/partials/header.js"></script>
+    <script type="module" src="../js/partials/koch-sequence.js"></script>
+    <script type="module" src="../js/partials/rhythm-review.js"></script>
+    <script type="module" src="../js/partials/sent.js"></script>
+    <script type="module" src="../js/partials/theme-btn.js"></script>
+    <script type="module" src="../js/partials/top-menu.js"></script>
+    <script type="module" src="../js/copy-key-timing.js"></script>
+</body>
+</html>

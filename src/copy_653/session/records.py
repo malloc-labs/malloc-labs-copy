@@ -5,15 +5,18 @@ on natural session-end. Format is documented in
 ``docs/specification.md`` §5.1 and the schema is versioned via
 ``schema_version`` so analysis tools can guard against shape drift.
 
-The two record shapes today:
+The three record shapes today:
 
 - ``koch-exercise`` — listen-only Koch Method Exercises session. The
   engine owns the truth (the played symbol timeline).
 - ``cadence-send`` — Key → Cadence sending session. The learner keys
   exercises; the record carries both the engine-generated targets and
   the decoded sent stream plus raw MIDI press/release events.
+- ``copy-key`` — Copy → Key session. The engine plays short exercises
+  (single words, 1-3 symbols) and the learner head-copies then keys
+  back. Carries both the played symbol timeline and the keying stream.
 
-Both records share a common envelope (engine version, timestamps,
+All records share a common envelope (engine version, timestamps,
 audio parameter snapshot, claimed set) so analysis tools can treat
 them uniformly.
 
@@ -162,6 +165,51 @@ class CadenceSendRecord:
         return payload
 
 
+@dataclass(slots=True)
+class CopyKeyRecord:
+    """A completed Copy → Key (head-copy-then-send) session.
+
+    Combines the played audio timeline (like koch-exercise) with the
+    keying stream (like cadence-send). Each exercise is a single word
+    of 1-3 symbols; the learner hears it, holds it, and keys it back.
+    """
+
+    started_at: datetime
+    ended_at: datetime
+    audio: AudioParameters
+    claimed_set: tuple[str, ...]
+    seed: int
+    generation: dict[str, Any] = field(default_factory=dict)
+    exercises: list[dict[str, Any]] = field(default_factory=list)
+    # Played symbol timeline. Each entry:
+    # {"symbol", "t_on", "t_off", "exercise_index", "word_index", "word"}
+    symbols: list[dict[str, Any]] = field(default_factory=list)
+    # Decoded sent symbols. Each entry:
+    # {"symbol", "pattern", "started_at", "ended_at", "leading_gap"}.
+    sent: list[dict[str, Any]] = field(default_factory=list)
+    # Raw key press/release events. Each entry:
+    # {"kind", "note", "pressed", "timestamp"}
+    key_events: list[dict[str, Any]] = field(default_factory=list)
+    mode: str = "copy-key"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "engine_version": __version__,
+            "mode": self.mode,
+            "started_at": _format_iso8601_utc(self.started_at),
+            "ended_at": _format_iso8601_utc(self.ended_at),
+            "audio": _audio_snapshot(self.audio),
+            "claimed_set": list(self.claimed_set),
+            "seed": self.seed,
+            "generation": dict(self.generation),
+            "exercises": [dict(exercise) for exercise in self.exercises],
+            "symbols": list(self.symbols),
+            "sent": list(self.sent),
+            "key_events": list(self.key_events),
+        }
+
+
 def update_koch_answers(path: Path, answers: list[str]) -> int:
     """Rewrite an existing koch-exercise record with learner answers.
 
@@ -208,7 +256,7 @@ def update_koch_answers(path: Path, answers: list[str]) -> int:
 
 
 def write_record(
-    record: KochExerciseRecord | CadenceSendRecord,
+    record: KochExerciseRecord | CadenceSendRecord | CopyKeyRecord,
     save_directory: Path,
 ) -> Path:
     """Write a session record to ``<save_directory>/<mode>/<stamp>.json``.

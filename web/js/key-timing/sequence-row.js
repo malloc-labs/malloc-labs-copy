@@ -52,26 +52,22 @@ export function renderSequence(state) {
     const claimedSet = new Set(state.symbols);
     claimedSymbolSet = claimedSet;
     const next = state.suggested_next;
-    // Freeplay (no Copy section) renders every token uniformly so only
-    // the currently playing symbol stands out; the claimed / next /
-    // available tiering is a Cadence affordance tied to the curriculum.
-    const uniform = !copyHistoryEl;
-    // Send-side readiness nudge: paints an anchor border around the
-    // "next" token when saved cadence-send evidence has cleared the
-    // bar. Independent from the listen-side `ready_for_next`, which
-    // the Koch page reads — one channel can lead or lag the other.
-    // The CSS hook is the same `data-ready="true"` selector used on
-    // the Koch row (web/css/copy-653.css), so uniform/Freeplay rows
-    // (no "next" token) silently render as no-op.
-    sequenceRow.dataset.ready = state.ready_for_next_send ? "true" : "false";
+    // Freeplay and Copy Key render every token uniformly — no "next"
+    // highlight, no send-side nudge. Copy Key is a combined exercise
+    // of two disciplines, not a progression zone.
+    const isCopyKey = !!document.querySelector(".copy-key-shell");
+    const uniform = !copyHistoryEl || isCopyKey;
+    if (!isCopyKey) {
+        sequenceRow.dataset.ready = state.ready_for_next_send ? "true" : "false";
+    }
 
     KOCH_ORDER.forEach((sym) => {
         const token = sequenceRow.querySelector(`[data-symbol="${CSS.escape(sym)}"]`);
         if (!token) return;
 
         if (uniform) {
-            token.dataset.state = "available";
-            token.title = sym;
+            token.dataset.state = claimedSet.has(sym) ? "claimed" : "available";
+            token.title = claimedSet.has(sym) ? `${sym} — known` : `${sym} — not yet known`;
         } else if (claimedSet.has(sym)) {
             token.dataset.state = "claimed";
             token.title = `${sym} — known`;
