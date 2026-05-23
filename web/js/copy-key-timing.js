@@ -134,7 +134,7 @@ function setStartButtonMode(mode) {
     } else if (mode === "active") {
         clearCountdown();
         startBtn.disabled = false;
-        startBtn.textContent = "Abort";
+        startBtn.innerHTML = "A<u>b</u>ort";
     }
 }
 
@@ -148,6 +148,9 @@ function clearCountdown() {
 }
 
 function beginCountdownThenStart() {
+    if (!isSoundEnabled()) {
+        toggleSidetone();
+    }
     let remaining = COUNTDOWN_SECONDS;
     countdownEl.hidden = false;
     countdownEl.textContent = String(remaining);
@@ -219,10 +222,15 @@ function renderSentSymbol(event) {
     sentSymbolEl.textContent = event.symbol;
     sentCount++;
     const li = document.createElement("li");
-    li.textContent = event.symbol;
+    const leading = event.leading_gap || "none";
+    li.classList.add(`key-sent-history__item--leading-${leading}`);
+    const symbolEl = document.createElement("span");
+    symbolEl.className = "key-sent-history__symbol";
+    symbolEl.textContent = event.symbol;
+    li.append(symbolEl);
     sentHistoryEl.appendChild(li);
     while (sentHistoryEl.children.length > MAX_SENT_HISTORY) {
-        sentHistoryEl.removeChild(sentHistoryEl.firstChild);
+        sentHistoryEl.firstElementChild.remove();
     }
     if (currentExerciseIndex > 0 && currentExerciseIndex <= sentByExercise.length) {
         sentByExercise[currentExerciseIndex - 1].push(event);
@@ -268,6 +276,18 @@ function endSession() {
         activeSocket.send(JSON.stringify({ action: "complete-copy-key-session" }));
     }
     primedEl.textContent = `Complete — ${exercises.length} exercises`;
+    setStartButtonMode("idle");
+}
+
+function abortSession() {
+    sessionActive = false;
+    exercisePlaying = false;
+    lastSentSymbol = "";
+    clearAdvanceTimer();
+    if (activeSocket && activeSocket.readyState === WebSocket.OPEN) {
+        activeSocket.send(JSON.stringify({ action: "abort-copy-key-session" }));
+    }
+    primedEl.textContent = `Aborted`;
     setStartButtonMode("idle");
 }
 
@@ -409,7 +429,7 @@ startBtn.addEventListener("click", () => {
     if (!activeSocket || activeSocket.readyState !== WebSocket.OPEN) return;
     const mode = startBtn.dataset.mode;
     if (mode === "active") {
-        endSession();
+        abortSession();
         return;
     }
     if (mode === "counting") {
@@ -493,6 +513,11 @@ window.addEventListener("keydown", (event) => {
     } else if (key === "a") {
         event.preventDefault();
         if (!startBtn.disabled) startBtn.click();
+    } else if (key === "b") {
+        if (sessionActive) {
+            event.preventDefault();
+            abortSession();
+        }
     } else if (key === "r") {
         event.preventDefault();
         toggleRhythmReview();

@@ -46,7 +46,9 @@ export function renderRhythmReview() {
     if (!rhythmReviewSymbolsEl || !rhythmReviewMetaEl) return;
     // Freeplay has its own review pipeline (driven by the custom-input
     // textbox); leave the section alone so freeplay-custom.js owns it.
-    if (!copyHistoryEl) return;
+    // Copy Key has no copyHistoryEl but does use this review path.
+    const isCopyKey = !!document.querySelector(".copy-key-shell");
+    if (!copyHistoryEl && !isCopyKey) return;
     rhythmReviewSymbolsEl.replaceChildren();
     if (rhythmReviewTabsEl) rhythmReviewTabsEl.replaceChildren();
 
