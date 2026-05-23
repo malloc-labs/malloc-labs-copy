@@ -146,7 +146,7 @@ function buildExercisesTable(record, sentBuckets) {
 
     const thead = document.createElement("thead");
     const headRow = document.createElement("tr");
-    ["#", "Target", "Sent", "Attempts", "Spacing", "Formation", "Gap", "Band", "Burden", "Gear"].forEach((label) => {
+    ["#", "Target", "Sent", "Attempts", "Spacing", "Formation", "Gap", "Combined", "Band", "Burden", "Gear"].forEach((label) => {
         const th = document.createElement("th");
         th.scope = "col";
         th.textContent = label;
@@ -182,6 +182,7 @@ function buildExercisesTable(record, sentBuckets) {
         appendCell(row, fraction(analysis.spacing_fraction));
         appendCell(row, fraction(analysis.formation_fraction));
         appendCell(row, fraction(analysis.gap_timing_fraction));
+        appendCell(row, fraction(analysis.combined_fraction));
         appendCell(row, exercise.burden_band ?? "-");
         appendCell(row, exercise.burden_score ?? "-");
         appendCell(row, exercise.gear ?? "-");
