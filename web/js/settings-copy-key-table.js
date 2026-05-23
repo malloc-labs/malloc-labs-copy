@@ -37,6 +37,10 @@ function appendCell(row, value) {
     row.appendChild(cell);
 }
 
+function fraction(value) {
+    return Number.isFinite(value) ? value.toFixed(3) : "-";
+}
+
 // Split the flat sent array into per-exercise buckets by detecting BK
 // (B immediately followed by K) boundaries. BK pairs are stripped.
 function splitSentByExercise(sent) {
@@ -133,7 +137,7 @@ function buildExercisesTable(record, sentBuckets) {
 
     const thead = document.createElement("thead");
     const headRow = document.createElement("tr");
-    ["#", "Target", "Sent", "Band", "Burden", "Gear"].forEach((label) => {
+    ["#", "Target", "Sent", "Attempts", "Spacing", "Formation", "Gap", "Band", "Burden", "Gear"].forEach((label) => {
         const th = document.createElement("th");
         th.scope = "col";
         th.textContent = label;
@@ -146,6 +150,7 @@ function buildExercisesTable(record, sentBuckets) {
     exercises.forEach((exercise, idx) => {
         const bucket = sentBuckets[idx] || [];
         const correct = isSentCorrect(exercise.target, bucket);
+        const analysis = exercise.analysis || {};
         const row = document.createElement("tr");
         appendCell(row, exercise.index || idx + 1);
         appendCell(row, exercise.target || "-");
@@ -162,6 +167,10 @@ function buildExercisesTable(record, sentBuckets) {
         }
         row.appendChild(sentCell);
 
+        appendCell(row, analysis.attempt_count ?? "-");
+        appendCell(row, fraction(analysis.spacing_fraction));
+        appendCell(row, fraction(analysis.formation_fraction));
+        appendCell(row, fraction(analysis.gap_timing_fraction));
         appendCell(row, exercise.burden_band ?? "-");
         appendCell(row, exercise.burden_score ?? "-");
         appendCell(row, exercise.gear ?? "-");
