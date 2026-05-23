@@ -259,6 +259,12 @@ mountCalendar({
     emptyLabel: "saved send sessions",
 });
 
+mountCalendar({
+    root: document.getElementById("settings-copy-key-calendar"),
+    endpoint: "/api/copy-key-sessions",
+    emptyLabel: "saved copy > key sessions",
+});
+
 // Wire each [data-calendar-open="<dialog-id>"] trigger to showModal()
 // the matching <dialog>. Clicking the backdrop closes the dialog —
 // matches the existing settings-koch-lifetime dialog behaviour.

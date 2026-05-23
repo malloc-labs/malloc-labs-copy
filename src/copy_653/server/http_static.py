@@ -35,7 +35,11 @@ from copy_653.sequence.cadence_analysis import (
     load_band_history as load_cadence_band_history,
     record_claimed_set_key as cadence_record_claimed_set_key,
 )
-from copy_653.server.records import _iter_cadence_records, _iter_koch_records
+from copy_653.server.records import (
+    _iter_cadence_records,
+    _iter_copy_key_records,
+    _iter_koch_records,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +167,43 @@ def _build_static_handler(web_root: Path, config_path: Path | None = None):
                 )
             )
 
+        if clean_path == "/api/copy-key-sessions":
+            return _json_response(_list_copy_key_sessions(config_path))
+
+        if clean_path == "/api/copy-key-session":
+            params = parse_qs(parsed_path.query)
+            filename_values = params.get("file") or params.get("filename") or []
+            filename = filename_values[0] if filename_values else ""
+            return _read_copy_key_session(config_path, filename)
+
+        if clean_path == "/api/delete-copy-key-session":
+            params = parse_qs(parsed_path.query)
+            filename_values = params.get("file") or params.get("filename") or []
+            filename = filename_values[0] if filename_values else ""
+            return _delete_copy_key_session(config_path, filename)
+
+        if clean_path == "/api/copy-key-band-evidence":
+            params = parse_qs(parsed_path.query)
+            key_values = params.get("claimed_set_key") or []
+            window_values = params.get("window_size") or []
+            return _json_response(
+                _read_copy_key_band_evidence(
+                    config_path,
+                    claimed_set_key=key_values[0] if key_values else None,
+                    window_size_raw=window_values[0] if window_values else None,
+                )
+            )
+
+        if clean_path == "/api/copy-key-band-history":
+            params = parse_qs(parsed_path.query)
+            key_values = params.get("claimed_set_key") or []
+            return _json_response(
+                _read_copy_key_band_history(
+                    config_path,
+                    claimed_set_key=key_values[0] if key_values else None,
+                )
+            )
+
         if clean_path == "/api/backup":
             params = parse_qs(parsed_path.query)
             kind_values = params.get("kind") or []
@@ -234,6 +275,7 @@ def _json_response(payload: dict[str, Any]) -> tuple[HTTPStatus, list[tuple[str,
 _BACKUP_KINDS: dict[str, str] = {
     "koch-exercise": "koch-exercise",
     "cadence-send": "cadence-send",
+    "copy-key": "copy-key",
 }
 
 
@@ -354,6 +396,7 @@ def _list_koch_exercises(config_path: Path | None) -> dict[str, Any]:
 # else that could escape the koch-exercise subdirectory.
 _KOCH_FILENAME_RE = re.compile(r"^koch-exercise-[0-9A-Za-z-]+\.json$")
 _CADENCE_FILENAME_RE = re.compile(r"^cadence-send-[0-9A-Za-z-]+\.json$")
+_COPY_KEY_FILENAME_RE = re.compile(r"^copy-key-[0-9A-Za-z-]+\.json$")
 
 
 def _read_koch_band_evidence(
@@ -715,3 +758,167 @@ def _delete_cadence_send(
         subdirectory="cadence-send",
         mode="cadence-send",
     )
+
+
+def _list_copy_key_sessions(config_path: Path | None) -> dict[str, Any]:
+    """List saved copy-key records for the settings UI."""
+    try:
+        save_directory = load_save_directory(config_path)
+    except Exception:
+        logger.exception("could not resolve save_directory for copy-key listing")
+        return {"save_directory": "", "records": []}
+
+    target_dir = save_directory / "copy-key"
+    records: list[dict[str, Any]] = []
+    if target_dir.is_dir():
+        for entry in sorted(target_dir.glob("copy-key-*.json")):
+            try:
+                data = json.loads(entry.read_text())
+            except (OSError, ValueError):
+                logger.exception("skipping unreadable copy-key record: %s", entry)
+                continue
+            if data.get("mode") != "copy-key":
+                continue
+            started_at = data.get("started_at")
+            claimed_set = data.get("claimed_set")
+            exercises = data.get("exercises")
+            if (
+                not isinstance(started_at, str)
+                or not isinstance(claimed_set, list)
+                or not isinstance(exercises, list)
+            ):
+                continue
+            ended_at = data.get("ended_at")
+            records.append(
+                {
+                    "filename": entry.name,
+                    "started_at": started_at,
+                    "ended_at": ended_at if isinstance(ended_at, str) else None,
+                    "claimed_set": [str(s) for s in claimed_set],
+                    "exercise_count": len(exercises),
+                }
+            )
+
+    records.sort(key=lambda r: r["started_at"], reverse=True)
+    return {"save_directory": str(save_directory), "records": records}
+
+
+def _read_copy_key_session(
+    config_path: Path | None, filename: str
+) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
+    if not filename or not _COPY_KEY_FILENAME_RE.fullmatch(filename):
+        return _http_response(HTTPStatus.BAD_REQUEST, b"invalid filename")
+
+    try:
+        save_directory = load_save_directory(config_path)
+    except Exception:
+        logger.exception("could not resolve save_directory for copy-key read")
+        return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"save directory unavailable")
+
+    target_dir = (save_directory / "copy-key").resolve()
+    resolved = (target_dir / filename).resolve()
+    try:
+        resolved.relative_to(target_dir)
+    except ValueError:
+        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+    if not resolved.is_file():
+        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+
+    try:
+        data = json.loads(resolved.read_text())
+    except (OSError, ValueError):
+        logger.exception("failed to read copy-key record: %s", resolved)
+        return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"read failed")
+    if not isinstance(data, dict) or data.get("mode") != "copy-key":
+        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+
+    return _json_response(data)
+
+
+def _delete_copy_key_session(
+    config_path: Path | None, filename: str
+) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
+    return _delete_record_file(
+        config_path=config_path,
+        filename=filename,
+        filename_re=_COPY_KEY_FILENAME_RE,
+        subdirectory="copy-key",
+        mode="copy-key",
+    )
+
+
+def _read_copy_key_band_evidence(
+    config_path: Path | None,
+    *,
+    claimed_set_key: str | None,
+    window_size_raw: str | None,
+) -> dict[str, Any]:
+    try:
+        save_directory = load_save_directory(config_path)
+    except Exception:
+        logger.exception("could not resolve save_directory for copy-key evidence read")
+        return {
+            "save_directory": "",
+            "claimed_set_key": claimed_set_key or "",
+            "session_count": 0,
+            "window_size": CADENCE_EVIDENCE_WINDOW_SIZE,
+            "sessions_used": 0,
+            "bands": [],
+        }
+
+    records = _iter_copy_key_records(save_directory)
+    resolved_key = claimed_set_key
+    if not resolved_key:
+        latest = max(records, key=lambda r: str(r.get("started_at") or ""), default=None)
+        resolved_key = cadence_record_claimed_set_key(latest) if latest else ""
+
+    window_size = CADENCE_EVIDENCE_WINDOW_SIZE
+    if window_size_raw is not None:
+        try:
+            parsed = int(window_size_raw)
+        except (TypeError, ValueError):
+            parsed = window_size
+        if parsed > 0:
+            window_size = parsed
+
+    evidence = load_cadence_band_evidence(
+        records,
+        claimed_set_key=resolved_key,
+        window_size=window_size,
+    )
+    evidence["save_directory"] = str(save_directory)
+    return evidence
+
+
+def _read_copy_key_band_history(
+    config_path: Path | None,
+    *,
+    claimed_set_key: str | None,
+) -> dict[str, Any]:
+    try:
+        save_directory = load_save_directory(config_path)
+    except Exception:
+        logger.exception("could not resolve save_directory for copy-key band-history read")
+        return {
+            "save_directory": "",
+            "claimed_set_key": claimed_set_key or "",
+            "session_count": 0,
+            "sessions": [],
+            "bands": [],
+            "gear_changes": [],
+            "current_gears": {},
+        }
+
+    records = _iter_copy_key_records(save_directory)
+    resolved_key = claimed_set_key
+    if not resolved_key:
+        latest = max(
+            records,
+            key=lambda r: str(r.get("started_at") or ""),
+            default=None,
+        )
+        resolved_key = cadence_record_claimed_set_key(latest) if latest else ""
+
+    history = load_cadence_band_history(records, claimed_set_key=resolved_key)
+    history["save_directory"] = str(save_directory)
+    return history

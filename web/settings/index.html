@@ -6,6 +6,7 @@
     <title>Copy 653 — Settings</title>
     <link rel="stylesheet" href="../css/core.css">
     <link rel="stylesheet" href="../css/copy-653.css">
+    <link rel="stylesheet" href="../css/key-page.css">
     <link rel="stylesheet" href="../css/settings.css">
     <!-- Runs blocking before CSS paint to prevent theme flash -->
     <script src="../js/theme.js"></script>
@@ -41,6 +42,14 @@
                     aria-selected="false"
                     data-selected="false"
                     data-tab="key">Key Exercises</button>
+            <button type="button"
+                    class="settings-tab"
+                    role="tab"
+                    id="settings-tab-copy-key"
+                    aria-controls="settings-panel-copy-key"
+                    aria-selected="false"
+                    data-selected="false"
+                    data-tab="copy-key">Copy &gt; Key</button>
         </nav>
 
         <section class="settings-panel"
@@ -529,6 +538,130 @@
             </dialog>
         </section>
 
+        <section class="settings-panel"
+                 id="settings-panel-copy-key"
+                 role="tabpanel"
+                 aria-labelledby="settings-tab-copy-key"
+                 hidden>
+            <section class="settings-koch-rollup" id="settings-copy-key-rollup" hidden>
+                <h3 class="settings-koch-rollup__heading">
+                    Recent copy &gt; key evidence
+                    <span class="settings-koch-rollup__meta" id="settings-copy-key-rollup-meta"></span>
+                    <button type="button"
+                            class="settings-koch-rollup__history-link"
+                            id="settings-copy-key-history-link"
+                            hidden>Full history &rarr;</button>
+                </h3>
+                <table class="settings-koch-rollup__table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Band</th>
+                            <th scope="col">Recent fractions</th>
+                            <th scope="col">Metrics</th>
+                            <th scope="col">Strong</th>
+                            <th scope="col">Low</th>
+                        </tr>
+                    </thead>
+                    <tbody id="settings-copy-key-rollup-tbody"></tbody>
+                </table>
+            </section>
+            <div class="settings-records-meta">
+                <p class="settings-koch-meta" id="settings-copy-key-meta">Loading saved copy &gt; key sessions&hellip;</p>
+                <div class="settings-records-meta__actions">
+                    <button type="button"
+                            class="btn settings-calendar-btn"
+                            data-calendar-open="settings-copy-key-calendar-dialog">Calendar</button>
+                    <button type="button"
+                            class="btn settings-backup-btn"
+                            id="settings-copy-key-backup"
+                            data-kind="copy-key">Back up</button>
+                </div>
+            </div>
+            <div class="settings-koch-table-wrap">
+                <table class="settings-koch-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">#</th>
+                            <th scope="col">Date &amp; time</th>
+                            <th scope="col">Claimed symbols</th>
+                            <th scope="col">Exercises</th>
+                            <th scope="col">Delete</th>
+                        </tr>
+                    </thead>
+                    <tbody id="settings-copy-key-tbody"></tbody>
+                </table>
+            </div>
+            <dialog class="settings-koch-dialog settings-calendar-dialog"
+                    id="settings-copy-key-calendar-dialog">
+                <form method="dialog" class="settings-koch-dialog__bar">
+                    <h2 class="settings-koch-dialog__title">Copy &gt; Key practice calendar</h2>
+                    <button type="submit"
+                            class="settings-koch-dialog__close"
+                            aria-label="Close calendar">Close</button>
+                </form>
+                <div class="settings-koch-dialog__body">
+                    <div class="settings-calendar" id="settings-copy-key-calendar">
+                        <div class="settings-calendar__header">
+                            <button type="button"
+                                    class="settings-calendar__nav"
+                                    data-calendar-prev
+                                    aria-label="Previous month">&larr;</button>
+                            <h3 class="settings-calendar__title" data-calendar-title>&nbsp;</h3>
+                            <button type="button"
+                                    class="settings-calendar__nav"
+                                    data-calendar-next
+                                    aria-label="Next month">&rarr;</button>
+                        </div>
+                        <p class="settings-calendar__meta" data-calendar-meta>Loading saved copy &gt; key sessions&hellip;</p>
+                        <div class="settings-calendar__weekdays" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                        </div>
+                        <div class="settings-calendar__grid"
+                             data-calendar-grid
+                             role="grid"></div>
+                    </div>
+                </div>
+            </dialog>
+            <dialog class="settings-koch-dialog" id="settings-copy-key-lifetime-dialog">
+                <form method="dialog" class="settings-koch-dialog__bar">
+                    <h2 class="settings-koch-dialog__title" id="settings-copy-key-lifetime-title">
+                        Lifetime
+                    </h2>
+                    <button type="submit"
+                            class="settings-koch-dialog__close"
+                            aria-label="Close lifetime view">Close</button>
+                </form>
+                <div class="settings-koch-dialog__body"
+                     id="settings-copy-key-lifetime-body"></div>
+            </dialog>
+            <dialog class="settings-koch-dialog" id="settings-copy-key-dialog">
+                <form method="dialog" class="settings-koch-dialog__bar">
+                    <h2 class="settings-koch-dialog__title" id="settings-copy-key-dialog-title">
+                        Copy &gt; Key session
+                    </h2>
+                    <button type="submit"
+                            class="settings-koch-dialog__close"
+                            aria-label="Close copy key session details">Close</button>
+                </form>
+                <div class="settings-koch-dialog__body" id="settings-copy-key-dialog-body"></div>
+                <div class="settings-koch-dialog__nav" aria-label="Copy key session navigation">
+                    <button type="button"
+                            class="settings-koch-dialog__nav-button"
+                            id="settings-copy-key-dialog-prev"
+                            aria-label="Previous copy key session"
+                            title="Previous session (Left arrow, H, or <)">&lt;</button>
+                    <span class="settings-koch-dialog__nav-count"
+                          id="settings-copy-key-dialog-count"
+                          aria-live="polite">0 of 0</span>
+                    <button type="button"
+                            class="settings-koch-dialog__nav-button"
+                            id="settings-copy-key-dialog-next"
+                            aria-label="Next copy key session"
+                            title="Next session (Right arrow, L, or >)">&gt;</button>
+                </div>
+            </dialog>
+        </section>
+
     </main>
     <script type="module" src="../js/partials/landing-header.js"></script>
     <script type="module" src="../js/partials/theme-btn.js"></script>
@@ -540,6 +673,9 @@
     <script type="module" src="../js/settings-key-table.js"></script>
     <script type="module" src="../js/settings-key-rollup.js"></script>
     <script type="module" src="../js/settings-key-lifetime.js"></script>
+    <script type="module" src="../js/settings-copy-key-table.js"></script>
+    <script type="module" src="../js/settings-copy-key-rollup.js"></script>
+    <script type="module" src="../js/settings-copy-key-lifetime.js"></script>
     <script type="module" src="../js/settings-calendar.js"></script>
     <script type="module" src="../js/settings-backup.js"></script>
 </body>
