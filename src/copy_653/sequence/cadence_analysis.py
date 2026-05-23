@@ -111,7 +111,9 @@ def apply_copy_key_analysis(
         bucket = buckets[idx] if idx < len(buckets) else []
         attempts = _segment_attempts(target, bucket)
         analysed_attempts = [
-            _analyse_attempt(target, attempt, key_events=key_events, dit_seconds=dit_seconds)
+            _analyse_attempt(
+                target, attempt, key_events=key_events, dit_seconds=dit_seconds, mode="copy-key"
+            )
             for attempt in attempts
         ]
         selected_index = _select_attempt_index(analysed_attempts)
@@ -271,12 +273,19 @@ def _segment_attempts(target: str, events: list[dict[str, Any]]) -> list[list[di
     return attempts
 
 
+_COMBINED_WEIGHTS = {
+    "cadence-send": (0.40, 0.30, 0.20, 0.05, 0.05),
+    "copy-key": (0.55, 0.10, 0.20, 0.10, 0.05),
+}
+
+
 def _analyse_attempt(
     target: str,
     events: list[dict[str, Any]],
     *,
     key_events: list[dict[str, Any]],
     dit_seconds: float,
+    mode: str = "cadence-send",
 ) -> dict[str, Any]:
     expected_steps = _expected_steps(target)
     expected_symbols = "".join(step["symbol"] for step in expected_steps)
@@ -328,12 +337,15 @@ def _analyse_attempt(
     )
     complete = _attempt_is_complete(expected_steps, events)
 
+    w_sym, w_spc, w_form, w_gap, w_dec = _COMBINED_WEIGHTS.get(
+        mode, _COMBINED_WEIGHTS["cadence-send"]
+    )
     combined = (
-        (0.40 * symbol_fraction)
-        + (0.30 * spacing_fraction)
-        + (0.20 * formation_fraction)
-        + (0.05 * gap_timing_fraction)
-        + (0.05 * decode_health)
+        (w_sym * symbol_fraction)
+        + (w_spc * spacing_fraction)
+        + (w_form * formation_fraction)
+        + (w_gap * gap_timing_fraction)
+        + (w_dec * decode_health)
     )
     return {
         "events": [
