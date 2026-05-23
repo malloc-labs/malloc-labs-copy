@@ -225,14 +225,12 @@ async def _start_action(
         gears=gears,
         rst_steps=rst_steps_for_session or None,
     )
-    # Scaffold-break audio engages when every burden band is at the
-    # top gear (3) and the learner is still copying strongly. That
-    # condition is exactly _next_symbol_evidence — the same signal
-    # that lights the "in contention" box on the sequence row, so
-    # the audio probe and the visual probe stay in lockstep. The full
-    # nudge (60-min floor + evidence) is a separate gate; scaffold-
-    # break runs through that ramp.
-    scaffold_break = _next_symbol_evidence(save_directory, claimed_set_key)
+    # Scaffold-break audio tracks the gear axis: it engages when every
+    # band is at MAX_GEAR and disengages only when a band drops out.
+    # This inherits the gear axis's hysteresis (4 consecutive low runs
+    # to drop) so one imperfect copy under lead-in disruption does not
+    # yank away the disruption the learner is practising through.
+    scaffold_break = all(g >= MAX_GEAR for g in gears)
     rst_draws_for_audio: list[tuple[int | None, int | None]] | None = (
         list(result.rst_draws) if any(d != (None, None) for d in result.rst_draws) else None
     )

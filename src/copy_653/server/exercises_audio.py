@@ -33,10 +33,9 @@ the early-Koch learner has built up around exercise structure:
   across the whole assembled buffer — the floor feels like band
   conditions rather than a static sheet.
 
-Both engage once the band-evidence signal goes green
-(:func:`copy_653.server.records._next_symbol_evidence`) — the
-durability probe that runs through the 60-minute per-claimed-set
-ramp.
+Both engage once every burden band reaches ``MAX_GEAR`` and disengage
+only when a band drops out — tracking the gear axis's own hysteresis
+rather than the more volatile next-symbol evidence signal.
 
 This module is pure: no I/O, no clock, no module-level random state.
 The WebSocket server decides when to start a session and how to emit
