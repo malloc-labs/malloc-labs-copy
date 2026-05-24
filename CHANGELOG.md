@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.11.1](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.11.0...v0.11.1) (2026-05-24)
+
+
+### Bug Fixes
+
+* **copy-key:** add tooltips to exercises table headers ([0d67e72](https://github.com/malloc-labs/malloc-labs-copy/commit/0d67e72a04d3ec9db52a46ed67219f0af3809f05))
+* **copy-key:** add tooltips to exercises table headers ([bce64eb](https://github.com/malloc-labs/malloc-labs-copy/commit/bce64eb966660ac0b2004a9354db6222bc79b064))
+* **copy-key:** cap gear-0 exercise symbols, add State column, fix underline offset ([345bdbb](https://github.com/malloc-labs/malloc-labs-copy/commit/345bdbbc974a41586feb9966bb5634c2644e7fc1))
+* **copy-key:** cap gear-0 exercise symbols, add State column, fix underline offset ([f4464b1](https://github.com/malloc-labs/malloc-labs-copy/commit/f4464b12bc778ac1cc31c44a6184a9f16962e01e))
+* **docs:** update README for Copy Key, config tables, and Settings layout ([3643bff](https://github.com/malloc-labs/malloc-labs-copy/commit/3643bff84399ed114ae72cf571b370a8e87b80c7))
+* **docs:** update README for Copy Key, config tables, and Settings layout ([688f1e8](https://github.com/malloc-labs/malloc-labs-copy/commit/688f1e8f8855d2b6792a40b4a3bb15385a3c120f))
+* **koch:** clarify summary row state label ([c66b210](https://github.com/malloc-labs/malloc-labs-copy/commit/c66b2102fccb6ea4a11a9f45b4255c78a4129e19))
+* **koch:** clarify summary row state label to "bands strong" ([48cbfee](https://github.com/malloc-labs/malloc-labs-copy/commit/48cbfee5d92ea03f46d564fbe5cd11feec287516))
+* **koch:** surface per-symbol confusion pairs on Settings Koch tab ([250c7c0](https://github.com/malloc-labs/malloc-labs-copy/commit/250c7c0247e0d99a2a7f31ac3895afbf17fbf351))
+* **koch:** surface per-symbol confusion pairs on Settings Koch tab ([5ef89d4](https://github.com/malloc-labs/malloc-labs-copy/commit/5ef89d48ff9cebf1de0bc1ae22c701793a7dbb0e))
+
 ## [0.11.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.10.1...v0.11.0) (2026-05-23)
 
 
