@@ -3,7 +3,8 @@ const listEl = document.getElementById("settings-koch-confusion-list");
 
 function renderPairs(data) {
     listEl.replaceChildren();
-    const subs = Array.isArray(data.substitutions) ? data.substitutions : [];
+    const subs = (Array.isArray(data.substitutions) ? data.substitutions : [])
+        .filter((p) => p.count >= 4);
 
     if (subs.length === 0) {
         root.hidden = true;
