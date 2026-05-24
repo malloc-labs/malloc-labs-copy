@@ -247,8 +247,8 @@ def test_write_record_uses_per_mode_subdirectory(tmp_path: Path):
     koch_path = write_record(_koch_record(), tmp_path)
     cadence_path = write_record(_cadence_record(), tmp_path)
 
-    assert koch_path.parent == tmp_path / "koch-exercise"
-    assert cadence_path.parent == tmp_path / "cadence-send"
+    assert koch_path.parent == tmp_path / "koch-exercise" / "2026" / "05"
+    assert cadence_path.parent == tmp_path / "cadence-send" / "2026" / "05"
     assert koch_path.name == "koch-exercise-20260515T193045Z.json"
     assert cadence_path.name == "cadence-send-20260515T193045Z.json"
 
@@ -270,12 +270,12 @@ def test_write_record_creates_save_directory_lazily(tmp_path: Path):
     path = write_record(_koch_record(), fresh)
 
     assert path.exists()
-    assert path.parent == fresh / "koch-exercise"
+    assert path.parent == fresh / "koch-exercise" / "2026" / "05"
 
 
 def test_write_record_does_not_leave_temp_files_on_success(tmp_path: Path):
     write_record(_koch_record(), tmp_path)
-    leftovers = list((tmp_path / "koch-exercise").glob(".record-*"))
+    leftovers = list((tmp_path / "koch-exercise").rglob(".record-*"))
     assert leftovers == []
 
 

@@ -276,7 +276,12 @@ def write_record(
     ``os.replace``), so a crash mid-write cannot leave a partial
     record on disk.
     """
-    target_dir = save_directory / record.mode
+    when = record.started_at
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    else:
+        when = when.astimezone(timezone.utc)
+    target_dir = save_directory / record.mode / when.strftime("%Y") / when.strftime("%m")
     target_dir.mkdir(parents=True, exist_ok=True)
 
     stamp = _format_filename_stamp(record.started_at)

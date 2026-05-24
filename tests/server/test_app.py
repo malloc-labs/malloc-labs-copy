@@ -940,7 +940,7 @@ async def test_start_action_writes_koch_record_to_save_directory(tmp_path, patch
             events = await _drain_until(ws, lambda e: e["type"] == "session-end", timeout=25.0)
 
         record_dir = save_dir / "koch-exercise"
-        files = list(record_dir.glob("koch-exercise-*.json"))
+        files = list(record_dir.rglob("koch-exercise-*.json"))
         assert len(files) == 1
 
         record = json.loads(files[0].read_text())
@@ -1003,7 +1003,7 @@ async def test_save_koch_answers_merges_into_record(tmp_path, patched_playback):
         assert ack_event["exercise_count"] == 5
 
         record_dir = save_dir / "koch-exercise"
-        files = list(record_dir.glob("koch-exercise-*.json"))
+        files = list(record_dir.rglob("koch-exercise-*.json"))
         assert len(files) == 1
         record = json.loads(files[0].read_text())
         assert [exercise["answer"] for exercise in record["exercises"]] == answers
@@ -1048,7 +1048,7 @@ async def test_save_koch_answers_rejects_length_mismatch(tmp_path, patched_playb
         # File should still have unsaved exercise entries — the rejected
         # save must not have rewritten anything.
         record_dir = save_dir / "koch-exercise"
-        files = list(record_dir.glob("koch-exercise-*.json"))
+        files = list(record_dir.rglob("koch-exercise-*.json"))
         assert len(files) == 1
         record = json.loads(files[0].read_text())
         assert all(exercise["answer"] == "" for exercise in record["exercises"])
@@ -1143,7 +1143,7 @@ async def test_stop_during_start_does_not_write_koch_record(tmp_path, patched_pl
             await _drain_until(ws, lambda e: e["type"] == "session-end", timeout=5.0)
 
         record_dir = save_dir / "koch-exercise"
-        assert not record_dir.exists() or list(record_dir.glob("*.json")) == []
+        assert not record_dir.exists() or list(record_dir.rglob("*.json")) == []
     finally:
         server.close()
         await server.wait_closed()
@@ -1568,7 +1568,7 @@ async def test_cadence_session_writes_analyzed_record_on_close(
             await asyncio.sleep(0)
 
         record_dir = save_dir / "cadence-send"
-        files = list(record_dir.glob("cadence-send-*.json"))
+        files = list(record_dir.rglob("cadence-send-*.json"))
         assert len(files) == 1
         record = json.loads(files[0].read_text())
         assert record["mode"] == "cadence-send"
