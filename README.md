@@ -44,7 +44,7 @@ If that port is in use, the engine probes upward by up to 20 ports and prints
 the bound URL on stdout (per spec §1.5 — fail loudly, never silently). Press
 `Ctrl-C` to stop.
 
-Status: audio synthesis, Koch sequence generation, Symbol Exposure playback, audio timing and signal texture settings, Settings-page test message playback/export, Trinkey MIDI key input with Freeplay and Cadence pages, locked post-session review, and persistent JSON session records (`koch-exercise`, `cadence-send`) are wired.
+Status: audio synthesis, Koch sequence generation, Symbol Exposure playback, audio timing and signal texture settings, Settings-page test message playback/export, Trinkey MIDI key input with Freeplay, Cadence, and Copy Key pages, locked post-session review, per-record-kind backup/export, and persistent JSON session records (`koch-exercise`, `cadence-send`, `copy-key`) are wired.
 
 ## Signal texture
 
@@ -75,8 +75,10 @@ After `python -m copy_653`, open the URL it prints (default `http://127.0.0.1:86
 - **Koch Method → Exercises**: claim/unclaim symbols, start or stop a random Koch listening session, then expand the locked review to see clock-time symbol entries with spoken Morse patterns.
 - **Key → Freeplay**: free-form timing and spacing practice. Displays the known-symbol sequence and decodes formed Trinkey MIDI dit/dah notes into sent symbols.
 - **Key → Cadence**: the same decode pipeline plus a Copy section with five sentence-shaped exercises drawn from the claimed set. Digit keys 1-9 select an exercise; correctly keying the active exercise (right symbols *and* right word/character gaps) auto-advances to the next, and finishing the last requests a fresh batch. A collapsible "review rhythm" panel shows per-symbol timing zones for the recently sent stream.
-- Diagnostic readouts on both Key pages (raw MIDI log, decoder telemetry) are hidden until Developer Mode is enabled in Settings.
-- **Settings**: four tabs — **App** (Words Per Minute, Signal Texture, Key Input incl. Trinkey buzzer/keyer mode/WPM sync, Test Message, Developer), **Koch Exercises** (per-symbol rollup tables and lifetime history dialog drawn from `koch-exercise` records), **Key Exercises** (the same rollup/lifetime view for `cadence-send` records), and **Calendar** (per-day practice monitoring). The Developer section holds the Developer Mode toggle (reveals diagnostics on the Key pages) and the HH Clear easter egg (keying two H's in a row clears the Sent area). The server persists audio, key-input, and HH-Clear values to the shared config; Developer Mode is local to the browser via `localStorage`.
+- **Key → Copy Key**: head-copy exercises — listen to audio, hold it, then key it back. Exercises are shorter (1-4 symbols, max 2 words) and scored on the head-copy task itself. Gear 0 applies tighter symbol caps per burden band.
+- **Operational** and **Utilities**: placeholder landing pages for future callsign/prosign/noise work and audio/device tooling respectively.
+- Diagnostic readouts on the Key pages (raw MIDI log, decoder telemetry) are hidden until Developer Mode is enabled in Settings.
+- **Settings**: four tabs — **App** (Words Per Minute, Signal Texture, Key Input incl. Keyer Mode and Sync now, Test Message, Developer), **Koch Exercises** (per-symbol rollup tables, lifetime history dialog, calendar, and backup — drawn from `koch-exercise` records), **Key Exercises** (the same rollup/lifetime/calendar/backup view for `cadence-send` records), and **Copy > Key** (the same for `copy-key` records). The Developer section holds the Developer Mode toggle (reveals diagnostics on the Key pages) and the HH Clear easter egg (keying two H's in a row clears the Sent area). The server persists audio, key-input, and HH-Clear values to the shared config; Developer Mode is local to the browser via `localStorage`.
 
 The WebSocket protocol is documented at the top of [`src/copy_653/server/app.py`](src/copy_653/server/app.py).
 
@@ -110,13 +112,15 @@ them equal to disable Farnsworth spacing. Tone Shape is stored as
 the ramp values shown above. Unknown keys are silently ignored (forward
 compatibility). Validation errors surface honestly per spec §1.5.
 
-The same file also holds three engine-managed or rarely-edited tables:
+The same file also holds several engine-managed or rarely-edited tables:
 `[symbols].claimed` (the learner's claimed set, written by the engine on
 claim-symbol), `[session].duration_seconds` (default 30s, used by listening
-sessions), and `[midi.key]` (note numbers and input-name substring for the
-TRRS Trinkey, plus the `trinkey_buzzer_enabled` flag the Settings page
-exposes). See [`src/copy_653/config.py`](src/copy_653/config.py) for the
-exhaustive field list.
+sessions), `[midi.key]` (note numbers, input-name substring, and keyer mode
+for the TRRS Trinkey), `[storage].save_directory` (where session records and
+backups go), `[developer].hh_clear_enabled`, and `[letters]` (letter
+listening sequence pacing knobs). See
+[`src/copy_653/config.py`](src/copy_653/config.py) for the exhaustive field
+list.
 
 ## Tests
 
