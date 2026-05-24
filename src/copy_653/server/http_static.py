@@ -328,7 +328,7 @@ def _build_records_backup(
     file_count = 0
     with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
         if target_dir.is_dir():
-            for entry in sorted(target_dir.glob(pattern)):
+            for entry in sorted(target_dir.rglob(pattern)):
                 try:
                     payload = entry.read_bytes()
                 except OSError:
@@ -337,7 +337,7 @@ def _build_records_backup(
                 # Keep the directory prefix so the zip mirrors the
                 # on-disk layout — restoring is a flat unzip into the
                 # save directory.
-                archive.writestr(f"{subdir}/{entry.name}", payload)
+                archive.writestr(str(entry.relative_to(save_directory)), payload)
                 file_count += 1
 
     body = buffer.getvalue()
@@ -374,7 +374,7 @@ def _list_koch_exercises(config_path: Path | None) -> dict[str, Any]:
     target_dir = save_directory / "koch-exercise"
     records: list[dict[str, Any]] = []
     if target_dir.is_dir():
-        for entry in sorted(target_dir.glob("koch-exercise-*.json")):
+        for entry in sorted(target_dir.rglob("koch-exercise-*.json")):
             try:
                 data = json.loads(entry.read_text())
             except (OSError, ValueError):
@@ -556,12 +556,13 @@ def _read_koch_exercise(
         return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"save directory unavailable")
 
     target_dir = (save_directory / "koch-exercise").resolve()
-    resolved = (target_dir / filename).resolve()
+    matches = sorted(target_dir.rglob(filename))
+    if not matches:
+        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+    resolved = matches[0].resolve()
     try:
         resolved.relative_to(target_dir)
     except ValueError:
-        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
-    if not resolved.is_file():
         return _http_response(HTTPStatus.NOT_FOUND, b"not found")
 
     try:
@@ -593,12 +594,13 @@ def _delete_record_file(
         return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"save directory unavailable")
 
     target_dir = (save_directory / subdirectory).resolve()
-    resolved = (target_dir / filename).resolve()
+    matches = sorted(target_dir.rglob(filename))
+    if not matches:
+        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+    resolved = matches[0].resolve()
     try:
         resolved.relative_to(target_dir)
     except ValueError:
-        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
-    if not resolved.is_file():
         return _http_response(HTTPStatus.NOT_FOUND, b"not found")
 
     try:
@@ -641,7 +643,7 @@ def _list_cadence_sends(config_path: Path | None) -> dict[str, Any]:
     target_dir = save_directory / "cadence-send"
     records: list[dict[str, Any]] = []
     if target_dir.is_dir():
-        for entry in sorted(target_dir.glob("cadence-send-*.json")):
+        for entry in sorted(target_dir.rglob("cadence-send-*.json")):
             try:
                 data = json.loads(entry.read_text())
             except (OSError, ValueError):
@@ -770,12 +772,13 @@ def _read_cadence_send(
         return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"save directory unavailable")
 
     target_dir = (save_directory / "cadence-send").resolve()
-    resolved = (target_dir / filename).resolve()
+    matches = sorted(target_dir.rglob(filename))
+    if not matches:
+        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+    resolved = matches[0].resolve()
     try:
         resolved.relative_to(target_dir)
     except ValueError:
-        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
-    if not resolved.is_file():
         return _http_response(HTTPStatus.NOT_FOUND, b"not found")
 
     try:
@@ -812,7 +815,7 @@ def _list_copy_key_sessions(config_path: Path | None) -> dict[str, Any]:
     target_dir = save_directory / "copy-key"
     records: list[dict[str, Any]] = []
     if target_dir.is_dir():
-        for entry in sorted(target_dir.glob("copy-key-*.json")):
+        for entry in sorted(target_dir.rglob("copy-key-*.json")):
             try:
                 data = json.loads(entry.read_text())
             except (OSError, ValueError):
@@ -857,12 +860,13 @@ def _read_copy_key_session(
         return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"save directory unavailable")
 
     target_dir = (save_directory / "copy-key").resolve()
-    resolved = (target_dir / filename).resolve()
+    matches = sorted(target_dir.rglob(filename))
+    if not matches:
+        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+    resolved = matches[0].resolve()
     try:
         resolved.relative_to(target_dir)
     except ValueError:
-        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
-    if not resolved.is_file():
         return _http_response(HTTPStatus.NOT_FOUND, b"not found")
 
     try:

@@ -245,7 +245,7 @@ def _iter_copy_key_records(save_directory: Path) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     if not target_dir.is_dir():
         return records
-    for entry in target_dir.glob("copy-key-*.json"):
+    for entry in target_dir.rglob("copy-key-*.json"):
         try:
             data = json.loads(entry.read_text())
         except (OSError, ValueError):
@@ -309,7 +309,7 @@ def _iter_koch_records(save_directory: Path) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     if not target_dir.is_dir():
         return records
-    for entry in target_dir.glob("koch-exercise-*.json"):
+    for entry in target_dir.rglob("koch-exercise-*.json"):
         try:
             data = json.loads(entry.read_text())
         except (OSError, ValueError):
@@ -326,7 +326,7 @@ def _iter_cadence_records(save_directory: Path) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     if not target_dir.is_dir():
         return records
-    for entry in target_dir.glob("cadence-send-*.json"):
+    for entry in target_dir.rglob("cadence-send-*.json"):
         try:
             data = json.loads(entry.read_text())
         except (OSError, ValueError):
