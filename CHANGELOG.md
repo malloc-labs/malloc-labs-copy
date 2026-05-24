@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.11.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.10.1...v0.11.0) (2026-05-23)
+
+
+### Features
+
+* **copy-key:** add Combined column with head-copy-weighted formula ([4df31ec](https://github.com/malloc-labs/malloc-labs-copy/commit/4df31ecfd490c0179e4b5a52804b710c35436411))
+* **copy-key:** add Combined column with head-copy-weighted formula ([4fb9854](https://github.com/malloc-labs/malloc-labs-copy/commit/4fb9854eaedec5a6d9ad6411a7d587a4e698a943))
+* **copy-key:** add per-exercise cadence analysis and settings columns ([3e30b03](https://github.com/malloc-labs/malloc-labs-copy/commit/3e30b034ee50623d47e2d396cd59fe935b2bb075))
+* **copy-key:** per-exercise cadence analysis and settings columns ([574dc54](https://github.com/malloc-labs/malloc-labs-copy/commit/574dc547b3c7f993c8747442d576d8fc62225d3c))
+* **key:** add Copy Key JS entry point with Start/play lifecycle ([cf9be95](https://github.com/malloc-labs/malloc-labs-copy/commit/cf9be95181cbd29d04c5e4467176e05752f57284))
+* **key:** add Copy Key mode — head-copy-then-send exercises ([689d2e5](https://github.com/malloc-labs/malloc-labs-copy/commit/689d2e5b85976d0a8a7eeaf0f9bdb40cfd7d84cc))
+* **key:** add Copy Key mode — head-copy-then-send exercises ([534a922](https://github.com/malloc-labs/malloc-labs-copy/commit/534a92293ccc19a678ab2bdb0c157741b3e8746b))
+* **key:** advance Copy Key exercises on BK prosign ([b52f833](https://github.com/malloc-labs/malloc-labs-copy/commit/b52f833467c795264e672661bdb0275561880041))
+* **key:** advance Copy Key exercises on BK prosign with 2s pause ([139a119](https://github.com/malloc-labs/malloc-labs-copy/commit/139a11941b7d8b162e96082e6fba484842b53735))
+* **key:** wire Copy Key server action, session lifecycle, and dispatch ([bde9fe0](https://github.com/malloc-labs/malloc-labs-copy/commit/bde9fe04e2956212281c54f7776cf7f06edef800))
+* **settings:** add Copy &gt; Key tab ([9032ca7](https://github.com/malloc-labs/malloc-labs-copy/commit/9032ca7e787bed1bdce6c44775ea98fbe241cef8))
+* **settings:** add Copy &gt; Key tab with session table, calendar, and rhythm review ([a30d183](https://github.com/malloc-labs/malloc-labs-copy/commit/a30d183c34d665ed21881cea6cb5c53134fa553d))
+
+
+### Bug Fixes
+
+* **key:** add _per_exercise_audio to session __slots__ ([fe63aa1](https://github.com/malloc-labs/malloc-labs-copy/commit/fe63aa118f1cb5d8514855a9c15aa785bdfc6c24))
+* **key:** add _per_exercise_audio to session __slots__ ([e6046e2](https://github.com/malloc-labs/malloc-labs-copy/commit/e6046e27f90358017530b5e1bba54ae2d7a963a4))
+* **key:** Copy Key UI tweaks — unmute, word spacing, review, abort ([3f9d374](https://github.com/malloc-labs/malloc-labs-copy/commit/3f9d374d2b1925bc447da3bb01fa7a7cb008a78f))
+* **key:** Copy Key UI tweaks — unmute, word spacing, review, abort ([08f82f2](https://github.com/malloc-labs/malloc-labs-copy/commit/08f82f25b93c484ba132a61f4b3501534ec250db))
+* **key:** only record symbols actually played in copy-key sessions ([76b37ea](https://github.com/malloc-labs/malloc-labs-copy/commit/76b37ea960229d9dbf7ad9d87165b8f8e034e3d4))
+* **key:** only record symbols actually played in copy-key sessions ([897d427](https://github.com/malloc-labs/malloc-labs-copy/commit/897d4270a66a972a25da81e7f27db68ddf774081))
+* **settings:** show decoded symbols for incorrect copy-key sends ([a733604](https://github.com/malloc-labs/malloc-labs-copy/commit/a733604a4e662f1d679b52f2b1594e46c5eddc79))
+* **settings:** show decoded symbols for incorrect copy-key sends ([1172623](https://github.com/malloc-labs/malloc-labs-copy/commit/1172623be33c0e2989244b431a6093257b0104cb))
+
+
+### Documentation
+
+* **key:** add TODO for IMI repeat support in Copy Key ([bd03228](https://github.com/malloc-labs/malloc-labs-copy/commit/bd03228cad94908c77d1a2cf63595ebf0ba248d2))
+* **key:** add TODO for IMI repeat support in Copy Key ([7303844](https://github.com/malloc-labs/malloc-labs-copy/commit/7303844046cd30b2c2303f90dbca9e98d03e53ae))
+
 ## [0.10.1](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.10.0...v0.10.1) (2026-05-23)
 
 
