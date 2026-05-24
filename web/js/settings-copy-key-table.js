@@ -120,6 +120,86 @@ function isSentCorrect(target, bucket) {
     return sentFlat === targetFlat;
 }
 
+const EXERCISES_COLUMNS = [
+    { label: "#" },
+    { label: "Target" },
+    { label: "Sent" },
+    {
+        label: "Attempts",
+        tooltip:
+            "How many keying attempts you made on this target. The scored row picks your best " +
+            "attempt; the others are kept on the record but not double-counted.",
+    },
+    {
+        label: "Spacing",
+        tooltip:
+            "Spacing accuracy — word boundaries placed correctly between decoded symbols. " +
+            "Contributes 10% of the combined fraction.",
+    },
+    {
+        label: "Formation",
+        tooltip:
+            "Formation quality — how cleanly your dits, dahs, and element gaps matched the " +
+            "expected timing for each character. Contributes 20% of the combined fraction.",
+    },
+    {
+        label: "Gap",
+        tooltip:
+            "Gap-timing readability — were your inter-element, inter-symbol, and inter-word gaps " +
+            "in the readable range. Contributes 10% of the combined fraction.",
+    },
+    {
+        label: "Combined",
+        tooltip:
+            "Combined fraction — weighted total: 0.55 Symbols + 0.10 Spacing + 0.20 Formation + " +
+            "0.10 Gap + 0.05 Decode.",
+    },
+    {
+        label: "Band",
+        tooltip:
+            "Burden band — which slice of the curriculum this exercise sits in. " +
+            "Band 1 is the simplest; later bands rise as targets get longer or more demanding.",
+    },
+    {
+        label: "Burden",
+        tooltip:
+            "Burden score — a length-and-difficulty number for the target. Higher means a heavier " +
+            "exercise to head-copy and key back.",
+    },
+    {
+        label: "State",
+        tooltip:
+            "Band state from the combined fraction: low (<0.70), building (<0.85), " +
+            "steady (<0.95), strong (<1.0), exact (=1.0).",
+    },
+    {
+        label: "Gear",
+        tooltip:
+            "Curriculum pacing gear the band was on for this exercise. Strong runs nudge it up; " +
+            "struggles nudge it down.",
+    },
+];
+
+function buildExercisesHead() {
+    const thead = document.createElement("thead");
+    const tr = document.createElement("tr");
+    EXERCISES_COLUMNS.forEach((col, idx) => {
+        const th = document.createElement("th");
+        th.scope = "col";
+        th.textContent = col.label;
+        if (col.tooltip) {
+            th.dataset.tooltip = col.tooltip;
+            th.tabIndex = 0;
+            if (idx >= EXERCISES_COLUMNS.length - 2) {
+                th.dataset.tooltipAlign = "right";
+            }
+        }
+        tr.appendChild(th);
+    });
+    thead.appendChild(tr);
+    return thead;
+}
+
 function buildExercisesTable(record, sentBuckets) {
     const wrap = document.createElement("div");
     wrap.className = "settings-koch-detail__exercises";
@@ -144,16 +224,8 @@ function buildExercisesTable(record, sentBuckets) {
     const table = document.createElement("table");
     table.className = "settings-koch-detail__exercises-table";
 
-    const thead = document.createElement("thead");
-    const headRow = document.createElement("tr");
-    ["#", "Target", "Sent", "Attempts", "Spacing", "Formation", "Gap", "Combined", "Band", "Burden", "State", "Gear"].forEach((label) => {
-        const th = document.createElement("th");
-        th.scope = "col";
-        th.textContent = label;
-        headRow.appendChild(th);
-    });
-    thead.appendChild(headRow);
-    table.appendChild(thead);
+    table.appendChild(buildExercisesHead());
+
 
     const body = document.createElement("tbody");
     exercises.forEach((exercise, idx) => {
