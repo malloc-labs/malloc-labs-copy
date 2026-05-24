@@ -572,8 +572,9 @@ async def _request_copy_key_exercises_action(
 ) -> _ActiveCopyKeySession | None:
     """Generate Copy Key exercises and open a session.
 
-    Generates short head-copy exercises (single words, 1-3 symbols,
-    max 2 words / 5 total symbols), synthesises the audio for each,
+    Generates short head-copy exercises (single words, 1-4 symbols,
+    max 2 words / 5 total symbols, gear 0 capped at 4), synthesises
+    the audio for each,
     and sends the exercise list to the client. Returns an active
     session holding the pre-rendered per-exercise audio buffers so
     ``play-copy-key-exercise`` can play them on demand.

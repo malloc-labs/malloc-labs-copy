@@ -14,8 +14,9 @@ read-and-send difficulty.
 
 Key differences from Cadence exercise generation:
 
-* **Tighter size ceiling.** Max 2 words, max 3 symbols per word, max
-  5 total symbols. The floor is a single symbol.
+* **Tighter size ceiling.** Max 2 words, max 4 symbols per word, max
+  5 total symbols. Gear 0 is tighter still: the top two bands cap
+  at 4 total symbols, lower bands at 3. The floor is a single symbol.
 * **Simpler scoring.** Total symbol count dominates; word gaps carry
   significant weight because hearing a space and holding two groups
   is a qualitative jump in cognitive load. Symbol diversity and
@@ -40,10 +41,12 @@ MAX_CONTENT_GEAR = 2
 
 DEFAULT_EXERCISE_COUNT = 5
 DEFAULT_MAX_WORDS = 2
-DEFAULT_MAX_WORD_LENGTH = 3
+DEFAULT_MAX_WORD_LENGTH = 4
 DEFAULT_MAX_TOTAL_SYMBOLS = 5
 DEFAULT_MAX_IDENTICAL_RUN = 2
 DEFAULT_CANDIDATE_MULTIPLIER = 4
+GEAR_ZERO_UPPER_MAX_SYMBOLS = 4
+GEAR_ZERO_LOWER_MAX_SYMBOLS = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,10 +154,11 @@ def generate_copy_key_exercises(
 ) -> CopyKeyExercises:
     """Generate ``exercise_count`` head-copy exercises.
 
-    Each candidate is a 1-2 word phrase where each word is 1-3
-    symbols and the total symbol count is at most 5. The candidate
-    pool is scored, banded, and one pick is taken per band — same
-    mechanics as Cadence, different constraints.
+    Each candidate is a 1-2 word phrase where each word is 1-4
+    symbols and the total symbol count is at most 5. Gear 0 filters
+    further: top two bands allow up to 4 symbols, lower bands cap
+    at 3. The candidate pool is scored, banded, and one pick is
+    taken per band — same mechanics as Cadence, different constraints.
 
     Parameters
     ----------
@@ -173,7 +177,7 @@ def generate_copy_key_exercises(
     max_words:
         Maximum number of words per exercise (default 2).
     max_word_length:
-        Maximum symbols per word (default 3).
+        Maximum symbols per word (default 4).
     max_total_symbols:
         Maximum total symbols across all words (default 5).
     """
@@ -249,7 +253,25 @@ def generate_copy_key_exercises(
             if isinstance(raw_gear, int) and not isinstance(raw_gear, bool):
                 gear = max(0, min(MAX_GEAR, raw_gear))
         lo, hi = _slot_range(band_index, exercise_count, candidate_count, gear)
-        score, _idx, exercise = rng.choice(scored[lo:hi])
+        if gear == 0:
+            cap = (
+                GEAR_ZERO_UPPER_MAX_SYMBOLS
+                if band_index >= exercise_count - 2
+                else GEAR_ZERO_LOWER_MAX_SYMBOLS
+            )
+            capped = [t for t in scored if len(t[2].replace(" ", "")) <= cap]
+            if capped:
+                c_lo = band_index * len(capped) // exercise_count
+                c_hi = (band_index + 1) * len(capped) // exercise_count
+                if c_lo == c_hi:
+                    c_lo = min(band_index, len(capped) - 1)
+                    c_hi = c_lo + 1
+                band_slice = capped[c_lo:c_hi]
+            else:
+                band_slice = scored[lo:hi]
+        else:
+            band_slice = scored[lo:hi]
+        score, _idx, exercise = rng.choice(band_slice)
         picks.append((score, exercise))
 
     picks.sort(key=lambda pair: pair[0])
