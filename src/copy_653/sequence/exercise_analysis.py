@@ -325,6 +325,59 @@ def _levenshtein(left: str, right: str) -> int:
     return previous[-1]
 
 
+def _align(truth: str, answer: str) -> list[tuple[str, str | None, str | None]]:
+    """Levenshtein backtrace returning per-position edit operations.
+
+    Returns a list of ``(op, truth_char, answer_char)`` tuples:
+
+    * ``("match", t, a)`` — same character at this position.
+    * ``("sub", t, a)`` — substitution: played *t*, typed *a*.
+    * ``("del", t, None)`` — deletion: played *t*, nothing typed.
+    * ``("ins", None, a)`` — insertion: nothing played, *a* typed.
+    """
+    n, m = len(truth), len(answer)
+    if n == 0:
+        return [("ins", None, ch) for ch in answer]
+    if m == 0:
+        return [("del", ch, None) for ch in truth]
+
+    matrix = [[0] * (m + 1) for _ in range(n + 1)]
+    for i in range(n + 1):
+        matrix[i][0] = i
+    for j in range(m + 1):
+        matrix[0][j] = j
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            cost = 0 if truth[i - 1] == answer[j - 1] else 1
+            matrix[i][j] = min(
+                matrix[i - 1][j] + 1,
+                matrix[i][j - 1] + 1,
+                matrix[i - 1][j - 1] + cost,
+            )
+
+    ops: list[tuple[str, str | None, str | None]] = []
+    i, j = n, m
+    while i > 0 or j > 0:
+        if i > 0 and j > 0:
+            cost = 0 if truth[i - 1] == answer[j - 1] else 1
+            if matrix[i][j] == matrix[i - 1][j - 1] + cost:
+                if cost == 0:
+                    ops.append(("match", truth[i - 1], answer[j - 1]))
+                else:
+                    ops.append(("sub", truth[i - 1], answer[j - 1]))
+                i -= 1
+                j -= 1
+                continue
+        if i > 0 and matrix[i][j] == matrix[i - 1][j] + 1:
+            ops.append(("del", truth[i - 1], None))
+            i -= 1
+        else:
+            ops.append(("ins", None, answer[j - 1]))
+            j -= 1
+    ops.reverse()
+    return ops
+
+
 def _fraction(correct: int, available: int, *, default: float = 0.0) -> float:
     if available <= 0:
         return default
@@ -1077,3 +1130,62 @@ def resolve_rst_steps(
         )
         resolved[burden_band] = (new_s, new_t)
     return resolved
+
+
+def load_confusion_pairs(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+) -> dict[str, Any]:
+    """Per-symbol confusion counts across all sessions for one claimed set.
+
+    Walks every saved exercise whose claimed-set identity matches
+    ``claimed_set_key``, strips the fixed anchor from both played and
+    answer cores, removes spaces, and aligns the two strings via
+    Levenshtein backtrace. Each substitution increments
+    ``(target, typed)``; deletions and insertions are tallied
+    separately per symbol.
+
+    Uses all matching records (no window cap) because confusion
+    patterns are slow-moving signals.
+    """
+    substitutions: dict[tuple[str, str], int] = {}
+    exercises_used = 0
+
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        if record.get("mode") != "koch-exercise":
+            continue
+        if record_claimed_set_key(record) != claimed_set_key:
+            continue
+        exercises = record.get("exercises")
+        if not isinstance(exercises, list):
+            continue
+        for exercise in exercises:
+            if not isinstance(exercise, dict):
+                continue
+            analysis = exercise.get("analysis")
+            if not isinstance(analysis, dict) or analysis.get("saved") is not True:
+                continue
+            played = str(exercise.get("played") or "")
+            answer = str(exercise.get("answer") or "")
+            truth = _symbols_only(strip_fixed_anchor(played))
+            typed = _symbols_only(strip_fixed_anchor(answer))
+            if not truth:
+                continue
+            exercises_used += 1
+            for op, t_ch, a_ch in _align(truth, typed):
+                if op == "sub":
+                    substitutions[(t_ch, a_ch)] = substitutions.get((t_ch, a_ch), 0) + 1
+
+    pairs = sorted(
+        [{"target": t, "typed": a, "count": c} for (t, a), c in substitutions.items()],
+        key=lambda p: (-p["count"], p["target"], p["typed"]),
+    )
+
+    return {
+        "claimed_set_key": claimed_set_key,
+        "exercises_used": exercises_used,
+        "substitutions": pairs,
+    }

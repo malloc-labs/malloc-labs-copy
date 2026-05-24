@@ -1,5 +1,6 @@
 from copy_653.sequence.exercise_analysis import (
     MAX_GEAR,
+    _align,
     analyse_answer,
     apply_answers_to_entries,
     build_exercise_entries,
@@ -8,6 +9,7 @@ from copy_653.sequence.exercise_analysis import (
     latest_gears_for_claimed_set,
     load_band_evidence,
     load_band_history,
+    load_confusion_pairs,
     record_claimed_set_key,
     resolve_gears,
     spacing_weight_for_claimed_set,
@@ -614,3 +616,124 @@ def test_apply_answers_to_entries_dampens_repeated_exercise_evidence():
     assert updated[2]["analysis"]["repeat_weight"] == 0.5
     assert updated[0]["analysis"]["evidence"] > updated[1]["analysis"]["evidence"]
     assert updated[1]["analysis"]["evidence"] > updated[2]["analysis"]["evidence"]
+
+
+# --- _align ---
+
+
+def test_align_identical_strings():
+    ops = _align("KMK", "KMK")
+    assert all(op == "match" for op, _, _ in ops)
+    assert len(ops) == 3
+
+
+def test_align_substitution():
+    ops = _align("KMK", "KUK")
+    assert ops == [("match", "K", "K"), ("sub", "M", "U"), ("match", "K", "K")]
+
+
+def test_align_deletion():
+    ops = _align("KMK", "KK")
+    assert ("del", "M", None) in ops
+    matches = [o for o in ops if o[0] == "match"]
+    assert len(matches) == 2
+
+
+def test_align_insertion():
+    ops = _align("KK", "KMK")
+    assert ("ins", None, "M") in ops
+    matches = [o for o in ops if o[0] == "match"]
+    assert len(matches) == 2
+
+
+def test_align_empty_truth():
+    ops = _align("", "KM")
+    assert ops == [("ins", None, "K"), ("ins", None, "M")]
+
+
+def test_align_empty_answer():
+    ops = _align("KM", "")
+    assert ops == [("del", "K", None), ("del", "M", None)]
+
+
+def test_align_both_empty():
+    assert _align("", "") == []
+
+
+# --- load_confusion_pairs ---
+
+
+def _confusion_session(exercises):
+    return {
+        "mode": "koch-exercise",
+        "started_at": "2026-05-18T15:00:00Z",
+        "generation": {"claimed_set_key": "K M"},
+        "exercises": exercises,
+    }
+
+
+def _confusion_exercise(played, answer):
+    return {
+        "played": played,
+        "answer": answer,
+        "core": played.replace("DE ", ""),
+        "analysis": {"saved": True, "version": "koch-analysis-v1"},
+    }
+
+
+def test_confusion_pairs_counts_substitutions():
+    session = _confusion_session(
+        [
+            _confusion_exercise("DE KMK", "DE KUK"),
+            _confusion_exercise("DE KMK", "DE KUK"),
+        ]
+    )
+    result = load_confusion_pairs([session], claimed_set_key="K M")
+    assert result["exercises_used"] == 2
+    subs = {(p["target"], p["typed"]): p["count"] for p in result["substitutions"]}
+    assert subs[("M", "U")] == 2
+    assert ("K", "K") not in subs
+
+
+def test_confusion_pairs_ignores_deletions_and_insertions():
+    session = _confusion_session(
+        [
+            _confusion_exercise("DE KMK", "DE KK"),
+            _confusion_exercise("DE KK", "DE KMK"),
+        ]
+    )
+    result = load_confusion_pairs([session], claimed_set_key="K M")
+    assert "deletions" not in result
+    assert "insertions" not in result
+    assert result["substitutions"] == []
+
+
+def test_confusion_pairs_filters_by_claimed_set_key():
+    session_match = _confusion_session([_confusion_exercise("DE KM", "DE KU")])
+    session_other = _confusion_session([_confusion_exercise("DE KM", "DE KU")])
+    session_other["generation"]["claimed_set_key"] = "K M U"
+    result = load_confusion_pairs([session_match, session_other], claimed_set_key="K M")
+    assert result["exercises_used"] == 1
+
+
+def test_confusion_pairs_skips_unsaved_exercises():
+    ex = _confusion_exercise("DE KM", "DE KU")
+    ex["analysis"]["saved"] = False
+    session = _confusion_session([ex])
+    result = load_confusion_pairs([session], claimed_set_key="K M")
+    assert result["exercises_used"] == 0
+    assert result["substitutions"] == []
+
+
+def test_confusion_pairs_sorted_by_count_descending():
+    session = _confusion_session(
+        [
+            _confusion_exercise("DE K", "DE M"),
+            _confusion_exercise("DE K", "DE M"),
+            _confusion_exercise("DE K", "DE M"),
+            _confusion_exercise("DE M", "DE K"),
+        ]
+    )
+    result = load_confusion_pairs([session], claimed_set_key="K M")
+    counts = [p["count"] for p in result["substitutions"]]
+    assert counts == sorted(counts, reverse=True)

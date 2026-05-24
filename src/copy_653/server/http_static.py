@@ -27,6 +27,7 @@ from copy_653.sequence.exercise_analysis import (
     DEFAULT_EVIDENCE_WINDOW_SIZE,
     load_band_evidence,
     load_band_history,
+    load_confusion_pairs,
     record_claimed_set_key,
 )
 from copy_653.sequence.cadence_analysis import (
@@ -126,6 +127,16 @@ def _build_static_handler(web_root: Path, config_path: Path | None = None):
             key_values = params.get("claimed_set_key") or []
             return _json_response(
                 _read_koch_band_history(
+                    config_path,
+                    claimed_set_key=key_values[0] if key_values else None,
+                )
+            )
+
+        if clean_path == "/api/koch-confusion":
+            params = parse_qs(parsed_path.query)
+            key_values = params.get("claimed_set_key") or []
+            return _json_response(
+                _read_koch_confusion(
                     config_path,
                     claimed_set_key=key_values[0] if key_values else None,
                 )
@@ -493,6 +504,35 @@ def _read_koch_band_history(
     history = load_band_history(records, claimed_set_key=resolved_key)
     history["save_directory"] = str(save_directory)
     return history
+
+
+def _read_koch_confusion(
+    config_path: Path | None,
+    *,
+    claimed_set_key: str | None,
+) -> dict[str, Any]:
+    """Per-symbol confusion counts for the Settings confusion panel."""
+    try:
+        save_directory = load_save_directory(config_path)
+    except Exception:
+        logger.exception("could not resolve save_directory for confusion read")
+        return {
+            "claimed_set_key": claimed_set_key or "",
+            "exercises_used": 0,
+            "substitutions": [],
+        }
+
+    records = _iter_koch_records(save_directory)
+    resolved_key = claimed_set_key
+    if not resolved_key:
+        latest = max(
+            records,
+            key=lambda r: str(r.get("started_at") or ""),
+            default=None,
+        )
+        resolved_key = record_claimed_set_key(latest) if latest else ""
+
+    return load_confusion_pairs(records, claimed_set_key=resolved_key)
 
 
 def _read_koch_exercise(
