@@ -308,7 +308,7 @@ function buildSummaryRow(exercises) {
     appendCell(tr, unitPair(spacingCorrect, spacingAvailable));
     appendCell(tr, "");
     appendCell(tr, Number(weightedMean.toFixed(3)));
-    appendCell(tr, `${strongBands}/${saved.length} strong`);
+    appendCell(tr, `${strongBands}/${saved.length} bands strong`);
     appendCell(tr, "");
     return tr;
 }
