@@ -27,4 +27,25 @@ tabButtons.forEach((btn) => {
     btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
 });
 
+const tabShortcuts = new Map();
+tabButtons.forEach((btn) => {
+    const key = (btn.getAttribute("aria-keyshortcuts") || "").trim().toLowerCase();
+    if (key) tabShortcuts.set(key, btn);
+});
+
+document.addEventListener("keydown", (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    const target = event.target;
+    if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) return;
+    }
+    const k = event.key.toLowerCase();
+    const btn = tabShortcuts.get(k);
+    if (btn) {
+        event.preventDefault();
+        btn.click();
+    }
+});
+
 setActiveTab("app");
