@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.12.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.11.1...v0.12.0) (2026-05-25)
+
+
+### Features
+
+* **koch:** add warm-up sessions and set structure to Koch exercises ([#163](https://github.com/malloc-labs/malloc-labs-copy/issues/163)) ([ba04c0e](https://github.com/malloc-labs/malloc-labs-copy/commit/ba04c0e88e37e0a0bde02fc1b0142db3d00aa85a))
+* **koch:** survive page refresh and show End button at set completion ([625a6c8](https://github.com/malloc-labs/malloc-labs-copy/commit/625a6c85ab106c82db7b0e1e1672a1f88cb7b595))
+* **koch:** survive page refresh and show End button at set completion ([448301c](https://github.com/malloc-labs/malloc-labs-copy/commit/448301c346f791f0ed521b5eb19aaf2d8888d9fc))
+* **settings:** add keyboard shortcuts to tabs and filter low-count confusion pairs ([#162](https://github.com/malloc-labs/malloc-labs-copy/issues/162)) ([5df0564](https://github.com/malloc-labs/malloc-labs-copy/commit/5df0564863f1b026d8f965c58b0d9c0f65439e4e))
+
+
+### Bug Fixes
+
+* **records:** nest session records under year/month subdirectories ([#160](https://github.com/malloc-labs/malloc-labs-copy/issues/160)) ([2eb0fec](https://github.com/malloc-labs/malloc-labs-copy/commit/2eb0fec4cea72174ad828c29e5a3053f67ac0db4))
+
 ## [0.11.1](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.11.0...v0.11.1) (2026-05-24)
 
 
