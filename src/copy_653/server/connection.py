@@ -16,6 +16,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -31,6 +32,7 @@ from copy_653.config import (
     load_claimed_symbols,
     load_keyer_settings,
     load_save_directory,
+    load_warm_up_timeout_seconds,
 )
 from copy_653.letters import ANCHORED_SYMBOLS, find_anchors_dir
 from copy_653.midi import KeyDecoder, KeyElementAssembler
@@ -51,6 +53,7 @@ from copy_653.server.actions import (
     _save_test_message_action,
     _set_audio_settings_action,
     _start_action,
+    _start_warmup_action,
     _unclaim_symbol_action,
 )
 from copy_653.server.records import (
@@ -170,6 +173,18 @@ class ConnectionState:
     # awaiting a `save-koch-answers` rewrite. Cleared on a new `start`,
     # on successful save, or when the connection closes.
     pending_koch_record_path: Path | None = None
+    # Koch exercise set state machine. A set is 8 sessions: 2 warm-up
+    # (pair recognition) followed by 6 main (full-burden). The warm-up
+    # re-engages when the gap since the last session exceeds the
+    # configured timeout, but the main counter resumes where it was.
+    warmup_remaining: int = 2
+    main_session_next: int = 3
+    last_session_ended_at: float | None = None
+    set_id: str = ""
+
+    @property
+    def is_fresh_set(self) -> bool:
+        return self.warmup_remaining == 2 and self.main_session_next == 3
 
     def cadence_recorder(self, event: dict[str, Any]) -> None:
         """Forward an outbound key/sent event to the active Cadence record."""
@@ -202,16 +217,43 @@ class ConnectionState:
 
 
 async def _run_start_session(state: ConnectionState) -> None:
-    """Wrap a `start` action with the common invalid-config and
-    stop-was-requested handlers.
+    """Wrap a `start` action with the set state machine, common
+    invalid-config and stop-was-requested handlers.
 
-    On natural end, stashes the path of the freshly-written koch
-    record on ``state`` so a subsequent ``save-koch-answers`` can
-    rewrite the same file with learner answers.
+    The state machine decides whether to run a warm-up or main session
+    based on :attr:`ConnectionState.warmup_remaining` and the elapsed
+    time since the last session ended. On natural end, stashes the path
+    of the freshly-written koch record on ``state`` so a subsequent
+    ``save-koch-answers`` can rewrite the same file with learner answers.
     """
     try:
-        record_path = await _start_action(state.ws, state.config_path)
+        timeout = load_warm_up_timeout_seconds(state.config_path)
+        if state.last_session_ended_at is not None:
+            elapsed = time.monotonic() - state.last_session_ended_at
+            if elapsed > timeout:
+                state.warmup_remaining = 2
+
+        if state.is_fresh_set:
+            state.set_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+        if state.warmup_remaining > 0:
+            set_session = 3 - state.warmup_remaining
+            record_path = await _start_warmup_action(
+                state.ws, state.config_path, set_session=set_session, set_id=state.set_id
+            )
+            state.warmup_remaining -= 1
+        else:
+            set_session = state.main_session_next
+            record_path = await _start_action(
+                state.ws, state.config_path, set_session=set_session, set_id=state.set_id
+            )
+            state.main_session_next += 1
+            if state.main_session_next > 8:
+                state.warmup_remaining = 2
+                state.main_session_next = 3
+
         state.pending_koch_record_path = record_path
+        state.last_session_ended_at = time.monotonic()
     except ValueError as exc:
         await _send_event(
             state.ws,
@@ -228,10 +270,16 @@ async def _run_start_session(state: ConnectionState) -> None:
 # stay as explicit branches in :func:`handler`.
 _BARE_HANDLERS: dict[str, Callable[[ConnectionState, dict[str, Any]], Awaitable[None]]] = {
     "claim-symbol": lambda state, msg: _claim_symbol_action(
-        state.ws, msg.get("symbol", ""), state.config_path
+        state.ws,
+        msg.get("symbol", ""),
+        state.config_path,
+        set_is_fresh=state.is_fresh_set,
     ),
     "unclaim-symbol": lambda state, msg: _unclaim_symbol_action(
-        state.ws, msg.get("symbol", ""), state.config_path
+        state.ws,
+        msg.get("symbol", ""),
+        state.config_path,
+        set_is_fresh=state.is_fresh_set,
     ),
     "get-audio-settings": lambda state, msg: _get_audio_settings_action(
         state.ws, state.config_path
@@ -271,6 +319,7 @@ async def handler(
             evidence_ready_for_next=evidence_ready_for_next,
             ready_for_next=ready_for_next,
             ready_for_next_send=ready_for_next_send,
+            set_is_fresh=state.is_fresh_set,
         ),
     )
 

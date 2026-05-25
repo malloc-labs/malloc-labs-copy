@@ -347,6 +347,8 @@ def _next_koch_run_index(save_directory: Path, claimed_set_key: str) -> int:
     """
     count = 0
     for data in _iter_koch_records(save_directory):
+        if data.get("warm_up") is True:
+            continue
         generation = data.get("generation")
         key: str | None = None
         if isinstance(generation, dict):
@@ -411,6 +413,8 @@ def _seconds_on_claimed_set(records: list[dict[str, Any]], *, claimed_set_key: s
         return 0.0
     total = 0.0
     for data in records:
+        if data.get("warm_up") is True:
+            continue
         generation = data.get("generation")
         key: str | None = None
         if isinstance(generation, dict):
@@ -526,6 +530,7 @@ def _write_koch_record(
     exercises: list[dict[str, Any]],
     symbols: list[dict[str, Any]],
     started_at: datetime,
+    warm_up: bool = False,
 ) -> Path | None:
     """Persist a Koch Exercises session record (spec §5.1, §6.1).
 
@@ -554,6 +559,7 @@ def _write_koch_record(
             generation=enriched,
             exercises=exercises,
             symbols=symbols,
+            warm_up=warm_up,
         )
         return write_record(record, save_directory)
     except Exception:

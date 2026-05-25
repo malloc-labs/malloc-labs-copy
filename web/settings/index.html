@@ -263,6 +263,25 @@
             </details>
 
             <details class="settings-section">
+                <summary>Warm-up</summary>
+                <p class="settings-section__desc">Koch exercises begin each set with two simplified warm-up sessions (symbol pairs). The warm-up re-engages after inactivity.</p>
+
+                <div class="settings-field">
+                    <label for="warm-up-timeout">Timeout (minutes)</label>
+                    <input
+                        id="warm-up-timeout"
+                        name="warm_up_timeout_minutes"
+                        type="number"
+                        inputmode="numeric"
+                        min="1"
+                        step="1"
+                        required
+                    >
+                    <p>After this many minutes of inactivity, warm-up sessions run again before main exercises resume.</p>
+                </div>
+            </details>
+
+            <details class="settings-section">
                 <summary>Test Message</summary>
                 <div class="settings-test">
                     <p>ARE YOU READY / CAN YOU HEAR ME / YES LOUD AND CLEAR</p>

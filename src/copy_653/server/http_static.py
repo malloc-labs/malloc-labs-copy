@@ -389,15 +389,23 @@ def _list_koch_exercises(config_path: Path | None) -> dict[str, Any]:
             exercises = data.get("exercises")
             exercise_count = len(exercises) if isinstance(exercises, list) else 0
             ended_at = data.get("ended_at")
-            records.append(
-                {
-                    "filename": entry.name,
-                    "started_at": started_at,
-                    "ended_at": ended_at if isinstance(ended_at, str) else None,
-                    "claimed_set": [str(s) for s in claimed_set],
-                    "exercise_count": exercise_count,
-                }
-            )
+            generation = data.get("generation") or {}
+            record_entry: dict[str, Any] = {
+                "filename": entry.name,
+                "started_at": started_at,
+                "ended_at": ended_at if isinstance(ended_at, str) else None,
+                "claimed_set": [str(s) for s in claimed_set],
+                "exercise_count": exercise_count,
+            }
+            if data.get("warm_up") is True:
+                record_entry["warm_up"] = True
+            set_id = generation.get("set_id")
+            if isinstance(set_id, str) and set_id:
+                record_entry["set_id"] = set_id
+            set_session = generation.get("set_session")
+            if isinstance(set_session, int) and not isinstance(set_session, bool):
+                record_entry["set_session"] = set_session
+            records.append(record_entry)
 
     records.sort(key=lambda r: r["started_at"], reverse=True)
     return {"save_directory": str(save_directory), "records": records}

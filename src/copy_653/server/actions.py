@@ -15,6 +15,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import random
+import secrets
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,11 +36,13 @@ from copy_653.config import (
     load_keyer_settings,
     load_letters_config,
     load_save_directory,
+    load_warm_up_timeout_seconds,
     save_audio_timing,
     save_claimed_symbols,
     save_developer_settings,
     save_keyer_settings,
     save_save_directory,
+    save_warm_up_timeout_seconds,
 )
 from copy_653.server.exercises_audio import build_exercises_audio
 from copy_653.letters import (
@@ -54,6 +58,7 @@ from copy_653.midi import (
 from copy_653.server.records import (
     _ActiveCadenceSession,
     _ActiveCopyKeySession,
+    _iter_koch_records,
     _next_cadence_run_index,
     _next_copy_key_run_index,
     _next_send_symbol_readiness,
@@ -95,6 +100,7 @@ from copy_653.sequence.exercise_analysis import (
     MAX_GEAR,
     build_exercise_entries,
     build_generation_profile,
+    load_confusion_pairs,
 )
 
 logger = logging.getLogger(__name__)
@@ -152,9 +158,165 @@ async def _push_key_note_event(
     return True
 
 
+def _build_warmup_exercises(
+    claimed: tuple[str, ...],
+    confusion_subs: list[dict[str, Any]],
+    exercise_count: int = 5,
+) -> tuple[list[str], int]:
+    """Build warm-up exercise strings biased toward confusion pairs.
+
+    Each exercise is a single 2-character word (a symbol pair) preceded
+    by the DE listening anchor. When confusion data exists, exercises
+    prefer pairs drawn from the learner's most-confused symbols; the
+    remaining slots are filled with random pairs from the claimed set.
+
+    Returns ``(exercises, seed)`` where exercises already include the
+    DE anchor.
+    """
+    seed = secrets.randbits(64)
+    rng = random.Random(seed)
+    claimed_list = list(claimed)
+
+    confusion_pairs: list[str] = []
+    claimed_set = set(claimed)
+    for sub in confusion_subs:
+        target = sub.get("target", "")
+        typed = sub.get("typed", "")
+        if target in claimed_set and typed in claimed_set and target != typed:
+            confusion_pairs.append(target + typed)
+            confusion_pairs.append(typed + target)
+
+    exercises: list[str] = []
+    for _ in range(exercise_count):
+        if confusion_pairs and rng.random() < 0.6:
+            pair = rng.choice(confusion_pairs)
+        else:
+            pair = rng.choice(claimed_list) + rng.choice(claimed_list)
+        exercises.append(f"DE {pair}")
+
+    return exercises, seed
+
+
+async def _start_warmup_action(
+    ws: WebSocketServerProtocol,
+    config_path: Path,
+    *,
+    set_session: int = 1,
+    set_id: str = "",
+) -> Path | None:
+    """Play a warm-up Koch session — simplified pairs, no gear participation.
+
+    Same audio and session lifecycle as :func:`_start_action`, but
+    exercises are constrained to single 2-character words (symbol pairs)
+    with a bias toward the learner's known confusion pairs. The record
+    is flagged ``warm_up=True`` so it is excluded from gear evidence
+    while still contributing to confusion-pair tracking.
+    """
+    audio_params = load_audio_parameters(config_path)
+    claimed = load_claimed_symbols(config_path)
+
+    if not claimed:
+        await _send_event(ws, {"type": "error", "reason": "no-claimed-symbols"})
+        return None
+
+    save_directory = load_save_directory(config_path)
+    claimed_set_key = " ".join(sorted(claimed))
+
+    records = _iter_koch_records(save_directory)
+    confusion = load_confusion_pairs(records, claimed_set_key=claimed_set_key)
+    confusion_subs = confusion.get("substitutions", [])
+
+    exercises, seed = _build_warmup_exercises(claimed, confusion_subs)
+
+    exercise_entries = build_exercise_entries(
+        exercises,
+        scores=[10 * (i + 1) for i in range(len(exercises))],
+        gears=[0] * len(exercises),
+    )
+    generation = build_generation_profile(
+        claimed_set=claimed,
+        candidate_count=len(exercises),
+        exercise_count=len(exercises),
+        gears=[0] * len(exercises),
+    )
+    generation["set_id"] = set_id
+    generation["set_session"] = set_session
+
+    samples, timeline, audio_shape = build_exercises_audio(
+        exercises,
+        audio_params,
+        scaffold_break=False,
+    )
+    generation.update(audio_shape)
+
+    await _send_event(
+        ws,
+        {
+            "type": "session-start",
+            "mode": "exercises",
+            "exercises": exercises,
+            "exercise_count": len(exercises),
+            "seed": seed,
+            "warm_up": True,
+            "set_session": set_session,
+        },
+    )
+
+    audio_task = asyncio.create_task(asyncio.to_thread(playback.play, samples, audio_params))
+
+    started_at = datetime.now(timezone.utc)
+    emitted_symbols: list[dict[str, Any]] = []
+
+    try:
+        cursor = 0.0
+        for symbol, t_on, t_off, exercise_index, word_index, word in timeline:
+            wait = t_on - cursor
+            if wait > 0:
+                await asyncio.sleep(wait)
+            cursor = t_on
+            entry = {
+                "symbol": symbol,
+                "t_on": t_on,
+                "t_off": t_off,
+                "exercise_index": exercise_index,
+                "word_index": word_index,
+                "word": word,
+            }
+            emitted_symbols.append(entry)
+            await _send_event(ws, {"type": "symbol", **entry})
+
+        await audio_task
+        record_path = _write_koch_record(
+            config_path=config_path,
+            audio_params=audio_params,
+            claimed=claimed,
+            seed=seed,
+            generation=generation,
+            exercises=exercise_entries,
+            symbols=emitted_symbols,
+            started_at=started_at,
+            warm_up=True,
+        )
+        await _send_event(ws, {"type": "session-end"})
+        return record_path
+
+    except asyncio.CancelledError:
+        try:
+            import sounddevice as sd
+
+            sd.stop()
+        except Exception:
+            pass
+        audio_task.cancel()
+        raise
+
+
 async def _start_action(
     ws: WebSocketServerProtocol,
     config_path: Path,
+    *,
+    set_session: int = 3,
+    set_id: str = "",
 ) -> Path | None:
     """Play a short Koch Exercises session from the claimed set.
 
@@ -231,6 +393,8 @@ async def _start_action(
         gears=gears,
         rst_steps=rst_steps_for_session or None,
     )
+    generation["set_id"] = set_id
+    generation["set_session"] = set_session
     # Scaffold-break audio tracks the gear axis: it engages when every
     # band is at MAX_GEAR and disengages only when a band drops out.
     # This inherits the gear axis's hysteresis (4 consecutive low runs
@@ -259,6 +423,7 @@ async def _start_action(
             "exercises": exercises,
             "exercise_count": len(exercises),
             "seed": result.seed,
+            "set_session": set_session,
         },
     )
 
@@ -376,6 +541,8 @@ async def _claim_symbol_action(
     ws: WebSocketServerProtocol,
     symbol: str,
     config_path: Path,
+    *,
+    set_is_fresh: bool = True,
 ) -> None:
     """Append ``symbol`` to the claimed set and broadcast the new state.
 
@@ -414,6 +581,7 @@ async def _claim_symbol_action(
             evidence_ready_for_next=evidence_ready_for_next,
             ready_for_next=ready_for_next,
             ready_for_next_send=ready_for_next_send,
+            set_is_fresh=set_is_fresh,
         ),
     )
 
@@ -422,6 +590,8 @@ async def _unclaim_symbol_action(
     ws: WebSocketServerProtocol,
     symbol: str,
     config_path: Path,
+    *,
+    set_is_fresh: bool = True,
 ) -> None:
     """Remove ``symbol`` from the claimed set and broadcast the new state.
 
@@ -461,6 +631,7 @@ async def _unclaim_symbol_action(
             evidence_ready_for_next=evidence_ready_for_next,
             ready_for_next=ready_for_next,
             ready_for_next_send=ready_for_next_send,
+            set_is_fresh=set_is_fresh,
         ),
     )
 
@@ -745,10 +916,15 @@ async def _get_audio_settings_action(
     keyer_settings = load_keyer_settings(config_path)
     developer_settings = load_developer_settings(config_path)
     save_directory = load_save_directory(config_path)
+    warm_up_timeout = load_warm_up_timeout_seconds(config_path)
     await _send_event(
         ws,
         _audio_settings_event_from_params(
-            params, keyer_settings, developer_settings, save_directory
+            params,
+            keyer_settings,
+            developer_settings,
+            save_directory,
+            warm_up_timeout_seconds=warm_up_timeout,
         ),
     )
 
@@ -817,6 +993,15 @@ async def _set_audio_settings_action(
             save_directory = save_save_directory(save_directory_input, path=config_path)
         else:
             save_directory = load_save_directory(config_path)
+        raw_warm_up = message.get("warm_up_timeout_minutes")
+        if raw_warm_up is not None:
+            if not isinstance(raw_warm_up, (int, float)) or isinstance(raw_warm_up, bool):
+                raise ValueError("warm_up_timeout_minutes must be a number")
+            warm_up_timeout = save_warm_up_timeout_seconds(
+                float(raw_warm_up) * 60, path=config_path
+            )
+        else:
+            warm_up_timeout = load_warm_up_timeout_seconds(config_path)
     except ValueError as exc:
         await _send_event(
             ws,
@@ -831,7 +1016,11 @@ async def _set_audio_settings_action(
     await _send_event(
         ws,
         _audio_settings_event_from_params(
-            params, keyer_settings, developer_settings, save_directory
+            params,
+            keyer_settings,
+            developer_settings,
+            save_directory,
+            warm_up_timeout_seconds=warm_up_timeout,
         ),
     )
 

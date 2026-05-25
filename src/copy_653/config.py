@@ -74,6 +74,7 @@ DEFAULT_CONFIG_PATH = Path.home() / ".local" / "share" / "copy_653" / "config.to
 # this when session/ proper lands. 30 seconds is a development default
 # — long enough to hear randomness, short enough to iterate.
 DEFAULT_SESSION_DURATION_SECONDS = 30.0
+DEFAULT_WARM_UP_TIMEOUT_SECONDS = 600.0
 DEFAULT_SERVER_HOST = "127.0.0.1"
 DEFAULT_SERVER_PORT = 8653
 DEFAULT_SERVER_PORT_SEARCH_SPAN = 20
@@ -545,6 +546,56 @@ def load_session_duration(path: Path | None = None) -> float:
     if value <= 0:
         raise ValueError(f"[session].duration_seconds must be positive, got {value}")
     return value
+
+
+def load_warm_up_timeout_seconds(path: Path | None = None) -> float:
+    """Load the warm-up staleness timeout in seconds.
+
+    Reads ``[session].warm_up_timeout_seconds`` from the config TOML.
+    Defaults to :data:`DEFAULT_WARM_UP_TIMEOUT_SECONDS` (600.0) if
+    missing.
+
+    Validation: must be a positive number. Raises ``ValueError``
+    otherwise.
+    """
+    data = _read_toml(path)
+    if data is None:
+        return DEFAULT_WARM_UP_TIMEOUT_SECONDS
+
+    session_table: dict[str, Any] = data.get("session", {})
+    raw = session_table.get("warm_up_timeout_seconds")
+    if raw is None:
+        return DEFAULT_WARM_UP_TIMEOUT_SECONDS
+
+    if not isinstance(raw, (int, float)) or isinstance(raw, bool):
+        raise ValueError(
+            f"[session].warm_up_timeout_seconds must be a number, got {type(raw).__name__}"
+        )
+    value = float(raw)
+    if value <= 0:
+        raise ValueError(f"[session].warm_up_timeout_seconds must be positive, got {value}")
+    return value
+
+
+def save_warm_up_timeout_seconds(
+    value: int | float,
+    path: Path | None = None,
+) -> float:
+    """Persist ``[session].warm_up_timeout_seconds`` and return the stored value."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise ValueError(
+            f"[session].warm_up_timeout_seconds must be a number, got {type(value).__name__}"
+        )
+    seconds = float(value)
+    if seconds <= 0:
+        raise ValueError(f"[session].warm_up_timeout_seconds must be positive, got {seconds}")
+
+    config_path = path if path is not None else DEFAULT_CONFIG_PATH
+    data = _read_toml(config_path) or {}
+    session_table = data.setdefault("session", {})
+    session_table["warm_up_timeout_seconds"] = seconds
+    _write_toml_atomic(data, config_path)
+    return seconds
 
 
 # ---------- storage ----------------------------------------------------

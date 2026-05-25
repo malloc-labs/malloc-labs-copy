@@ -321,6 +321,13 @@ copy-top-menu {
     color: var(--mr-muted);
     margin-bottom: var(--mr-space-6);
     max-width: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+}
+
+.primed__set:empty {
+    display: none;
 }
 
 /* Timeline — truth display. Mono for evidence (spec §12.2). */

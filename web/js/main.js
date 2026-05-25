@@ -17,6 +17,8 @@ const countdownEl  = document.getElementById("countdown");
 const saveBtn      = document.getElementById("save-answers");
 const sequenceRow  = document.getElementById("sequence-row");
 const primedEl     = document.getElementById("primed");
+const primedTextEl = document.getElementById("primed-text");
+const primedSetEl  = document.getElementById("primed-set");
 
 // Pre-start countdown — gives the learner a moment to settle before
 // audio begins. Cancellable while ticking by clicking Start (which
@@ -37,7 +39,7 @@ const KOCH_ORDER = [
 const PERMANENT = new Set(["K", "M"]);
 
 // Latest claimed-symbols payload from the engine.
-let claimedState     = { symbols: [], suggested_next: null };
+let claimedState     = { symbols: [], suggested_next: null, set_is_fresh: true };
 // Mirror of claimed symbols as a Set for O(1) lookup by the
 // Left-Alt preview handler. Refreshed inside renderSequence.
 let claimedSymbolSet = new Set();
@@ -48,6 +50,8 @@ let claimedSymbolSet = new Set();
 let currentExercises = [];
 let currentExerciseIndex = 0;
 const EXERCISE_COUNT = 5;
+const SET_SIZE = 8;
+let currentSetSession = 0;
 let sessionActive   = false;
 let sessionStartedAtMs = null;
 
@@ -139,11 +143,15 @@ function onTokenClick(sym) {
 
 function renderPrimed() {
     if (!claimedState.symbols.length) {
-        primedEl.textContent = "Primed: nothing — claim a symbol first";
+        primedTextEl.textContent = "Primed: nothing — claim a symbol first";
+        primedSetEl.textContent = "";
         return;
     }
-    primedEl.textContent =
+    primedTextEl.textContent =
         `Primed: ${EXERCISE_COUNT} exercises of ${claimedState.symbols.join(", ")}`;
+    primedSetEl.textContent = currentSetSession > 0
+        ? `Set ${currentSetSession} of ${SET_SIZE}`
+        : "";
 }
 
 // ─── Timeline disclosure ──────────────────────────────────────────────────────
@@ -387,7 +395,7 @@ function appendEvent(event) {
             const exerciseString = currentExercises[event.exercise_index - 1] || "";
             header.textContent = `Exercise ${event.exercise_index}: ${exerciseString}`;
             eventsEl.appendChild(header);
-            primedEl.textContent =
+            primedTextEl.textContent =
                 `Exercise ${currentExerciseIndex} of ${currentExercises.length}`;
         }
         li.textContent  = formatSymbolReview(event);
@@ -398,13 +406,16 @@ function appendEvent(event) {
     } else if (event.type === "session-start") {
         currentExercises = Array.isArray(event.exercises) ? event.exercises : [];
         currentExerciseIndex = 0;
+        currentSetSession = event.set_session || 0;
         sessionActive   = true;
         sessionStartedAtMs = Date.now();
+        claimedState.set_is_fresh = false;
         setStartButtonMode("active");
 
         const meta = toggleBtn.querySelector(".timeline-meta");
+        const warmUpLabel = event.warm_up ? " · warm-up" : "";
         meta.textContent =
-            `seed ${event.seed} · ${currentExercises.length} exercises`;
+            `seed ${event.seed} · ${currentExercises.length} exercises${warmUpLabel}`;
 
         setTimelineLocked(true);
         setTimelineOpen(false);
@@ -412,7 +423,10 @@ function appendEvent(event) {
         eventsEl.replaceChildren();
         buildAnswerInputs(currentExercises);
         setSaveState("locked");
-        primedEl.textContent = `Exercise — of ${currentExercises.length}`;
+        primedTextEl.textContent = `Exercise — of ${currentExercises.length}`;
+        primedSetEl.textContent = currentSetSession > 0
+            ? `Set ${currentSetSession} of ${SET_SIZE}`
+            : "";
         return;
 
     } else if (event.type === "session-end") {
@@ -511,8 +525,11 @@ function setStartButtonMode(mode) {
     if (mode === "idle") {
         clearCountdown();
         startBtn.disabled  = !socket || socket.readyState !== WebSocket.OPEN;
-        // <u>S</u>tart — keybind hint matches aria-keyshortcuts="S".
-        startBtn.innerHTML = "<u>S</u>tart";
+        if (claimedState.set_is_fresh) {
+            startBtn.innerHTML = "<u>S</u>tart";
+        } else {
+            startBtn.innerHTML = "Continue (<u>S</u>)";
+        }
     } else if (mode === "counting") {
         startBtn.disabled    = false;
         startBtn.textContent = "Cancel";

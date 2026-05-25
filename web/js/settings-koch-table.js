@@ -535,29 +535,113 @@ document.addEventListener("keydown", (event) => {
     }
 });
 
+function groupBySet(records) {
+    const groups = [];
+    let currentGroup = null;
+    // Records arrive newest-first; sets group by set_id.
+    records.forEach((rec) => {
+        const id = rec.set_id || null;
+        if (id && currentGroup && currentGroup.set_id === id) {
+            currentGroup.records.push(rec);
+        } else {
+            currentGroup = { set_id: id, records: [rec] };
+            groups.push(currentGroup);
+        }
+    });
+    return groups;
+}
+
+function renderSetHeader(group, setIndex) {
+    const tr = document.createElement("tr");
+    tr.className = "settings-koch-set-header";
+    tr.dataset.setId = group.set_id;
+    tr.dataset.expanded = "false";
+    tr.setAttribute("role", "button");
+    tr.setAttribute("tabindex", "0");
+    tr.setAttribute("aria-expanded", "false");
+
+    const cell = document.createElement("td");
+    cell.colSpan = 4;
+    const recs = group.records;
+    const mainCount = recs.filter((r) => !r.warm_up).length;
+    const warmUpCount = recs.filter((r) => r.warm_up).length;
+    const total = mainCount + warmUpCount;
+    const complete = mainCount >= 6 && warmUpCount >= 2;
+    const earliest = recs[recs.length - 1];
+    const dateStr = formatStartedAt(earliest.started_at);
+
+    const arrow = document.createElement("span");
+    arrow.className = "settings-koch-set-header__arrow";
+    arrow.textContent = "▶";
+    const label = document.createTextNode(
+        ` Session ${setIndex} · ${total} of 8${complete ? " · complete" : ""} · ${dateStr}`,
+    );
+    cell.append(arrow, label);
+    tr.appendChild(cell);
+
+    const toggle = () => {
+        const expanded = tr.dataset.expanded === "true";
+        tr.dataset.expanded = expanded ? "false" : "true";
+        tr.setAttribute("aria-expanded", expanded ? "false" : "true");
+        arrow.textContent = expanded ? "▶" : "▼";
+        const rows = tbody.querySelectorAll(`tr[data-set-member="${CSS.escape(group.set_id)}"]`);
+        rows.forEach((row) => {
+            row.hidden = expanded;
+        });
+    };
+    tr.addEventListener("click", toggle);
+    tr.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggle();
+        }
+    });
+    return tr;
+}
+
 function renderRows(records) {
     tbody.replaceChildren();
     openFilename = null;
     currentRecords = records;
     updateNavButtons();
-    records.forEach((rec, idx) => {
-        const tr = document.createElement("tr");
 
-        const numCell = document.createElement("td");
-        numCell.textContent = String(idx + 1);
-        tr.appendChild(numCell);
+    const groups = groupBySet(records);
+    let globalIdx = 0;
+    let setIndex = groups.filter((g) => g.set_id).length;
 
-        const timeCell = document.createElement("td");
-        timeCell.textContent = formatStartedAt(rec.started_at);
-        tr.appendChild(timeCell);
+    groups.forEach((group) => {
+        if (group.set_id) {
+            tbody.appendChild(renderSetHeader(group, setIndex));
+            setIndex -= 1;
+        }
 
-        const claimedCell = document.createElement("td");
-        claimedCell.textContent = rec.claimed_set.join(" ");
-        tr.appendChild(claimedCell);
+        group.records.forEach((rec) => {
+            globalIdx += 1;
+            const tr = document.createElement("tr");
 
-        appendDeleteCell(tr, rec.filename);
-        attachRowHandler(tr, rec.filename);
-        tbody.appendChild(tr);
+            const numCell = document.createElement("td");
+            numCell.textContent = String(globalIdx);
+            tr.appendChild(numCell);
+
+            const timeCell = document.createElement("td");
+            timeCell.textContent = formatStartedAt(rec.started_at);
+            tr.appendChild(timeCell);
+
+            const claimedCell = document.createElement("td");
+            claimedCell.textContent = rec.claimed_set.join(" ");
+            tr.appendChild(claimedCell);
+
+            if (rec.warm_up) {
+                tr.dataset.warmUp = "true";
+            }
+            if (group.set_id) {
+                tr.dataset.setMember = group.set_id;
+                tr.hidden = true;
+            }
+            appendDeleteCell(tr, rec.filename);
+            attachRowHandler(tr, rec.filename);
+            tbody.appendChild(tr);
+        });
     });
 }
 

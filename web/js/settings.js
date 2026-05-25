@@ -26,6 +26,7 @@ const keyerModeSyncButton = document.getElementById("keyer-mode-sync");
 const keyerModeSyncStatusEl = document.getElementById("keyer-mode-sync-status");
 const observedDitReadoutEl = document.getElementById("observed-dit-readout");
 const saveDirectoryInput = document.getElementById("save-directory");
+const warmUpTimeoutInput = document.getElementById("warm-up-timeout");
 const saveButton = document.getElementById("save-audio-settings");
 const playTestButton = document.getElementById("play-test-message");
 const saveTestButton = document.getElementById("save-test-message");
@@ -91,6 +92,7 @@ function setInputsEnabled(enabled) {
     keyerModeRadios.forEach((radio) => { radio.disabled = !enabled; });
     keyerModeSyncButton.disabled = !enabled;
     saveDirectoryInput.disabled = !enabled;
+    warmUpTimeoutInput.disabled = !enabled;
     hhClearInput.disabled = !enabled;
     playTestButton.disabled = !enabled;
     saveTestButton.disabled = !enabled;
@@ -138,6 +140,7 @@ function currentSettings() {
     const keyerMode = getKeyerMode();
     const hhClearEnabled = hhClearInput.checked;
     const saveDirectory = saveDirectoryInput.value.trim();
+    const warmUpTimeout = Number(warmUpTimeoutInput.value);
     return {
         character,
         effective,
@@ -147,11 +150,12 @@ function currentSettings() {
         keyerMode,
         hhClearEnabled,
         saveDirectory,
+        warmUpTimeout,
     };
 }
 
 function backendPayload() {
-    const { character, effective, s, t, cadenceVariation, keyerMode, hhClearEnabled, saveDirectory } =
+    const { character, effective, s, t, cadenceVariation, keyerMode, hhClearEnabled, saveDirectory, warmUpTimeout } =
         currentSettings();
     const receiverBed = savedSettings && s === savedSettings.s
         ? savedSettings.bed
@@ -168,6 +172,7 @@ function backendPayload() {
         keyer_mode: keyerMode,
         hh_clear_enabled: hhClearEnabled,
         save_directory: saveDirectory,
+        warm_up_timeout_minutes: warmUpTimeout,
     };
 }
 
@@ -180,7 +185,7 @@ function updateSummaries() {
 }
 
 function validateSettings() {
-    const { character, effective, s, t, cadenceVariation, saveDirectory } = currentSettings();
+    const { character, effective, s, t, cadenceVariation, saveDirectory, warmUpTimeout } = currentSettings();
     if (!Number.isInteger(character) || character <= 0) {
         return "Character speed must be a positive whole number.";
     }
@@ -202,6 +207,9 @@ function validateSettings() {
     if (!saveDirectory) {
         return "Save Directory must not be empty.";
     }
+    if (!Number.isInteger(warmUpTimeout) || warmUpTimeout < 1) {
+        return "Warm-up timeout must be a positive whole number of minutes.";
+    }
     return "";
 }
 
@@ -214,6 +222,7 @@ const DIRTY_FIELDS = [
     "keyerMode",
     "hhClearEnabled",
     "saveDirectory",
+    "warmUpTimeout",
 ];
 
 function isDirty() {
@@ -283,6 +292,7 @@ function renderAudioSettings(event) {
     });
     hhClearInput.checked = Boolean(event.hh_clear_enabled);
     saveDirectoryInput.value = event.save_directory || "";
+    warmUpTimeoutInput.value = event.warm_up_timeout_minutes || 10;
     // Keep the localStorage cache that Key pages read in sync with the
     // authoritative server state.
     setHHClearEnabled(Boolean(event.hh_clear_enabled));
@@ -299,6 +309,7 @@ function renderAudioSettings(event) {
         keyerMode: incomingKeyerMode,
         hhClearEnabled: Boolean(event.hh_clear_enabled),
         saveDirectory: event.save_directory || "",
+        warmUpTimeout: event.warm_up_timeout_minutes || 10,
     };
     updateSummaries();
     updateRstMarker();
@@ -519,6 +530,7 @@ function onSettingsInput() {
     signalToneInput,
     cadenceVariationInput,
     saveDirectoryInput,
+    warmUpTimeoutInput,
 ].forEach((input) => input.addEventListener("input", onSettingsInput));
 
 keyerModeRadios.forEach((radio) => radio.addEventListener("change", onSettingsInput));

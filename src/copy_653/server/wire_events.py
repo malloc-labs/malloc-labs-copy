@@ -46,6 +46,7 @@ def _claimed_symbols_event(
     evidence_ready_for_next: bool = False,
     ready_for_next: bool = False,
     ready_for_next_send: bool = False,
+    set_is_fresh: bool = True,
 ) -> dict[str, Any]:
     """Build the ``claimed-symbols`` event payload from a claimed list.
 
@@ -71,9 +72,14 @@ def _claimed_symbols_event(
     The send side is single-signal for now — no time floor, no
     box/colour split — though that may change later.
 
-    All three default to ``False`` so callers without record access —
-    tests and the initial cold path — degrade to "no nudge", which is
-    the safe default.
+    ``set_is_fresh`` indicates whether the Koch exercise set is at its
+    initial position (warm-up remaining and no main sessions completed).
+    The UI uses this to choose between "Start" and "Continue" button
+    text.
+
+    All three readiness flags default to ``False`` so callers without
+    record access — tests and the initial cold path — degrade to "no
+    nudge", which is the safe default.
     """
     return {
         "type": "claimed-symbols",
@@ -82,6 +88,7 @@ def _claimed_symbols_event(
         "evidence_ready_for_next": evidence_ready_for_next,
         "ready_for_next": ready_for_next,
         "ready_for_next_send": ready_for_next_send,
+        "set_is_fresh": set_is_fresh,
     }
 
 
@@ -141,8 +148,11 @@ def _audio_settings_event_from_params(
     keyer_settings: KeyerSettings | None = None,
     developer_settings: DeveloperSettings | None = None,
     save_directory: Path | None = None,
+    warm_up_timeout_seconds: float | None = None,
 ) -> dict[str, Any]:
     """Build the learner-facing audio timing event payload."""
+    from copy_653.config import DEFAULT_WARM_UP_TIMEOUT_SECONDS
+
     if keyer_settings is None:
         keyer_settings = KeyerSettings()
     if developer_settings is None:
@@ -160,6 +170,9 @@ def _audio_settings_event_from_params(
         "keyer_mode": keyer_settings.keyer_mode,
         "hh_clear_enabled": developer_settings.hh_clear_enabled,
         "save_directory": str(save_directory),
+        "warm_up_timeout_minutes": round(
+            (warm_up_timeout_seconds or DEFAULT_WARM_UP_TIMEOUT_SECONDS) / 60, 1
+        ),
     }
 
 
