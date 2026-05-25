@@ -101,9 +101,10 @@ class KochExerciseRecord:
     symbols: list[dict[str, Any]] = field(default_factory=list)
 
     mode: str = "koch-exercise"
+    warm_up: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "schema_version": SCHEMA_VERSION,
             "engine_version": __version__,
             "mode": self.mode,
@@ -116,6 +117,9 @@ class KochExerciseRecord:
             "exercises": [dict(exercise) for exercise in self.exercises],
             "symbols": list(self.symbols),
         }
+        if self.warm_up:
+            d["warm_up"] = True
+        return d
 
 
 @dataclass(slots=True)

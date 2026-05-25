@@ -461,6 +461,8 @@ def load_band_evidence(
             continue
         if record.get("mode") != "koch-exercise":
             continue
+        if record.get("warm_up") is True:
+            continue
         if record_claimed_set_key(record) != claimed_set_key:
             continue
         matching.append(record)
@@ -607,6 +609,7 @@ def latest_gears_for_claimed_set(
         for r in records
         if isinstance(r, dict)
         and r.get("mode") == "koch-exercise"
+        and r.get("warm_up") is not True
         and record_claimed_set_key(r) == claimed_set_key
     ]
     if not matching:
@@ -650,6 +653,8 @@ def load_band_history(
         if not isinstance(record, dict):
             continue
         if record.get("mode") != "koch-exercise":
+            continue
+        if record.get("warm_up") is True:
             continue
         if record_claimed_set_key(record) != claimed_set_key:
             continue
@@ -931,6 +936,7 @@ def latest_rst_steps_for_claimed_set(
         for r in records
         if isinstance(r, dict)
         and r.get("mode") == "koch-exercise"
+        and r.get("warm_up") is not True
         and record_claimed_set_key(r) == claimed_set_key
     ]
     if not matching:
@@ -997,6 +1003,8 @@ def load_rst_axis_evidence(
         if not isinstance(record, dict):
             continue
         if record.get("mode") != "koch-exercise":
+            continue
+        if record.get("warm_up") is True:
             continue
         if record_claimed_set_key(record) != claimed_set_key:
             continue

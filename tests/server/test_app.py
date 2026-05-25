@@ -950,12 +950,11 @@ async def test_start_action_writes_koch_record_to_save_directory(tmp_path, patch
         assert record["claimed_set"] == ["K", "M"]
         assert isinstance(record["seed"], int)
         assert record["generation"]["profile_version"] == "koch-burden-v1"
-        assert record["generation"]["candidate_count"] == 20
         assert record["generation"]["claimed_set_key"] == "K M"
-        assert record["generation"]["run_index"] == 1
+        # First start on a fresh connection produces a warm-up session.
+        assert record["warm_up"] is True
+        assert record["generation"]["candidate_count"] == 5
         assert len(record["exercises"]) == 5
-        # Truth lands at session-end with unsaved per-exercise analysis;
-        # the learner fills answers via save-koch-answers.
         assert "answers" not in record
         assert record["exercises"][0]["played"].startswith("DE ")
         assert record["exercises"][0]["answer"] == ""
@@ -1617,6 +1616,7 @@ async def test_get_audio_settings_returns_configured_timing(tmp_path, patched_pl
                 "keyer_mode": "iambic_a",
                 "hh_clear_enabled": False,
                 "save_directory": str(config_path.parent),
+                "warm_up_timeout_minutes": 10.0,
             }
     finally:
         server.close()
@@ -1664,6 +1664,7 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
                 "keyer_mode": "ultimatic",
                 "hh_clear_enabled": True,
                 "save_directory": str(config_path.parent),
+                "warm_up_timeout_minutes": 10.0,
             }
 
         from copy_653.config import (
