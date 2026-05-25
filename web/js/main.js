@@ -433,7 +433,7 @@ function appendEvent(event) {
         sessionActive     = false;
         li.textContent    = "■ end";
         li.dataset.kind   = "end";
-        setStartButtonMode("idle");
+        setStartButtonMode(currentSetSession >= SET_SIZE ? "end" : "idle");
         sessionStartedAtMs = null;
         setTimelineLocked(false);
         setAnswerInputsEnabled(true);
@@ -537,6 +537,10 @@ function setStartButtonMode(mode) {
         clearCountdown();
         startBtn.disabled    = false;
         startBtn.textContent = "Abort";
+    } else if (mode === "end") {
+        clearCountdown();
+        startBtn.disabled    = false;
+        startBtn.textContent = "End";
     }
 }
 
@@ -605,6 +609,16 @@ startBtn.addEventListener("click", () => {
     if (mode === "counting") {
         // Cancel the pre-start countdown — no engine action yet.
         setStartButtonMode("idle");
+        return;
+    }
+    if (mode === "end") {
+        // Set complete — reset to a clean Start position. No engine
+        // action; the engine already wrapped its state after session 8.
+        currentSetSession = 0;
+        claimedState.set_is_fresh = true;
+        resetReviewSection();
+        setStartButtonMode("idle");
+        renderPrimed();
         return;
     }
     // Idle path: wipe review state and run the pre-start countdown.

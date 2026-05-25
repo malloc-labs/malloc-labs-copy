@@ -61,6 +61,7 @@ from copy_653.server.records import (
     _ActiveCopyKeySession,
     _finalize_cadence_session,
     _finalize_copy_key_session,
+    _iter_koch_records,
     _next_send_symbol_readiness,
     _next_symbol_evidence,
     _next_symbol_readiness,
@@ -216,6 +217,68 @@ class ConnectionState:
             self.copy_key = None
 
 
+def _reconstruct_set_state(state: ConnectionState) -> None:
+    """Restore the set state machine from persisted records on connect.
+
+    A page refresh creates a fresh ConnectionState, losing the in-memory
+    set position. This reads recent koch-exercise records and restores
+    warmup_remaining, main_session_next, set_id, and last_session_ended_at
+    so the learner resumes where they left off instead of restarting from
+    warm-up 1.
+    """
+    try:
+        save_directory = load_save_directory(state.config_path)
+    except Exception:
+        return
+
+    records = _iter_koch_records(save_directory)
+    if not records:
+        return
+
+    by_set: dict[str, list[dict[str, Any]]] = {}
+    for r in records:
+        gen = r.get("generation") or {}
+        sid = gen.get("set_id")
+        if isinstance(sid, str) and sid:
+            by_set.setdefault(sid, []).append(r)
+
+    if not by_set:
+        return
+
+    latest_set_id = max(by_set)
+    group = by_set[latest_set_id]
+
+    max_session = 0
+    latest_ended: datetime | None = None
+    for r in group:
+        gen = r.get("generation") or {}
+        ss = gen.get("set_session")
+        if isinstance(ss, int) and not isinstance(ss, bool) and ss > max_session:
+            max_session = ss
+        ended = r.get("ended_at")
+        if isinstance(ended, str):
+            try:
+                dt = datetime.fromisoformat(ended.replace("Z", "+00:00"))
+                if latest_ended is None or dt > latest_ended:
+                    latest_ended = dt
+            except ValueError:
+                continue
+
+    if max_session == 0 or max_session >= 8 or latest_ended is None:
+        return
+
+    elapsed = (datetime.now(timezone.utc) - latest_ended).total_seconds()
+    state.set_id = latest_set_id
+    state.last_session_ended_at = time.monotonic() - elapsed
+
+    if max_session <= 2:
+        state.warmup_remaining = 2 - max_session
+        state.main_session_next = 3
+    else:
+        state.warmup_remaining = 0
+        state.main_session_next = max_session + 1
+
+
 async def _run_start_session(state: ConnectionState) -> None:
     """Wrap a `start` action with the set state machine, common
     invalid-config and stop-was-requested handlers.
@@ -304,6 +367,7 @@ async def handler(
         anchors_dir=anchors_dir if anchors_dir is not None else find_anchors_dir(),
         key_note_source=key_note_source,
     )
+    _reconstruct_set_state(state)
 
     # Push current state on connect so the UI does not need to ask.
     claimed = load_claimed_symbols(state.config_path)
