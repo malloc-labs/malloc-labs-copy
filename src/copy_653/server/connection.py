@@ -49,8 +49,6 @@ from copy_653.server.actions import (
     _request_copy_exercises_action,
     _request_copy_key_exercises_action,
     _run_key_input_action,
-    _run_letter_sequence,
-    _run_morse_repeat,
     _save_koch_answers_action,
     _start_action,
     _start_warmup_action,
@@ -59,6 +57,10 @@ from copy_653.server.actions import (
 from copy_653.server.test_message_actions import (
     _play_test_message_action,
     _save_test_message_action,
+)
+from copy_653.server.letter_playback_actions import (
+    _run_letter_sequence,
+    _run_morse_repeat,
 )
 from copy_653.server.records import (
     _ActiveCadenceSession,
