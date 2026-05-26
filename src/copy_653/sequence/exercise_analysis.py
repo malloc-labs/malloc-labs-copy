@@ -431,6 +431,40 @@ def record_claimed_set_key(record: dict[str, Any]) -> str:
     return ""
 
 
+def _matching_sessions(
+    records: list[dict[str, Any]],
+    claimed_set_key: str,
+    *,
+    exclude_warmup: bool = True,
+) -> list[dict[str, Any]]:
+    """Filter records to koch-exercise sessions matching one claimed set."""
+    matching: list[dict[str, Any]] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        if record.get("mode") != "koch-exercise":
+            continue
+        if exclude_warmup and record.get("warm_up") is True:
+            continue
+        if record_claimed_set_key(record) != claimed_set_key:
+            continue
+        matching.append(record)
+    return matching
+
+
+def _exercise_gear(
+    exercise: dict[str, Any],
+    session_gears: dict[int, int],
+    burden_band: int,
+) -> int:
+    """Resolve the gear for one exercise, preferring the generation profile."""
+    gear = session_gears.get(burden_band)
+    if gear is not None:
+        return gear
+    raw_gear = exercise.get("gear", 0)
+    return raw_gear if isinstance(raw_gear, int) and not isinstance(raw_gear, bool) else 0
+
+
 def load_band_evidence(
     records: list[dict[str, Any]],
     *,
@@ -455,17 +489,7 @@ def load_band_evidence(
     Sessions with no saved-answer analysis contribute nothing — an
     unanswered session is exposure, not evidence.
     """
-    matching: list[dict[str, Any]] = []
-    for record in records:
-        if not isinstance(record, dict):
-            continue
-        if record.get("mode") != "koch-exercise":
-            continue
-        if record.get("warm_up") is True:
-            continue
-        if record_claimed_set_key(record) != claimed_set_key:
-            continue
-        matching.append(record)
+    matching = _matching_sessions(records, claimed_set_key)
     matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
     window = matching[: max(0, window_size)]
 
@@ -488,12 +512,7 @@ def load_band_evidence(
             if not isinstance(fraction, (int, float)) or isinstance(fraction, bool):
                 continue
             state = analysis.get("band_state")
-            gear = session_gears.get(burden_band)
-            if gear is None:
-                raw_gear = exercise.get("gear", 0)
-                gear = (
-                    raw_gear if isinstance(raw_gear, int) and not isinstance(raw_gear, bool) else 0
-                )
+            gear = _exercise_gear(exercise, session_gears, burden_band)
             band_entries.setdefault(burden_band, []).append(
                 (
                     float(fraction),
@@ -524,15 +543,6 @@ def load_band_evidence(
         "sessions_used": len(window),
         "bands": bands,
     }
-
-
-def _streak(values: list[float], predicate: Callable[[float], bool]) -> int:
-    count = 0
-    for value in values:
-        if not predicate(value):
-            return count
-        count += 1
-    return count
 
 
 def _streak_at_current_gear(
@@ -604,14 +614,7 @@ def latest_gears_for_claimed_set(
     Returns ``{}`` when no record matches; the resolver treats missing
     bands as gear 0.
     """
-    matching = [
-        r
-        for r in records
-        if isinstance(r, dict)
-        and r.get("mode") == "koch-exercise"
-        and r.get("warm_up") is not True
-        and record_claimed_set_key(r) == claimed_set_key
-    ]
+    matching = _matching_sessions(records, claimed_set_key)
     if not matching:
         return {}
     matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
@@ -648,17 +651,7 @@ def load_band_history(
     * ``current_gears`` — ``{index: gear}`` from the most recent
       session's generation profile.
     """
-    matching: list[dict[str, Any]] = []
-    for record in records:
-        if not isinstance(record, dict):
-            continue
-        if record.get("mode") != "koch-exercise":
-            continue
-        if record.get("warm_up") is True:
-            continue
-        if record_claimed_set_key(record) != claimed_set_key:
-            continue
-        matching.append(record)
+    matching = _matching_sessions(records, claimed_set_key)
     matching.sort(key=lambda r: str(r.get("started_at") or ""))
 
     sessions_meta: list[dict[str, Any]] = []
@@ -702,12 +695,7 @@ def load_band_history(
                 raw_state = analysis.get("band_state")
                 state = str(raw_state) if isinstance(raw_state, str) else ""
 
-            gear = session_gears.get(burden_band)
-            if gear is None:
-                raw_gear = exercise.get("gear", 0)
-                gear = (
-                    raw_gear if isinstance(raw_gear, int) and not isinstance(raw_gear, bool) else 0
-                )
+            gear = _exercise_gear(exercise, session_gears, burden_band)
 
             band_entries.setdefault(burden_band, []).append(
                 {
@@ -931,14 +919,7 @@ def latest_rst_steps_for_claimed_set(
     climbs back — matching the philosophy of a clean re-entry rather
     than a buried prior state.
     """
-    matching = [
-        r
-        for r in records
-        if isinstance(r, dict)
-        and r.get("mode") == "koch-exercise"
-        and r.get("warm_up") is not True
-        and record_claimed_set_key(r) == claimed_set_key
-    ]
+    matching = _matching_sessions(records, claimed_set_key)
     if not matching:
         return {}
     matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
@@ -998,17 +979,7 @@ def load_rst_axis_evidence(
     exercise ``s`` / ``t``) contribute nothing — RST evidence restarts
     cleanly when the new pipeline ships.
     """
-    matching: list[dict[str, Any]] = []
-    for record in records:
-        if not isinstance(record, dict):
-            continue
-        if record.get("mode") != "koch-exercise":
-            continue
-        if record.get("warm_up") is True:
-            continue
-        if record_claimed_set_key(record) != claimed_set_key:
-            continue
-        matching.append(record)
+    matching = _matching_sessions(records, claimed_set_key)
     matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
 
     s_entries: dict[int, list[tuple[float, int]]] = {}
@@ -1030,12 +1001,7 @@ def load_rst_axis_evidence(
             burden_band = exercise.get("burden_band")
             if not isinstance(burden_band, int) or isinstance(burden_band, bool):
                 continue
-            gear = session_gears.get(burden_band)
-            if gear is None:
-                raw_gear = exercise.get("gear", 0)
-                gear = (
-                    raw_gear if isinstance(raw_gear, int) and not isinstance(raw_gear, bool) else 0
-                )
+            gear = _exercise_gear(exercise, session_gears, burden_band)
             if gear != MAX_GEAR:
                 continue
             fraction = analysis.get("combined_fraction")
@@ -1160,13 +1126,7 @@ def load_confusion_pairs(
     substitutions: dict[tuple[str, str], int] = {}
     exercises_used = 0
 
-    for record in records:
-        if not isinstance(record, dict):
-            continue
-        if record.get("mode") != "koch-exercise":
-            continue
-        if record_claimed_set_key(record) != claimed_set_key:
-            continue
+    for record in _matching_sessions(records, claimed_set_key, exclude_warmup=False):
         exercises = record.get("exercises")
         if not isinstance(exercises, list):
             continue

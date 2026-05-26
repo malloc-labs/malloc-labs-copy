@@ -59,15 +59,13 @@ from copy_653.server.records import (
     _ActiveCadenceSession,
     _ActiveCopyKeySession,
     _iter_koch_records,
+    _koch_readiness_state,
     _next_cadence_run_index,
     _next_copy_key_run_index,
     _next_send_symbol_readiness,
-    _next_symbol_evidence,
-    _next_symbol_readiness,
     _resolve_cadence_session_gears,
     _resolve_copy_key_session_gears,
-    _resolve_session_gears,
-    _resolve_session_rst_steps,
+    _resolve_session_gears_and_rst,
     _save_koch_answers,
     _write_koch_record,
 )
@@ -197,6 +195,89 @@ def _build_warmup_exercises(
     return exercises, seed
 
 
+async def _run_koch_session(
+    ws: WebSocketServerProtocol,
+    config_path: Path,
+    *,
+    audio_params: AudioParameters,
+    claimed: tuple[str, ...],
+    exercises: list[str],
+    exercise_entries: list[dict[str, Any]],
+    generation: dict[str, Any],
+    samples: Any,
+    timeline: list[Any],
+    seed: int,
+    set_session: int,
+    warm_up: bool = False,
+) -> Path | None:
+    """Play exercises, emit timeline events, write the session record.
+
+    Shared lifecycle for both warm-up and main Koch sessions. The caller
+    prepares exercises, generation profile, and audio; this function
+    owns the play-emit-record-cancel sequence from ``session-start``
+    through ``session-end``.
+    """
+    session_start: dict[str, Any] = {
+        "type": "session-start",
+        "mode": "exercises",
+        "exercises": exercises,
+        "exercise_count": len(exercises),
+        "seed": seed,
+        "set_session": set_session,
+    }
+    if warm_up:
+        session_start["warm_up"] = True
+    await _send_event(ws, session_start)
+
+    audio_task = asyncio.create_task(asyncio.to_thread(playback.play, samples, audio_params))
+
+    started_at = datetime.now(timezone.utc)
+    emitted_symbols: list[dict[str, Any]] = []
+
+    try:
+        cursor = 0.0
+        for symbol, t_on, t_off, exercise_index, word_index, word in timeline:
+            wait = t_on - cursor
+            if wait > 0:
+                await asyncio.sleep(wait)
+            cursor = t_on
+            entry = {
+                "symbol": symbol,
+                "t_on": t_on,
+                "t_off": t_off,
+                "exercise_index": exercise_index,
+                "word_index": word_index,
+                "word": word,
+            }
+            emitted_symbols.append(entry)
+            await _send_event(ws, {"type": "symbol", **entry})
+
+        await audio_task
+        record_path = _write_koch_record(
+            config_path=config_path,
+            audio_params=audio_params,
+            claimed=claimed,
+            seed=seed,
+            generation=generation,
+            exercises=exercise_entries,
+            symbols=emitted_symbols,
+            started_at=started_at,
+            warm_up=warm_up,
+        )
+        await _send_event(ws, {"type": "session-end"})
+        return record_path
+
+    except asyncio.CancelledError:
+        try:
+            import sounddevice as sd
+
+            sd.stop()
+        except Exception:
+            pass
+        audio_task.cancel()
+        raise
+
+
 async def _start_warmup_action(
     ws: WebSocketServerProtocol,
     config_path: Path,
@@ -249,66 +330,20 @@ async def _start_warmup_action(
     )
     generation.update(audio_shape)
 
-    await _send_event(
+    return await _run_koch_session(
         ws,
-        {
-            "type": "session-start",
-            "mode": "exercises",
-            "exercises": exercises,
-            "exercise_count": len(exercises),
-            "seed": seed,
-            "warm_up": True,
-            "set_session": set_session,
-        },
+        config_path,
+        audio_params=audio_params,
+        claimed=claimed,
+        exercises=exercises,
+        exercise_entries=exercise_entries,
+        generation=generation,
+        samples=samples,
+        timeline=timeline,
+        seed=seed,
+        set_session=set_session,
+        warm_up=True,
     )
-
-    audio_task = asyncio.create_task(asyncio.to_thread(playback.play, samples, audio_params))
-
-    started_at = datetime.now(timezone.utc)
-    emitted_symbols: list[dict[str, Any]] = []
-
-    try:
-        cursor = 0.0
-        for symbol, t_on, t_off, exercise_index, word_index, word in timeline:
-            wait = t_on - cursor
-            if wait > 0:
-                await asyncio.sleep(wait)
-            cursor = t_on
-            entry = {
-                "symbol": symbol,
-                "t_on": t_on,
-                "t_off": t_off,
-                "exercise_index": exercise_index,
-                "word_index": word_index,
-                "word": word,
-            }
-            emitted_symbols.append(entry)
-            await _send_event(ws, {"type": "symbol", **entry})
-
-        await audio_task
-        record_path = _write_koch_record(
-            config_path=config_path,
-            audio_params=audio_params,
-            claimed=claimed,
-            seed=seed,
-            generation=generation,
-            exercises=exercise_entries,
-            symbols=emitted_symbols,
-            started_at=started_at,
-            warm_up=True,
-        )
-        await _send_event(ws, {"type": "session-end"})
-        return record_path
-
-    except asyncio.CancelledError:
-        try:
-            import sounddevice as sd
-
-            sd.stop()
-        except Exception:
-            pass
-        audio_task.cancel()
-        raise
 
 
 async def _start_action(
@@ -353,18 +388,14 @@ async def _start_action(
     # by reading the recent record history for this exact claimed set.
     save_directory = load_save_directory(config_path)
     claimed_set_key = " ".join(sorted(claimed))
-    gears = _resolve_session_gears(save_directory, claimed_set_key, exercise_count=5)
-    # The RST sub-axis is per-band, scoped to bands at MAX_GEAR for this
-    # session. Bands below MAX_GEAR contribute no entry, which the
-    # generator and audio layer both read as "use the configured S/T".
-    rst_steps_for_session: dict[int, tuple[int, int]] = {}
-    if any(g == MAX_GEAR for g in gears):
-        resolved_rst = _resolve_session_rst_steps(save_directory, claimed_set_key)
-        rst_steps_for_session = {
-            band: resolved_rst.get(band, (0, 0))
-            for band, gear in enumerate(gears, start=1)
-            if gear == MAX_GEAR
-        }
+    gears, resolved_rst = _resolve_session_gears_and_rst(
+        save_directory, claimed_set_key, exercise_count=5
+    )
+    rst_steps_for_session = {
+        band: resolved_rst.get(band, (0, 0))
+        for band, gear in enumerate(gears, start=1)
+        if gear == MAX_GEAR
+    }
 
     result = sequence.generate_copy_exercises(
         claimed_set=claimed,
@@ -415,71 +446,19 @@ async def _start_action(
     # session record carries enough to replay the exact audio.
     generation.update(audio_shape)
 
-    await _send_event(
+    return await _run_koch_session(
         ws,
-        {
-            "type": "session-start",
-            "mode": "exercises",
-            "exercises": exercises,
-            "exercise_count": len(exercises),
-            "seed": result.seed,
-            "set_session": set_session,
-        },
+        config_path,
+        audio_params=audio_params,
+        claimed=claimed,
+        exercises=exercises,
+        exercise_entries=exercise_entries,
+        generation=generation,
+        samples=samples,
+        timeline=timeline,
+        seed=result.seed,
+        set_session=set_session,
     )
-
-    audio_task = asyncio.create_task(asyncio.to_thread(playback.play, samples, audio_params))
-
-    started_at = datetime.now(timezone.utc)
-    emitted_symbols: list[dict[str, Any]] = []
-
-    try:
-        cursor = 0.0
-        for symbol, t_on, t_off, exercise_index, word_index, word in timeline:
-            wait = t_on - cursor
-            if wait > 0:
-                await asyncio.sleep(wait)
-            cursor = t_on
-            entry = {
-                "symbol": symbol,
-                "t_on": t_on,
-                "t_off": t_off,
-                "exercise_index": exercise_index,
-                "word_index": word_index,
-                "word": word,
-            }
-            emitted_symbols.append(entry)
-            await _send_event(ws, {"type": "symbol", **entry})
-
-        # Wait for the audio thread to actually finish before declaring the
-        # session ended — premature end-of-session would lie about what the
-        # learner is hearing (§1.5).
-        await audio_task
-        record_path = _write_koch_record(
-            config_path=config_path,
-            audio_params=audio_params,
-            claimed=claimed,
-            seed=result.seed,
-            generation=generation,
-            exercises=exercise_entries,
-            symbols=emitted_symbols,
-            started_at=started_at,
-        )
-        await _send_event(ws, {"type": "session-end"})
-        return record_path
-
-    except asyncio.CancelledError:
-        # Stop was requested. Signal PortAudio to abort the current stream
-        # immediately — sd.stop() is the only way to interrupt a blocking
-        # sd.play() running in a thread (asyncio task cancellation alone
-        # does not reach into the thread).
-        try:
-            import sounddevice as sd
-
-            sd.stop()
-        except Exception:
-            pass  # No audio device or sounddevice not installed — ignore
-        audio_task.cancel()
-        raise  # Re-raise so _run_session's handler sends session-end
 
 
 async def _save_koch_answers_action(
@@ -537,6 +516,30 @@ async def _save_koch_answers_action(
     return True
 
 
+async def _broadcast_claimed_state(
+    ws: WebSocketServerProtocol,
+    claimed: tuple[str, ...],
+    config_path: Path,
+    *,
+    set_is_fresh: bool,
+) -> None:
+    """Resolve readiness signals and push the claimed-symbols event."""
+    save_directory = load_save_directory(config_path)
+    claimed_set_key = " ".join(sorted(claimed))
+    evidence_ready_for_next, ready_for_next = _koch_readiness_state(save_directory, claimed_set_key)
+    ready_for_next_send = _next_send_symbol_readiness(save_directory, claimed_set_key)
+    await _send_event(
+        ws,
+        _claimed_symbols_event(
+            claimed,
+            evidence_ready_for_next=evidence_ready_for_next,
+            ready_for_next=ready_for_next,
+            ready_for_next_send=ready_for_next_send,
+            set_is_fresh=set_is_fresh,
+        ),
+    )
+
+
 async def _claim_symbol_action(
     ws: WebSocketServerProtocol,
     symbol: str,
@@ -569,21 +572,7 @@ async def _claim_symbol_action(
         save_claimed_symbols(new_claimed, config_path)
         claimed = new_claimed
 
-    save_directory = load_save_directory(config_path)
-    claimed_set_key = " ".join(sorted(claimed))
-    evidence_ready_for_next = _next_symbol_evidence(save_directory, claimed_set_key)
-    ready_for_next = _next_symbol_readiness(save_directory, claimed_set_key)
-    ready_for_next_send = _next_send_symbol_readiness(save_directory, claimed_set_key)
-    await _send_event(
-        ws,
-        _claimed_symbols_event(
-            claimed,
-            evidence_ready_for_next=evidence_ready_for_next,
-            ready_for_next=ready_for_next,
-            ready_for_next_send=ready_for_next_send,
-            set_is_fresh=set_is_fresh,
-        ),
-    )
+    await _broadcast_claimed_state(ws, claimed, config_path, set_is_fresh=set_is_fresh)
 
 
 async def _unclaim_symbol_action(
@@ -619,21 +608,7 @@ async def _unclaim_symbol_action(
         save_claimed_symbols(new_claimed, config_path)
         claimed = new_claimed
 
-    save_directory = load_save_directory(config_path)
-    claimed_set_key = " ".join(sorted(claimed))
-    evidence_ready_for_next = _next_symbol_evidence(save_directory, claimed_set_key)
-    ready_for_next = _next_symbol_readiness(save_directory, claimed_set_key)
-    ready_for_next_send = _next_send_symbol_readiness(save_directory, claimed_set_key)
-    await _send_event(
-        ws,
-        _claimed_symbols_event(
-            claimed,
-            evidence_ready_for_next=evidence_ready_for_next,
-            ready_for_next=ready_for_next,
-            ready_for_next_send=ready_for_next_send,
-            set_is_fresh=set_is_fresh,
-        ),
-    )
+    await _broadcast_claimed_state(ws, claimed, config_path, set_is_fresh=set_is_fresh)
 
 
 async def _request_copy_exercises_action(
