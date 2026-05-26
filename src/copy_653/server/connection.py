@@ -5,7 +5,7 @@ It owns the four per-slot task references (session / letter / test
 message / key input), the optional browser-key-input state, and the
 optional active Cadence session.
 
-Stateless action coroutines live in :mod:`copy_653.server.actions`;
+Stateless action coroutines live in small modules under :mod:`copy_653.server`;
 this module is the only caller of them.
 """
 
@@ -42,7 +42,6 @@ from copy_653.server.actions import (
     _flush_key_symbol,
     _get_audio_settings_action,
     _play_copy_key_exercise,
-    _play_test_message_action,
     _push_key_note_event,
     _request_copy_exercises_action,
     _request_copy_key_exercises_action,
@@ -50,11 +49,14 @@ from copy_653.server.actions import (
     _run_letter_sequence,
     _run_morse_repeat,
     _save_koch_answers_action,
-    _save_test_message_action,
     _set_audio_settings_action,
     _start_action,
     _start_warmup_action,
     _unclaim_symbol_action,
+)
+from copy_653.server.test_message_actions import (
+    _play_test_message_action,
+    _save_test_message_action,
 )
 from copy_653.server.records import (
     _ActiveCadenceSession,
