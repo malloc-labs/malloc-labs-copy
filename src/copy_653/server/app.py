@@ -171,7 +171,7 @@ from copy_653.config import (
 )
 from copy_653.letters import find_anchors_dir
 from copy_653.midi import KeyElement  # noqa: F401  — re-exported for tests/server/test_app.py
-from copy_653.server.actions import KeyNoteSource
+from copy_653.server.key_input_actions import KeyNoteSource
 from copy_653.server.connection import handler
 from copy_653.server.http_static import _build_static_handler, find_web_root
 from copy_653.server.records import _ActiveCadenceSession as _ActiveCadenceSession  # noqa: F401

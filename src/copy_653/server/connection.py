@@ -24,10 +24,8 @@ from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol
 
 from copy_653.audio import patterns, timing
-from copy_653.audio.parameters import AudioParameters
 from copy_653.config import (
     DEFAULT_CONFIG_PATH,
-    KeyerSettings,
     load_audio_parameters,
     load_claimed_symbols,
     load_keyer_settings,
@@ -41,18 +39,20 @@ from copy_653.server.audio_settings_actions import (
     _set_audio_settings_action,
 )
 from copy_653.server.actions import (
-    KeyNoteSource,
     _claim_symbol_action,
-    _flush_key_symbol,
     _play_copy_key_exercise,
-    _push_key_note_event,
     _request_copy_exercises_action,
     _request_copy_key_exercises_action,
-    _run_key_input_action,
     _save_koch_answers_action,
     _start_action,
     _start_warmup_action,
     _unclaim_symbol_action,
+)
+from copy_653.server.key_input_actions import (
+    BrowserKeyInputState,
+    KeyNoteSource,
+    _push_key_note_event,
+    _run_key_input_action,
 )
 from copy_653.server.test_message_actions import (
     _play_test_message_action,
@@ -99,58 +99,6 @@ async def supersede(task: asyncio.Task[Any] | None) -> None:
         await task
     except (asyncio.CancelledError, Exception):
         pass
-
-
-@dataclass
-class BrowserKeyInputState:
-    """In-flight state for a browser MIDI key-input session.
-
-    Created on ``start-browser-key-input``, retired on ``stop-key-input``
-    or socket close. Owns its own per-character-gap flush task so a
-    pending flush is cancelled cleanly when the state retires.
-    """
-
-    ws: WebSocketServerProtocol
-    settings: KeyerSettings
-    audio_params: AudioParameters
-    assembler: KeyElementAssembler
-    decoder: KeyDecoder
-    # Offset from browser performance.now() (seconds) to server
-    # time.monotonic() (seconds), captured once per session so element
-    # timestamps and timer-driven flushes share one clock domain.
-    clock_offset: float | None = None
-    flush_task: asyncio.Task[None] | None = None
-    # Forwarded to the timer-driven flush so symbols finalised by
-    # silence (the common case) reach the Cadence record alongside
-    # symbols finalised by the next stroke's gap-in-push.
-    recorder: Callable[[dict[str, Any]], None] | None = None
-
-    async def cancel_flush(self) -> None:
-        if self.flush_task is not None and not self.flush_task.done():
-            self.flush_task.cancel()
-            try:
-                await self.flush_task
-            except asyncio.CancelledError:
-                pass
-        self.flush_task = None
-
-    def schedule_flush(self) -> None:
-        if self.flush_task is not None and not self.flush_task.done():
-            self.flush_task.cancel()
-
-        async def _flush_after_gap() -> None:
-            await asyncio.sleep(
-                timing.send_inter_character_seconds(self.audio_params.character_speed_wpm)
-            )
-            await _flush_key_symbol(self.ws, self.decoder, self.recorder)
-
-        self.flush_task = asyncio.create_task(_flush_after_gap())
-
-    async def reset(self, reason: str) -> None:
-        await self.cancel_flush()
-        self.assembler = KeyElementAssembler()
-        self.decoder.reset()
-        await _send_event(self.ws, {"type": "key-input-reset", "reason": reason})
 
 
 @dataclass
