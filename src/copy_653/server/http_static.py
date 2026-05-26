@@ -16,7 +16,7 @@ import zipfile
 from datetime import datetime, timezone
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import parse_qs, urlsplit
 
 from websockets.datastructures import Headers
@@ -82,13 +82,9 @@ def _build_static_handler(web_root: Path, config_path: Path | None = None):
         path: str, request_headers: Headers
     ) -> tuple[HTTPStatus, list[tuple[str, str]], bytes] | None:
         """Serve static HTTP requests or allow the WebSocket upgrade."""
-        # Strip the query string for static lookups; we do not use it
-        # for anything in v0.
         parsed_path = urlsplit(path)
         clean_path = parsed_path.path
 
-        # /ws is the only WS endpoint. Returning None hands control
-        # back to websockets to complete the upgrade.
         if clean_path == "/ws":
             return None
 
@@ -227,8 +223,6 @@ def _build_static_handler(web_root: Path, config_path: Path | None = None):
         target = "index.html" if clean_path == "/" else clean_path.lstrip("/")
         resolved = (web_root / target).resolve()
 
-        # Defence in depth against path traversal — a request like
-        # /../etc/passwd should 404, not escape the web root.
         try:
             resolved.relative_to(web_root)
         except ValueError:
@@ -240,8 +234,6 @@ def _build_static_handler(web_root: Path, config_path: Path | None = None):
         body = resolved.read_bytes()
         mime, _ = mimetypes.guess_type(resolved.name)
         content_type = mime or "application/octet-stream"
-        # Modern browsers want charset=utf-8 on text payloads — without
-        # it Firefox in particular complains about the meta charset.
         if content_type.startswith("text/") or content_type == "application/javascript":
             content_type = f"{content_type}; charset=utf-8"
 
@@ -256,6 +248,11 @@ def _build_static_handler(web_root: Path, config_path: Path | None = None):
         )
 
     return process_request
+
+
+# ---------------------------------------------------------------------------
+# Response helpers
+# ---------------------------------------------------------------------------
 
 
 def _http_response(
@@ -284,286 +281,99 @@ def _json_response(payload: dict[str, Any]) -> tuple[HTTPStatus, list[tuple[str,
     )
 
 
-_BACKUP_KINDS: dict[str, str] = {
-    "koch-exercise": "koch-exercise",
-    "cadence-send": "cadence-send",
-    "copy-key": "copy-key",
-}
+# ---------------------------------------------------------------------------
+# Filename validation patterns
+# ---------------------------------------------------------------------------
+
+_KOCH_FILENAME_RE = re.compile(r"^koch-exercise-[0-9A-Za-z-]+\.json$")
+_CADENCE_FILENAME_RE = re.compile(r"^cadence-send-[0-9A-Za-z-]+\.json$")
+_COPY_KEY_FILENAME_RE = re.compile(r"^copy-key-[0-9A-Za-z-]+\.json$")
 
 
-def _build_records_backup(
+# ---------------------------------------------------------------------------
+# Generic record helpers
+# ---------------------------------------------------------------------------
+
+
+def _list_records(
     config_path: Path | None,
     *,
-    kind: str,
-) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
-    """Build an in-memory zip of one record directory and return it as a download.
+    subdirectory: str,
+    mode: str,
+    enrich: Callable[[dict[str, Any], dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
+    """List saved records of one type for the settings UI.
 
-    ``kind`` selects which subdirectory under the configured
-    ``save_directory`` is included — ``koch-exercise`` or
-    ``cadence-send``. An empty or unknown kind returns 400. The zip is
-    built in memory and returned as a single response: the dataset is
-    small enough that this is simpler than streaming. Zero records is
-    a legitimate outcome (e.g. first-run on a fresh install); the zip
-    is still returned, just empty inside, so the click is honest about
-    what's on disk.
-
-    File paths inside the zip are kept relative to ``save_directory``
-    so an unzip into the same directory restores the originals without
-    any path rewriting.
-    """
-    subdir = _BACKUP_KINDS.get(kind)
-    if subdir is None:
-        return _http_response(HTTPStatus.BAD_REQUEST, b"unknown backup kind")
-
-    try:
-        save_directory = load_save_directory(config_path)
-    except Exception:
-        logger.exception("could not resolve save_directory for backup")
-        return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"could not resolve save directory")
-
-    target_dir = save_directory / subdir
-    pattern = f"{subdir}-*.json"
-
-    buffer = io.BytesIO()
-    file_count = 0
-    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
-        if target_dir.is_dir():
-            for entry in sorted(target_dir.rglob(pattern)):
-                try:
-                    payload = entry.read_bytes()
-                except OSError:
-                    logger.exception("skipping unreadable record in backup: %s", entry)
-                    continue
-                # Keep the directory prefix so the zip mirrors the
-                # on-disk layout — restoring is a flat unzip into the
-                # save directory.
-                archive.writestr(str(entry.relative_to(save_directory)), payload)
-                file_count += 1
-
-    body = buffer.getvalue()
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    filename = f"copy-653-{subdir}-backup-{stamp}.zip"
-    return (
-        HTTPStatus.OK,
-        [
-            ("Content-Type", "application/zip"),
-            ("Content-Length", str(len(body))),
-            ("Content-Disposition", f'attachment; filename="{filename}"'),
-            ("X-Copy-Backup-File-Count", str(file_count)),
-            ("Cache-Control", "no-store"),
-        ],
-        body,
-    )
-
-
-def _list_koch_exercises(config_path: Path | None) -> dict[str, Any]:
-    """List saved koch-exercise records for the settings UI.
-
-    Reads the save directory fresh from disk (spec §6.3), enumerates
-    ``<save_dir>/koch-exercise/koch-exercise-*.json``, and returns each
-    record's started_at timestamp and claimed set. Files that fail to
-    parse are skipped — a corrupt or non-koch record should not 500 the
-    settings page. Order is newest first.
+    Walks ``<save_dir>/<subdirectory>/<mode>-*.json``, filters by
+    ``mode``, and returns a newest-first list of summary dicts.
+    ``enrich``, when provided, receives ``(raw_data, summary_entry)``
+    and may add mode-specific fields to the summary.
     """
     try:
         save_directory = load_save_directory(config_path)
     except Exception:
-        logger.exception("could not resolve save_directory for koch-exercise listing")
+        logger.exception("could not resolve save_directory for %s listing", mode)
         return {"save_directory": "", "records": []}
 
-    target_dir = save_directory / "koch-exercise"
+    target_dir = save_directory / subdirectory
     records: list[dict[str, Any]] = []
     if target_dir.is_dir():
-        for entry in sorted(target_dir.rglob("koch-exercise-*.json")):
+        for entry in sorted(target_dir.rglob(f"{mode}-*.json")):
             try:
                 data = json.loads(entry.read_text())
             except (OSError, ValueError):
-                logger.exception("skipping unreadable koch-exercise record: %s", entry)
+                logger.exception("skipping unreadable %s record: %s", mode, entry)
                 continue
-            if data.get("mode") != "koch-exercise":
+            if data.get("mode") != mode:
                 continue
             started_at = data.get("started_at")
             claimed_set = data.get("claimed_set")
             if not isinstance(started_at, str) or not isinstance(claimed_set, list):
                 continue
             exercises = data.get("exercises")
-            exercise_count = len(exercises) if isinstance(exercises, list) else 0
             ended_at = data.get("ended_at")
-            generation = data.get("generation") or {}
             record_entry: dict[str, Any] = {
                 "filename": entry.name,
                 "started_at": started_at,
                 "ended_at": ended_at if isinstance(ended_at, str) else None,
                 "claimed_set": [str(s) for s in claimed_set],
-                "exercise_count": exercise_count,
+                "exercise_count": len(exercises) if isinstance(exercises, list) else 0,
             }
-            if data.get("warm_up") is True:
-                record_entry["warm_up"] = True
-            set_id = generation.get("set_id")
-            if isinstance(set_id, str) and set_id:
-                record_entry["set_id"] = set_id
-            set_session = generation.get("set_session")
-            if isinstance(set_session, int) and not isinstance(set_session, bool):
-                record_entry["set_session"] = set_session
+            if enrich is not None:
+                enrich(data, record_entry)
             records.append(record_entry)
 
     records.sort(key=lambda r: r["started_at"], reverse=True)
     return {"save_directory": str(save_directory), "records": records}
 
 
-# Files written by the engine match koch-exercise-<UTC-stamp>.json (with
-# optional -N collision suffix); this rejects path separators and anything
-# else that could escape the koch-exercise subdirectory.
-_KOCH_FILENAME_RE = re.compile(r"^koch-exercise-[0-9A-Za-z-]+\.json$")
-_CADENCE_FILENAME_RE = re.compile(r"^cadence-send-[0-9A-Za-z-]+\.json$")
-_COPY_KEY_FILENAME_RE = re.compile(r"^copy-key-[0-9A-Za-z-]+\.json$")
-
-
-def _read_koch_band_evidence(
-    config_path: Path | None,
+def _read_record_file(
     *,
-    claimed_set_key: str | None,
-    window_size_raw: str | None,
-) -> dict[str, Any]:
-    """Return per-band evidence for the Settings rollup view.
-
-    When ``claimed_set_key`` is omitted the most recent saved record's
-    key is used — that is almost always the one the learner wants to
-    see, and it avoids the page needing a second round-trip to discover
-    which key is current. Records that fail to parse are skipped.
-    """
-    try:
-        save_directory = load_save_directory(config_path)
-    except Exception:
-        logger.exception("could not resolve save_directory for band-evidence read")
-        return {
-            "save_directory": "",
-            "claimed_set_key": claimed_set_key or "",
-            "session_count": 0,
-            "window_size": DEFAULT_EVIDENCE_WINDOW_SIZE,
-            "sessions_used": 0,
-            "bands": [],
-        }
-
-    records = _iter_koch_records(save_directory)
-    resolved_key = claimed_set_key
-    if not resolved_key:
-        latest = max(
-            records,
-            key=lambda r: str(r.get("started_at") or ""),
-            default=None,
-        )
-        resolved_key = record_claimed_set_key(latest) if latest else ""
-
-    window_size = DEFAULT_EVIDENCE_WINDOW_SIZE
-    if window_size_raw is not None:
-        try:
-            parsed = int(window_size_raw)
-        except (TypeError, ValueError):
-            parsed = window_size
-        if parsed > 0:
-            window_size = parsed
-
-    evidence = load_band_evidence(
-        records,
-        claimed_set_key=resolved_key,
-        window_size=window_size,
-    )
-    evidence["save_directory"] = str(save_directory)
-    return evidence
-
-
-def _read_koch_band_history(
     config_path: Path | None,
-    *,
-    claimed_set_key: str | None,
-) -> dict[str, Any]:
-    """Return per-band lifetime history for the Settings full-history modal.
-
-    Mirrors :func:`_read_koch_band_evidence` for the rollup endpoint —
-    when ``claimed_set_key`` is omitted, the most-recent saved
-    record's key is used so the page does not need a separate
-    round-trip to discover which key is current.
-    """
-    try:
-        save_directory = load_save_directory(config_path)
-    except Exception:
-        logger.exception("could not resolve save_directory for band-history read")
-        return {
-            "save_directory": "",
-            "claimed_set_key": claimed_set_key or "",
-            "session_count": 0,
-            "sessions": [],
-            "bands": [],
-            "gear_changes": [],
-            "current_gears": {},
-        }
-
-    records = _iter_koch_records(save_directory)
-    resolved_key = claimed_set_key
-    if not resolved_key:
-        latest = max(
-            records,
-            key=lambda r: str(r.get("started_at") or ""),
-            default=None,
-        )
-        resolved_key = record_claimed_set_key(latest) if latest else ""
-
-    history = load_band_history(records, claimed_set_key=resolved_key)
-    history["save_directory"] = str(save_directory)
-    return history
-
-
-def _read_koch_confusion(
-    config_path: Path | None,
-    *,
-    claimed_set_key: str | None,
-) -> dict[str, Any]:
-    """Per-symbol confusion counts for the Settings confusion panel."""
-    try:
-        save_directory = load_save_directory(config_path)
-    except Exception:
-        logger.exception("could not resolve save_directory for confusion read")
-        return {
-            "claimed_set_key": claimed_set_key or "",
-            "exercises_used": 0,
-            "substitutions": [],
-        }
-
-    records = _iter_koch_records(save_directory)
-    resolved_key = claimed_set_key
-    if not resolved_key:
-        latest = max(
-            records,
-            key=lambda r: str(r.get("started_at") or ""),
-            default=None,
-        )
-        resolved_key = record_claimed_set_key(latest) if latest else ""
-
-    return load_confusion_pairs(records, claimed_set_key=resolved_key)
-
-
-def _read_koch_exercise(
-    config_path: Path | None, filename: str
+    filename: str,
+    filename_re: re.Pattern[str],
+    subdirectory: str,
+    mode: str,
+    transform: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
-    """Return the full JSON record for one koch-exercise file.
+    """Return the full JSON for one record file.
 
-    Validates ``filename`` strictly against the engine's write pattern
-    before resolving — a request for ``../foo.json`` or any path with a
-    separator is refused without touching the filesystem. The file is
-    resolved under ``<save_directory>/koch-exercise/`` and a final
-    ``relative_to`` check guards against symlink shenanigans.
+    Validates ``filename`` against ``filename_re``, resolves under
+    ``<save_directory>/<subdirectory>/``, guards against path traversal,
+    and returns the parsed JSON as a response. ``transform``, when
+    provided, may mutate or replace the parsed dict before it is
+    serialized (used for on-the-fly analysis backfill).
     """
-    if not filename or not _KOCH_FILENAME_RE.fullmatch(filename):
+    if not filename or not filename_re.fullmatch(filename):
         return _http_response(HTTPStatus.BAD_REQUEST, b"invalid filename")
 
     try:
         save_directory = load_save_directory(config_path)
     except Exception:
-        logger.exception("could not resolve save_directory for koch-exercise read")
+        logger.exception("could not resolve save_directory for %s read", mode)
         return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"save directory unavailable")
 
-    target_dir = (save_directory / "koch-exercise").resolve()
+    target_dir = (save_directory / subdirectory).resolve()
     matches = sorted(target_dir.rglob(filename))
     if not matches:
         return _http_response(HTTPStatus.NOT_FOUND, b"not found")
@@ -576,11 +386,13 @@ def _read_koch_exercise(
     try:
         data = json.loads(resolved.read_text())
     except (OSError, ValueError):
-        logger.exception("failed to read koch-exercise record: %s", resolved)
+        logger.exception("failed to read %s record: %s", mode, resolved)
         return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"read failed")
-    if not isinstance(data, dict) or data.get("mode") != "koch-exercise":
+    if not isinstance(data, dict) or data.get("mode") != mode:
         return _http_response(HTTPStatus.NOT_FOUND, b"not found")
 
+    if transform is not None:
+        data = transform(data)
     return _json_response(data)
 
 
@@ -628,6 +440,144 @@ def _delete_record_file(
     return _json_response({"deleted": True, "filename": filename})
 
 
+def _resolve_records_and_key(
+    config_path: Path | None,
+    *,
+    iter_records: Callable[[Path], list[dict[str, Any]]],
+    extract_key: Callable[[dict[str, Any]], str],
+    claimed_set_key: str | None,
+    transform: Callable[[list[dict[str, Any]]], list[dict[str, Any]]] | None = None,
+) -> tuple[Path, list[dict[str, Any]], str]:
+    """Load records and resolve the claimed-set key for evidence/history endpoints.
+
+    Resolves save_directory, loads records via ``iter_records``,
+    optionally transforms them, and when ``claimed_set_key`` is omitted
+    defaults to the most recent record's key via ``extract_key``.
+
+    Raises on save_directory resolution failure — callers catch and
+    return their own error fallback dict.
+    """
+    save_directory = load_save_directory(config_path)
+    records = iter_records(save_directory)
+    if transform is not None:
+        records = transform(records)
+    resolved_key = claimed_set_key
+    if not resolved_key:
+        latest = max(
+            records,
+            key=lambda r: str(r.get("started_at") or ""),
+            default=None,
+        )
+        resolved_key = extract_key(latest) if latest else ""
+    return save_directory, records, resolved_key
+
+
+def _parse_window_size(raw: str | None, default: int) -> int:
+    if raw is None:
+        return default
+    try:
+        parsed = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+# ---------------------------------------------------------------------------
+# Backup
+# ---------------------------------------------------------------------------
+
+_BACKUP_KINDS: dict[str, str] = {
+    "koch-exercise": "koch-exercise",
+    "cadence-send": "cadence-send",
+    "copy-key": "copy-key",
+}
+
+
+def _build_records_backup(
+    config_path: Path | None,
+    *,
+    kind: str,
+) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
+    subdir = _BACKUP_KINDS.get(kind)
+    if subdir is None:
+        return _http_response(HTTPStatus.BAD_REQUEST, b"unknown backup kind")
+
+    try:
+        save_directory = load_save_directory(config_path)
+    except Exception:
+        logger.exception("could not resolve save_directory for backup")
+        return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"could not resolve save directory")
+
+    target_dir = save_directory / subdir
+    pattern = f"{subdir}-*.json"
+
+    buffer = io.BytesIO()
+    file_count = 0
+    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        if target_dir.is_dir():
+            for entry in sorted(target_dir.rglob(pattern)):
+                try:
+                    payload = entry.read_bytes()
+                except OSError:
+                    logger.exception("skipping unreadable record in backup: %s", entry)
+                    continue
+                archive.writestr(str(entry.relative_to(save_directory)), payload)
+                file_count += 1
+
+    body = buffer.getvalue()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    filename = f"copy-653-{subdir}-backup-{stamp}.zip"
+    return (
+        HTTPStatus.OK,
+        [
+            ("Content-Type", "application/zip"),
+            ("Content-Length", str(len(body))),
+            ("Content-Disposition", f'attachment; filename="{filename}"'),
+            ("X-Copy-Backup-File-Count", str(file_count)),
+            ("Cache-Control", "no-store"),
+        ],
+        body,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Koch exercise endpoints
+# ---------------------------------------------------------------------------
+
+
+def _enrich_koch_record(data: dict[str, Any], entry: dict[str, Any]) -> None:
+    if data.get("warm_up") is True:
+        entry["warm_up"] = True
+    generation = data.get("generation") or {}
+    set_id = generation.get("set_id")
+    if isinstance(set_id, str) and set_id:
+        entry["set_id"] = set_id
+    set_session = generation.get("set_session")
+    if isinstance(set_session, int) and not isinstance(set_session, bool):
+        entry["set_session"] = set_session
+
+
+def _list_koch_exercises(config_path: Path | None) -> dict[str, Any]:
+    return _list_records(
+        config_path,
+        subdirectory="koch-exercise",
+        mode="koch-exercise",
+        enrich=_enrich_koch_record,
+    )
+
+
+def _read_koch_exercise(
+    config_path: Path | None, filename: str
+) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
+    return _read_record_file(
+        config_path=config_path,
+        filename=filename,
+        filename_re=_KOCH_FILENAME_RE,
+        subdirectory="koch-exercise",
+        mode="koch-exercise",
+    )
+
+
 def _delete_koch_exercise(
     config_path: Path | None, filename: str
 ) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
@@ -640,108 +590,50 @@ def _delete_koch_exercise(
     )
 
 
-def _list_cadence_sends(config_path: Path | None) -> dict[str, Any]:
-    """List saved cadence-send records for the settings UI."""
-    try:
-        save_directory = load_save_directory(config_path)
-    except Exception:
-        logger.exception("could not resolve save_directory for cadence-send listing")
-        return {"save_directory": "", "records": []}
-
-    target_dir = save_directory / "cadence-send"
-    records: list[dict[str, Any]] = []
-    if target_dir.is_dir():
-        for entry in sorted(target_dir.rglob("cadence-send-*.json")):
-            try:
-                data = json.loads(entry.read_text())
-            except (OSError, ValueError):
-                logger.exception("skipping unreadable cadence-send record: %s", entry)
-                continue
-            if data.get("mode") != "cadence-send":
-                continue
-            started_at = data.get("started_at")
-            claimed_set = data.get("claimed_set")
-            exercises = data.get("exercises")
-            if (
-                not isinstance(started_at, str)
-                or not isinstance(claimed_set, list)
-                or not isinstance(exercises, list)
-            ):
-                continue
-            ended_at = data.get("ended_at")
-            records.append(
-                {
-                    "filename": entry.name,
-                    "started_at": started_at,
-                    "ended_at": ended_at if isinstance(ended_at, str) else None,
-                    "claimed_set": [str(s) for s in claimed_set],
-                    "exercise_count": len(exercises),
-                }
-            )
-
-    records.sort(key=lambda r: r["started_at"], reverse=True)
-    return {"save_directory": str(save_directory), "records": records}
-
-
-def _read_cadence_band_evidence(
+def _read_koch_band_evidence(
     config_path: Path | None,
     *,
     claimed_set_key: str | None,
     window_size_raw: str | None,
 ) -> dict[str, Any]:
     try:
-        save_directory = load_save_directory(config_path)
+        save_directory, records, resolved_key = _resolve_records_and_key(
+            config_path,
+            iter_records=_iter_koch_records,
+            extract_key=record_claimed_set_key,
+            claimed_set_key=claimed_set_key,
+        )
     except Exception:
-        logger.exception("could not resolve save_directory for cadence evidence read")
+        logger.exception("could not resolve save_directory for band-evidence read")
         return {
             "save_directory": "",
             "claimed_set_key": claimed_set_key or "",
             "session_count": 0,
-            "window_size": CADENCE_EVIDENCE_WINDOW_SIZE,
+            "window_size": DEFAULT_EVIDENCE_WINDOW_SIZE,
             "sessions_used": 0,
             "bands": [],
         }
 
-    records = _iter_cadence_records(save_directory)
-    resolved_key = claimed_set_key
-    if not resolved_key:
-        latest = max(records, key=lambda r: str(r.get("started_at") or ""), default=None)
-        resolved_key = cadence_record_claimed_set_key(latest) if latest else ""
-
-    window_size = CADENCE_EVIDENCE_WINDOW_SIZE
-    if window_size_raw is not None:
-        try:
-            parsed = int(window_size_raw)
-        except (TypeError, ValueError):
-            parsed = window_size
-        if parsed > 0:
-            window_size = parsed
-
-    evidence = load_cadence_band_evidence(
-        records,
-        claimed_set_key=resolved_key,
-        window_size=window_size,
-    )
+    window_size = _parse_window_size(window_size_raw, DEFAULT_EVIDENCE_WINDOW_SIZE)
+    evidence = load_band_evidence(records, claimed_set_key=resolved_key, window_size=window_size)
     evidence["save_directory"] = str(save_directory)
     return evidence
 
 
-def _read_cadence_band_history(
+def _read_koch_band_history(
     config_path: Path | None,
     *,
     claimed_set_key: str | None,
 ) -> dict[str, Any]:
-    """Return per-band lifetime history for the Key full-history modal.
-
-    Mirrors :func:`_read_koch_band_history` — when ``claimed_set_key``
-    is omitted, the most-recent saved cadence record's key is used so
-    the page does not need a separate round-trip to discover the
-    current key.
-    """
     try:
-        save_directory = load_save_directory(config_path)
+        save_directory, records, resolved_key = _resolve_records_and_key(
+            config_path,
+            iter_records=_iter_koch_records,
+            extract_key=record_claimed_set_key,
+            claimed_set_key=claimed_set_key,
+        )
     except Exception:
-        logger.exception("could not resolve save_directory for cadence band-history read")
+        logger.exception("could not resolve save_directory for band-history read")
         return {
             "save_directory": "",
             "claimed_set_key": claimed_set_key or "",
@@ -752,52 +644,53 @@ def _read_cadence_band_history(
             "current_gears": {},
         }
 
-    records = _iter_cadence_records(save_directory)
-    resolved_key = claimed_set_key
-    if not resolved_key:
-        latest = max(
-            records,
-            key=lambda r: str(r.get("started_at") or ""),
-            default=None,
-        )
-        resolved_key = cadence_record_claimed_set_key(latest) if latest else ""
-
-    history = load_cadence_band_history(records, claimed_set_key=resolved_key)
+    history = load_band_history(records, claimed_set_key=resolved_key)
     history["save_directory"] = str(save_directory)
     return history
+
+
+def _read_koch_confusion(
+    config_path: Path | None,
+    *,
+    claimed_set_key: str | None,
+) -> dict[str, Any]:
+    try:
+        save_directory, records, resolved_key = _resolve_records_and_key(
+            config_path,
+            iter_records=_iter_koch_records,
+            extract_key=record_claimed_set_key,
+            claimed_set_key=claimed_set_key,
+        )
+    except Exception:
+        logger.exception("could not resolve save_directory for confusion read")
+        return {
+            "claimed_set_key": claimed_set_key or "",
+            "exercises_used": 0,
+            "substitutions": [],
+        }
+
+    return load_confusion_pairs(records, claimed_set_key=resolved_key)
+
+
+# ---------------------------------------------------------------------------
+# Cadence send endpoints
+# ---------------------------------------------------------------------------
+
+
+def _list_cadence_sends(config_path: Path | None) -> dict[str, Any]:
+    return _list_records(config_path, subdirectory="cadence-send", mode="cadence-send")
 
 
 def _read_cadence_send(
     config_path: Path | None, filename: str
 ) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
-    if not filename or not _CADENCE_FILENAME_RE.fullmatch(filename):
-        return _http_response(HTTPStatus.BAD_REQUEST, b"invalid filename")
-
-    try:
-        save_directory = load_save_directory(config_path)
-    except Exception:
-        logger.exception("could not resolve save_directory for cadence-send read")
-        return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"save directory unavailable")
-
-    target_dir = (save_directory / "cadence-send").resolve()
-    matches = sorted(target_dir.rglob(filename))
-    if not matches:
-        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
-    resolved = matches[0].resolve()
-    try:
-        resolved.relative_to(target_dir)
-    except ValueError:
-        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
-
-    try:
-        data = json.loads(resolved.read_text())
-    except (OSError, ValueError):
-        logger.exception("failed to read cadence-send record: %s", resolved)
-        return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"read failed")
-    if not isinstance(data, dict) or data.get("mode") != "cadence-send":
-        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
-
-    return _json_response(data)
+    return _read_record_file(
+        config_path=config_path,
+        filename=filename,
+        filename_re=_CADENCE_FILENAME_RE,
+        subdirectory="cadence-send",
+        mode="cadence-send",
+    )
 
 
 def _delete_cadence_send(
@@ -812,97 +705,115 @@ def _delete_cadence_send(
     )
 
 
-def _list_copy_key_sessions(config_path: Path | None) -> dict[str, Any]:
-    """List saved copy-key records for the settings UI."""
+def _read_cadence_band_evidence(
+    config_path: Path | None,
+    *,
+    claimed_set_key: str | None,
+    window_size_raw: str | None,
+) -> dict[str, Any]:
     try:
-        save_directory = load_save_directory(config_path)
+        save_directory, records, resolved_key = _resolve_records_and_key(
+            config_path,
+            iter_records=_iter_cadence_records,
+            extract_key=cadence_record_claimed_set_key,
+            claimed_set_key=claimed_set_key,
+        )
     except Exception:
-        logger.exception("could not resolve save_directory for copy-key listing")
-        return {"save_directory": "", "records": []}
+        logger.exception("could not resolve save_directory for cadence evidence read")
+        return {
+            "save_directory": "",
+            "claimed_set_key": claimed_set_key or "",
+            "session_count": 0,
+            "window_size": CADENCE_EVIDENCE_WINDOW_SIZE,
+            "sessions_used": 0,
+            "bands": [],
+        }
 
-    target_dir = save_directory / "copy-key"
-    records: list[dict[str, Any]] = []
-    if target_dir.is_dir():
-        for entry in sorted(target_dir.rglob("copy-key-*.json")):
-            try:
-                data = json.loads(entry.read_text())
-            except (OSError, ValueError):
-                logger.exception("skipping unreadable copy-key record: %s", entry)
-                continue
-            if data.get("mode") != "copy-key":
-                continue
-            started_at = data.get("started_at")
-            claimed_set = data.get("claimed_set")
-            exercises = data.get("exercises")
-            if (
-                not isinstance(started_at, str)
-                or not isinstance(claimed_set, list)
-                or not isinstance(exercises, list)
-            ):
-                continue
-            ended_at = data.get("ended_at")
-            records.append(
-                {
-                    "filename": entry.name,
-                    "started_at": started_at,
-                    "ended_at": ended_at if isinstance(ended_at, str) else None,
-                    "claimed_set": [str(s) for s in claimed_set],
-                    "exercise_count": len(exercises),
-                }
-            )
+    window_size = _parse_window_size(window_size_raw, CADENCE_EVIDENCE_WINDOW_SIZE)
+    evidence = load_cadence_band_evidence(
+        records, claimed_set_key=resolved_key, window_size=window_size
+    )
+    evidence["save_directory"] = str(save_directory)
+    return evidence
 
-    records.sort(key=lambda r: r["started_at"], reverse=True)
-    return {"save_directory": str(save_directory), "records": records}
+
+def _read_cadence_band_history(
+    config_path: Path | None,
+    *,
+    claimed_set_key: str | None,
+) -> dict[str, Any]:
+    try:
+        save_directory, records, resolved_key = _resolve_records_and_key(
+            config_path,
+            iter_records=_iter_cadence_records,
+            extract_key=cadence_record_claimed_set_key,
+            claimed_set_key=claimed_set_key,
+        )
+    except Exception:
+        logger.exception("could not resolve save_directory for cadence band-history read")
+        return {
+            "save_directory": "",
+            "claimed_set_key": claimed_set_key or "",
+            "session_count": 0,
+            "sessions": [],
+            "bands": [],
+            "gear_changes": [],
+            "current_gears": {},
+        }
+
+    history = load_cadence_band_history(records, claimed_set_key=resolved_key)
+    history["save_directory"] = str(save_directory)
+    return history
+
+
+# ---------------------------------------------------------------------------
+# Copy Key endpoints
+# ---------------------------------------------------------------------------
+
+
+def _backfill_copy_key_record(data: dict[str, Any]) -> None:
+    """Apply copy-key analysis to a record saved before analysis was wired in."""
+    exercises = data.get("exercises")
+    if not isinstance(exercises, list) or not exercises:
+        return
+    first = exercises[0] if isinstance(exercises[0], dict) else {}
+    if (first.get("analysis") or {}).get("saved"):
+        return
+    audio = data.get("audio") or {}
+    data["exercises"] = apply_copy_key_analysis(
+        exercises,
+        sent=data.get("sent") or [],
+        key_events=data.get("key_events") or [],
+        character_wpm=audio.get("character_speed_wpm", 20),
+    )
+
+
+def _backfill_copy_key_analysis(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    for record in records:
+        _backfill_copy_key_record(record)
+    return records
+
+
+def _transform_copy_key_record(data: dict[str, Any]) -> dict[str, Any]:
+    _backfill_copy_key_record(data)
+    return data
+
+
+def _list_copy_key_sessions(config_path: Path | None) -> dict[str, Any]:
+    return _list_records(config_path, subdirectory="copy-key", mode="copy-key")
 
 
 def _read_copy_key_session(
     config_path: Path | None, filename: str
 ) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
-    if not filename or not _COPY_KEY_FILENAME_RE.fullmatch(filename):
-        return _http_response(HTTPStatus.BAD_REQUEST, b"invalid filename")
-
-    try:
-        save_directory = load_save_directory(config_path)
-    except Exception:
-        logger.exception("could not resolve save_directory for copy-key read")
-        return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"save directory unavailable")
-
-    target_dir = (save_directory / "copy-key").resolve()
-    matches = sorted(target_dir.rglob(filename))
-    if not matches:
-        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
-    resolved = matches[0].resolve()
-    try:
-        resolved.relative_to(target_dir)
-    except ValueError:
-        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
-
-    try:
-        data = json.loads(resolved.read_text())
-    except (OSError, ValueError):
-        logger.exception("failed to read copy-key record: %s", resolved)
-        return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"read failed")
-    if not isinstance(data, dict) or data.get("mode") != "copy-key":
-        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
-
-    # Records saved before analysis was added lack per-exercise
-    # attempts/analysis — compute on the fly so the settings UI can
-    # show metrics for all records, not just newly written ones.
-    exercises = data.get("exercises")
-    if isinstance(exercises, list) and exercises:
-        first_analysis = (
-            (exercises[0].get("analysis") or {}) if isinstance(exercises[0], dict) else {}
-        )
-        if not first_analysis.get("saved"):
-            audio = data.get("audio") or {}
-            data["exercises"] = apply_copy_key_analysis(
-                exercises,
-                sent=data.get("sent") or [],
-                key_events=data.get("key_events") or [],
-                character_wpm=audio.get("character_speed_wpm", 20),
-            )
-
-    return _json_response(data)
+    return _read_record_file(
+        config_path=config_path,
+        filename=filename,
+        filename_re=_COPY_KEY_FILENAME_RE,
+        subdirectory="copy-key",
+        mode="copy-key",
+        transform=_transform_copy_key_record,
+    )
 
 
 def _delete_copy_key_session(
@@ -917,31 +828,6 @@ def _delete_copy_key_session(
     )
 
 
-def _backfill_copy_key_analysis(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Apply copy-key analysis to records that were saved without it.
-
-    Records written before analysis was wired into CopyKeyRecord.to_dict()
-    lack per-exercise attempts/analysis. This patches them in-memory so
-    evidence and history calculations see complete data. Records that
-    already carry analysis are returned unchanged.
-    """
-    for record in records:
-        exercises = record.get("exercises")
-        if not isinstance(exercises, list) or not exercises:
-            continue
-        first = exercises[0] if isinstance(exercises[0], dict) else {}
-        if (first.get("analysis") or {}).get("saved"):
-            continue
-        audio = record.get("audio") or {}
-        record["exercises"] = apply_copy_key_analysis(
-            exercises,
-            sent=record.get("sent") or [],
-            key_events=record.get("key_events") or [],
-            character_wpm=audio.get("character_speed_wpm", 20),
-        )
-    return records
-
-
 def _read_copy_key_band_evidence(
     config_path: Path | None,
     *,
@@ -949,7 +835,13 @@ def _read_copy_key_band_evidence(
     window_size_raw: str | None,
 ) -> dict[str, Any]:
     try:
-        save_directory = load_save_directory(config_path)
+        save_directory, records, resolved_key = _resolve_records_and_key(
+            config_path,
+            iter_records=_iter_copy_key_records,
+            extract_key=cadence_record_claimed_set_key,
+            claimed_set_key=claimed_set_key,
+            transform=_backfill_copy_key_analysis,
+        )
     except Exception:
         logger.exception("could not resolve save_directory for copy-key evidence read")
         return {
@@ -961,26 +853,9 @@ def _read_copy_key_band_evidence(
             "bands": [],
         }
 
-    records = _backfill_copy_key_analysis(_iter_copy_key_records(save_directory))
-    resolved_key = claimed_set_key
-    if not resolved_key:
-        latest = max(records, key=lambda r: str(r.get("started_at") or ""), default=None)
-        resolved_key = cadence_record_claimed_set_key(latest) if latest else ""
-
-    window_size = CADENCE_EVIDENCE_WINDOW_SIZE
-    if window_size_raw is not None:
-        try:
-            parsed = int(window_size_raw)
-        except (TypeError, ValueError):
-            parsed = window_size
-        if parsed > 0:
-            window_size = parsed
-
+    window_size = _parse_window_size(window_size_raw, CADENCE_EVIDENCE_WINDOW_SIZE)
     evidence = load_cadence_band_evidence(
-        records,
-        claimed_set_key=resolved_key,
-        window_size=window_size,
-        mode="copy-key",
+        records, claimed_set_key=resolved_key, window_size=window_size, mode="copy-key"
     )
     evidence["save_directory"] = str(save_directory)
     return evidence
@@ -992,7 +867,13 @@ def _read_copy_key_band_history(
     claimed_set_key: str | None,
 ) -> dict[str, Any]:
     try:
-        save_directory = load_save_directory(config_path)
+        save_directory, records, resolved_key = _resolve_records_and_key(
+            config_path,
+            iter_records=_iter_copy_key_records,
+            extract_key=cadence_record_claimed_set_key,
+            claimed_set_key=claimed_set_key,
+            transform=_backfill_copy_key_analysis,
+        )
     except Exception:
         logger.exception("could not resolve save_directory for copy-key band-history read")
         return {
@@ -1004,16 +885,6 @@ def _read_copy_key_band_history(
             "gear_changes": [],
             "current_gears": {},
         }
-
-    records = _backfill_copy_key_analysis(_iter_copy_key_records(save_directory))
-    resolved_key = claimed_set_key
-    if not resolved_key:
-        latest = max(
-            records,
-            key=lambda r: str(r.get("started_at") or ""),
-            default=None,
-        )
-        resolved_key = cadence_record_claimed_set_key(latest) if latest else ""
 
     history = load_cadence_band_history(records, claimed_set_key=resolved_key, mode="copy-key")
     history["save_directory"] = str(save_directory)

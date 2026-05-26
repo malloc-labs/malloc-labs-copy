@@ -11,10 +11,9 @@ import pytest
 from copy_653.server import records as records_module
 from copy_653.server.records import (
     MIN_SECONDS_PER_CLAIMED_SET,
+    _koch_readiness_state,
     _next_koch_run_index,
-    _next_symbol_evidence,
-    _next_symbol_readiness,
-    _resolve_session_gears,
+    _resolve_session_gears_and_rst,
     _seconds_on_claimed_set,
 )
 
@@ -83,7 +82,9 @@ def test_next_run_index_derives_key_from_claimed_set_for_legacy_records(tmp_path
 
 def test_resolve_session_gears_returns_zeros_when_no_history(tmp_path: Path):
     # No prior records — every slot defaults to gear 0.
-    assert _resolve_session_gears(tmp_path, "K M", exercise_count=5) == [0, 0, 0, 0, 0]
+    gears, rst_steps = _resolve_session_gears_and_rst(tmp_path, "K M", exercise_count=5)
+    assert gears == [0, 0, 0, 0, 0]
+    assert rst_steps == {}
 
 
 def test_resolve_session_gears_advances_band_after_three_strong_runs(tmp_path: Path):
@@ -130,7 +131,7 @@ def test_resolve_session_gears_advances_band_after_three_strong_runs(tmp_path: P
     ):
         (target / f"koch-exercise-{idx}.json").write_text(json.dumps(_session(stamp, 1.0)))
 
-    gears = _resolve_session_gears(tmp_path, "K M", exercise_count=5)
+    gears, _ = _resolve_session_gears_and_rst(tmp_path, "K M", exercise_count=5)
     # Three consecutive strong runs at every band: every slot advances to gear 1.
     assert gears == [1, 1, 1, 1, 1]
 
@@ -221,7 +222,8 @@ def test_next_symbol_readiness_blocked_by_time_floor_when_evidence_ready(
         "koch-exercise-20260518T100000Z.json",
         _session_record("2026-05-18T10:00:00.000Z", claimed_set_key="K M", duration_seconds=1800),
     )
-    assert _next_symbol_readiness(tmp_path, "K M") is False
+    _, ready = _koch_readiness_state(tmp_path, "K M")
+    assert ready is False
 
 
 def test_next_symbol_readiness_passes_when_evidence_and_time_both_met(
@@ -239,7 +241,8 @@ def test_next_symbol_readiness_passes_when_evidence_and_time_both_met(
             duration_seconds=MIN_SECONDS_PER_CLAIMED_SET,
         ),
     )
-    assert _next_symbol_readiness(tmp_path, "K M") is True
+    _, ready = _koch_readiness_state(tmp_path, "K M")
+    assert ready is True
 
 
 def test_next_symbol_readiness_stays_closed_when_evidence_not_ready_even_above_floor(
@@ -259,11 +262,13 @@ def test_next_symbol_readiness_stays_closed_when_evidence_not_ready_even_above_f
             duration_seconds=10 * MIN_SECONDS_PER_CLAIMED_SET,
         ),
     )
-    assert _next_symbol_readiness(tmp_path, "K M") is False
+    _, ready = _koch_readiness_state(tmp_path, "K M")
+    assert ready is False
 
 
 def test_next_symbol_readiness_empty_key_returns_false(tmp_path: Path):
-    assert _next_symbol_readiness(tmp_path, "") is False
+    _, ready = _koch_readiness_state(tmp_path, "")
+    assert ready is False
 
 
 # ---- evidence-only signal (drives the in-contention box) -------------------
@@ -275,10 +280,12 @@ def test_next_symbol_evidence_passes_through_band_evidence_result(
     # Empty records dir is fine — _next_symbol_evidence does not care
     # about time on set, only what the evidence analysis returns.
     monkeypatch.setattr(records_module, "is_ready_for_next_symbol", lambda *_, **__: True)
-    assert _next_symbol_evidence(tmp_path, "K M") is True
+    evidence_ready, _ = _koch_readiness_state(tmp_path, "K M")
+    assert evidence_ready is True
 
     monkeypatch.setattr(records_module, "is_ready_for_next_symbol", lambda *_, **__: False)
-    assert _next_symbol_evidence(tmp_path, "K M") is False
+    evidence_ready, _ = _koch_readiness_state(tmp_path, "K M")
+    assert evidence_ready is False
 
 
 def test_next_symbol_evidence_ignores_time_floor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -293,11 +300,11 @@ def test_next_symbol_evidence_ignores_time_floor(tmp_path: Path, monkeypatch: py
         "koch-exercise-20260518T100000Z.json",
         _session_record("2026-05-18T10:00:00.000Z", claimed_set_key="K M", duration_seconds=0),
     )
-    assert _next_symbol_evidence(tmp_path, "K M") is True
-    # And the full nudge gate stays closed at the same record — sanity
-    # check that the two signals diverge as designed.
-    assert _next_symbol_readiness(tmp_path, "K M") is False
+    evidence_ready, ready = _koch_readiness_state(tmp_path, "K M")
+    assert evidence_ready is True
+    assert ready is False
 
 
 def test_next_symbol_evidence_empty_key_returns_false(tmp_path: Path):
-    assert _next_symbol_evidence(tmp_path, "") is False
+    evidence_ready, _ = _koch_readiness_state(tmp_path, "")
+    assert evidence_ready is False

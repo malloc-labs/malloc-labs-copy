@@ -25,6 +25,7 @@ from copy_653.sequence.cadence_analysis import (
     resolve_gears as resolve_cadence_gears,
 )
 from copy_653.sequence.exercise_analysis import (
+    MAX_GEAR,
     is_ready_for_next_symbol,
     latest_gears_for_claimed_set,
     latest_rst_steps_for_claimed_set,
@@ -364,38 +365,28 @@ def _next_koch_run_index(save_directory: Path, claimed_set_key: str) -> int:
     return count + 1
 
 
-def _resolve_session_gears(
+def _resolve_session_gears_and_rst(
     save_directory: Path, claimed_set_key: str, exercise_count: int
-) -> list[int]:
-    """Compute the per-slot gears for the next session.
+) -> tuple[list[int], dict[int, tuple[int, int]]]:
+    """Compute per-slot gears and RST steps for the next session.
 
-    Reads recent koch-exercise records, derives per-band evidence and
-    the most-recent session's gear floor, and applies the resolver to
-    produce a list of gears parallel to ``exercise_count``. The list
-    is returned with positional indices — entry ``i`` is the gear for
-    slot ``i + 1``.
+    Single disk load: reads koch-exercise records once and derives both
+    the gear list and (when any band is at ``MAX_GEAR``) the RST
+    sub-axis steps. Returns ``(gears, rst_steps)`` where ``gears`` is
+    positional (entry *i* → slot *i + 1*) and ``rst_steps`` is keyed
+    by 1-based burden band.
     """
     records = _iter_koch_records(save_directory)
     evidence = load_band_evidence(records, claimed_set_key=claimed_set_key)
     current_gears = latest_gears_for_claimed_set(records, claimed_set_key=claimed_set_key)
     resolved = resolve_gears(evidence, current_gears=current_gears)
-    return [resolved.get(i + 1, 0) for i in range(exercise_count)]
-
-
-def _resolve_session_rst_steps(
-    save_directory: Path, claimed_set_key: str
-) -> dict[int, tuple[int, int]]:
-    """Compute per-band ``(s_step, t_step)`` for the next session.
-
-    Mirrors :func:`_resolve_session_gears` for the RST sub-axis. Returns
-    a dict keyed by 1-based burden band — bands the caller will run at
-    gear ``MAX_GEAR`` should look themselves up, with ``(0, 0)`` as the
-    safe default for first-time entrants.
-    """
-    records = _iter_koch_records(save_directory)
-    axis_evidence = load_rst_axis_evidence(records, claimed_set_key=claimed_set_key)
-    current_steps = latest_rst_steps_for_claimed_set(records, claimed_set_key=claimed_set_key)
-    return resolve_rst_steps(axis_evidence, current_steps=current_steps)
+    gears = [resolved.get(i + 1, 0) for i in range(exercise_count)]
+    rst_steps: dict[int, tuple[int, int]] = {}
+    if any(g == MAX_GEAR for g in gears):
+        axis_evidence = load_rst_axis_evidence(records, claimed_set_key=claimed_set_key)
+        current_steps = latest_rst_steps_for_claimed_set(records, claimed_set_key=claimed_set_key)
+        rst_steps = resolve_rst_steps(axis_evidence, current_steps=current_steps)
+    return gears, rst_steps
 
 
 def _seconds_on_claimed_set(records: list[dict[str, Any]], *, claimed_set_key: str) -> float:
@@ -442,50 +433,32 @@ def _seconds_on_claimed_set(records: list[dict[str, Any]], *, claimed_set_key: s
     return total
 
 
-def _next_symbol_evidence(save_directory: Path, claimed_set_key: str) -> bool:
-    """Whether saved band-evidence alone says the learner is ready.
+def _koch_readiness_state(save_directory: Path, claimed_set_key: str) -> tuple[bool, bool]:
+    """Whether the learner is ready for the next symbol (evidence, full).
 
-    Evidence-only counterpart to :func:`_next_symbol_readiness`: the raw
-    output of :func:`is_ready_for_next_symbol` without the per-set time
-    floor. Used to drive the "in contention" box around the next symbol —
-    the box appears as soon as evidence says the learner is in the right
-    territory, while the full nudge (the colour change) waits for the
-    time floor too. The audio-side gear 3 disruption is wired off the
-    same signal so the durability probe runs concurrently with the
-    60-min ramp.
+    Single disk load returning ``(evidence_ready, ready)``:
 
-    Returns ``False`` for an empty claimed-set key for the same reason
-    :func:`_next_symbol_readiness` does (cold-start safety).
+    * ``evidence_ready`` — band-evidence alone says the learner is
+      ready. Drives the "in contention" box and the gear-3 audio
+      disruption probe.
+    * ``ready`` — evidence AND per-set wall-clock floor
+      (``MIN_SECONDS_PER_CLAIMED_SET``) both satisfied. Drives the
+      colour nudge.
+
+    Returns ``(False, False)`` for an empty claimed-set key (cold-start
+    before any claim).
     """
     if not claimed_set_key:
-        return False
+        return False, False
     records = _iter_koch_records(save_directory)
-    return is_ready_for_next_symbol(records, claimed_set_key=claimed_set_key)
-
-
-def _next_symbol_readiness(save_directory: Path, claimed_set_key: str) -> bool:
-    """Whether saved evidence says the learner is ready for the next symbol.
-
-    Thin disk-walking wrapper over :func:`is_ready_for_next_symbol`, with
-    an additional per-claimed-set wall-clock floor (see
-    :data:`MIN_SECONDS_PER_CLAIMED_SET`). Both signals must agree:
-    band-evidence can satisfy the readiness analysis after a short
-    focused session, but the time floor holds the nudge back until the
-    learner has accumulated real contact time on this exact set.
-
-    Returns ``False`` for an empty claimed-set key — the WS layer calls
-    this for every ``claimed-symbols`` push and the empty key path is a
-    real one (cold start before any claim).
-    """
-    if not claimed_set_key:
-        return False
-    records = _iter_koch_records(save_directory)
-    if not is_ready_for_next_symbol(records, claimed_set_key=claimed_set_key):
-        return False
-    return (
+    evidence_ready = is_ready_for_next_symbol(records, claimed_set_key=claimed_set_key)
+    if not evidence_ready:
+        return False, False
+    ready = (
         _seconds_on_claimed_set(records, claimed_set_key=claimed_set_key)
         >= MIN_SECONDS_PER_CLAIMED_SET
     )
+    return True, ready
 
 
 def _next_send_symbol_readiness(save_directory: Path, claimed_set_key: str) -> bool:

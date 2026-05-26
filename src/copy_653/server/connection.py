@@ -62,9 +62,8 @@ from copy_653.server.records import (
     _finalize_cadence_session,
     _finalize_copy_key_session,
     _iter_koch_records,
+    _koch_readiness_state,
     _next_send_symbol_readiness,
-    _next_symbol_evidence,
-    _next_symbol_readiness,
 )
 from copy_653.server.validation import (
     _browser_midi_note_event,
@@ -373,8 +372,7 @@ async def handler(
     claimed = load_claimed_symbols(state.config_path)
     save_directory = load_save_directory(state.config_path)
     claimed_set_key = " ".join(sorted(claimed))
-    evidence_ready_for_next = _next_symbol_evidence(save_directory, claimed_set_key)
-    ready_for_next = _next_symbol_readiness(save_directory, claimed_set_key)
+    evidence_ready_for_next, ready_for_next = _koch_readiness_state(save_directory, claimed_set_key)
     ready_for_next_send = _next_send_symbol_readiness(save_directory, claimed_set_key)
     await _send_event(
         ws,
