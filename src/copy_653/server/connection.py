@@ -36,11 +36,14 @@ from copy_653.config import (
 )
 from copy_653.letters import ANCHORED_SYMBOLS, find_anchors_dir
 from copy_653.midi import KeyDecoder, KeyElementAssembler
+from copy_653.server.audio_settings_actions import (
+    _get_audio_settings_action,
+    _set_audio_settings_action,
+)
 from copy_653.server.actions import (
     KeyNoteSource,
     _claim_symbol_action,
     _flush_key_symbol,
-    _get_audio_settings_action,
     _play_copy_key_exercise,
     _push_key_note_event,
     _request_copy_exercises_action,
@@ -49,7 +52,6 @@ from copy_653.server.actions import (
     _run_letter_sequence,
     _run_morse_repeat,
     _save_koch_answers_action,
-    _set_audio_settings_action,
     _start_action,
     _start_warmup_action,
     _unclaim_symbol_action,
