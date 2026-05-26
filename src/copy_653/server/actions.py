@@ -16,31 +16,22 @@ import asyncio
 import logging
 import random
 import secrets
-import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any
 
 from websockets.server import WebSocketServerProtocol
 
 from copy_653 import sequence
-from copy_653.audio import patterns, playback, synth, texture, timing
+from copy_653.audio import patterns, playback, synth, texture
 from copy_653.audio.parameters import AudioParameters
 from copy_653.config import (
-    KeyerSettings,
     load_audio_parameters,
     load_claimed_symbols,
-    load_keyer_settings,
     load_save_directory,
     save_claimed_symbols,
 )
 from copy_653.server.exercises_audio import build_exercises_audio
-from copy_653.midi import (
-    KeyDecoder,
-    KeyElementAssembler,
-    MidiNoteEvent,
-    iter_midi_note_events,
-)
 from copy_653.server.records import (
     _ActiveCadenceSession,
     _ActiveCopyKeySession,
@@ -60,10 +51,7 @@ from copy_653.server.validation import (
 )
 from copy_653.server.wire_events import (
     _claimed_symbols_event,
-    _key_event_event,
-    _key_input_start_event,
     _send_event,
-    _sent_symbol_event,
 )
 from copy_653.sequence.cadence_analysis import (
     build_cadence_exercise_entries,
@@ -81,56 +69,6 @@ from copy_653.sequence.exercise_analysis import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-KeyNoteSource = Callable[[threading.Event], Iterator[MidiNoteEvent]]
-
-
-async def _push_key_note_event(
-    ws: WebSocketServerProtocol,
-    item: MidiNoteEvent,
-    *,
-    settings: KeyerSettings,
-    audio_params: AudioParameters,
-    assembler: KeyElementAssembler,
-    decoder: KeyDecoder,
-    recorder: Callable[[dict[str, Any]], None] | None = None,
-) -> bool:
-    """Apply one note event to the key decoder and emit any resulting events.
-
-    Returns ``True`` if this event completed a key element (a note-off that
-    closed an active note-on). Callers use the return value to gate the
-    character-gap flush timer so it never fires mid-stroke between a
-    note-on and its matching note-off.
-
-    If ``recorder`` is provided, every event payload sent to the client
-    is also handed to it. Used by the Cadence session recorder to
-    accumulate sent symbols and raw MIDI events.
-    """
-    element = assembler.push(item, settings)
-    key_event = _key_event_event(item, settings, audio_params, element)
-    if key_event is not None:
-        await _send_event(ws, key_event)
-        if recorder is not None:
-            recorder(key_event)
-    if element is None:
-        return False
-
-    try:
-        decoded = decoder.push(element)
-    except ValueError as exc:
-        await _send_event(
-            ws,
-            {"type": "error", "reason": "key-input-decode-failed", "detail": str(exc)},
-        )
-        decoder.reset()
-        return True
-    if decoded is not None:
-        sent_event = _sent_symbol_event(decoded)
-        await _send_event(ws, sent_event)
-        if recorder is not None:
-            recorder(sent_event)
-    return True
 
 
 def _build_warmup_exercises(
@@ -858,124 +796,3 @@ async def _play_copy_key_exercise(
             pass
         audio_task.cancel()
         raise
-
-
-async def _run_key_input_action(
-    ws: WebSocketServerProtocol,
-    config_path: Path,
-    note_source: KeyNoteSource | None = None,
-    recorder: Callable[[dict[str, Any]], None] | None = None,
-) -> None:
-    """Receive Trinkey MIDI note events, decode symbols, and push them to the page."""
-    try:
-        settings = load_keyer_settings(config_path)
-        audio_params = load_audio_parameters(config_path)
-    except ValueError as exc:
-        await _send_event(ws, {"type": "error", "reason": "invalid-config", "detail": str(exc)})
-        return
-
-    decoder = KeyDecoder(
-        dit_seconds=timing.dit_seconds(audio_params.character_speed_wpm),
-        character_gap_seconds=timing.send_inter_character_seconds(audio_params.character_speed_wpm),
-        word_gap_seconds=timing.send_inter_word_seconds(audio_params.character_speed_wpm),
-    )
-    assembler = KeyElementAssembler()
-    source = note_source or (
-        lambda stop: iter_midi_note_events(port_name=settings.input_name, stop_event=stop)
-    )
-    queue: asyncio.Queue[MidiNoteEvent | BaseException | None] = asyncio.Queue()
-    stop_event = threading.Event()
-    loop = asyncio.get_running_loop()
-
-    def _queue_from_thread(item: MidiNoteEvent | BaseException | None) -> None:
-        try:
-            loop.call_soon_threadsafe(queue.put_nowait, item)
-        except RuntimeError:
-            pass
-
-    def _read_midi() -> None:
-        try:
-            for note_event in source(stop_event):
-                if stop_event.is_set():
-                    break
-                _queue_from_thread(note_event)
-        except BaseException as exc:
-            _queue_from_thread(exc)
-        finally:
-            _queue_from_thread(None)
-
-    thread = threading.Thread(target=_read_midi, name="copy-653-key-midi", daemon=True)
-    thread.start()
-    character_gap_seconds = timing.send_inter_character_seconds(audio_params.character_speed_wpm)
-
-    await _send_event(ws, _key_input_start_event(settings, audio_params))
-
-    # Deadline (loop.time) for the next character-gap flush. ``None`` means no
-    # element is awaiting flush (we're either idle or mid-stroke between a
-    # note-on and its note-off). Rearming this on every event would race the
-    # next note-off and split a single character into two symbols.
-    flush_deadline: float | None = None
-
-    try:
-        while True:
-            if flush_deadline is None:
-                item = await queue.get()
-            else:
-                timeout = max(0.0, flush_deadline - loop.time())
-                try:
-                    item = await asyncio.wait_for(queue.get(), timeout=timeout)
-                except asyncio.TimeoutError:
-                    await _flush_key_symbol(ws, decoder, recorder)
-                    flush_deadline = None
-                    continue
-
-            if item is None:
-                await _flush_key_symbol(ws, decoder, recorder)
-                return
-            if isinstance(item, BaseException):
-                reason = (
-                    "key-input-unavailable" if isinstance(item, ImportError) else "key-input-failed"
-                )
-                await _send_event(ws, {"type": "error", "reason": reason, "detail": str(item)})
-                return
-
-            formed_element = await _push_key_note_event(
-                ws,
-                item,
-                settings=settings,
-                audio_params=audio_params,
-                assembler=assembler,
-                decoder=decoder,
-                recorder=recorder,
-            )
-            if formed_element:
-                flush_deadline = loop.time() + character_gap_seconds
-            else:
-                # Note-on: element in progress. Disarm the flush so it can't
-                # fire between this note-on and its matching note-off.
-                flush_deadline = None
-    finally:
-        stop_event.set()
-        await asyncio.to_thread(thread.join, 1.0)
-
-
-async def _flush_key_symbol(
-    ws: WebSocketServerProtocol,
-    decoder: KeyDecoder,
-    recorder: Callable[[dict[str, Any]], None] | None = None,
-) -> None:
-    """Force a flush of any pending marks; the caller has already waited
-    the character gap externally (timer task or wait_for timeout).
-
-    ``recorder`` mirrors :func:`_push_key_note_event`'s contract: when
-    provided, the sent-symbol payload is also handed to it so the
-    Cadence session record captures timer-flushed symbols (i.e. the
-    last symbol a learner keys, or any symbol finalised by silence
-    rather than by the next stroke).
-    """
-    decoded = decoder.flush_pending()
-    if decoded is not None:
-        sent_event = _sent_symbol_event(decoded)
-        await _send_event(ws, sent_event)
-        if recorder is not None:
-            recorder(sent_event)
