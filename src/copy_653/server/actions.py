@@ -13,7 +13,6 @@ session, browser-key-input state) belongs to the dispatch handler.
 from __future__ import annotations
 
 import asyncio
-import base64
 import logging
 import random
 import secrets
@@ -27,28 +26,15 @@ from websockets.server import WebSocketServerProtocol
 from copy_653 import sequence
 from copy_653.audio import patterns, playback, synth, texture, timing
 from copy_653.audio.parameters import AudioParameters
-from copy_653.audio.wav import encode_pcm16_wav
 from copy_653.config import (
     KeyerSettings,
     load_audio_parameters,
     load_claimed_symbols,
-    load_developer_settings,
     load_keyer_settings,
-    load_letters_config,
     load_save_directory,
-    load_warm_up_timeout_seconds,
-    save_audio_timing,
     save_claimed_symbols,
-    save_developer_settings,
-    save_keyer_settings,
-    save_save_directory,
-    save_warm_up_timeout_seconds,
 )
 from copy_653.server.exercises_audio import build_exercises_audio
-from copy_653.letters import (
-    play_letter_sequence,
-    play_morse_sequence,
-)
 from copy_653.midi import (
     KeyDecoder,
     KeyElementAssembler,
@@ -69,17 +55,10 @@ from copy_653.server.records import (
     _save_koch_answers,
     _write_koch_record,
 )
-from copy_653.server.test_message_audio import build_marconi_test_message
 from copy_653.server.validation import (
-    _audio_params_from_settings_message,
-    _optional_bool,
-    _optional_bounded_int,
-    _optional_non_empty_string,
     _optional_positive_int,
-    _strict_positive_int,
 )
 from copy_653.server.wire_events import (
-    _audio_settings_event_from_params,
     _claimed_symbols_event,
     _key_event_event,
     _key_input_start_event,
@@ -103,8 +82,6 @@ from copy_653.sequence.exercise_analysis import (
 
 logger = logging.getLogger(__name__)
 
-# Divisible by 3 so every non-final base64 chunk can be concatenated safely.
-WAV_EXPORT_CHUNK_SIZE = 245_760
 
 KeyNoteSource = Callable[[threading.Event], Iterator[MidiNoteEvent]]
 
@@ -883,199 +860,6 @@ async def _play_copy_key_exercise(
         raise
 
 
-async def _get_audio_settings_action(
-    ws: WebSocketServerProtocol,
-    config_path: Path,
-) -> None:
-    params = load_audio_parameters(config_path)
-    keyer_settings = load_keyer_settings(config_path)
-    developer_settings = load_developer_settings(config_path)
-    save_directory = load_save_directory(config_path)
-    warm_up_timeout = load_warm_up_timeout_seconds(config_path)
-    await _send_event(
-        ws,
-        _audio_settings_event_from_params(
-            params,
-            keyer_settings,
-            developer_settings,
-            save_directory,
-            warm_up_timeout_seconds=warm_up_timeout,
-        ),
-    )
-
-
-async def _set_audio_settings_action(
-    ws: WebSocketServerProtocol,
-    message: dict[str, Any],
-    config_path: Path,
-) -> None:
-    try:
-        character_wpm = _strict_positive_int(message.get("character_wpm"), "character_wpm")
-        effective_wpm = _strict_positive_int(message.get("effective_wpm"), "effective_wpm")
-        tone_shape = _optional_bounded_int(
-            message.get("tone_shape"),
-            "tone_shape",
-            texture.MIN_TONE_SHAPE,
-            texture.MAX_TONE_SHAPE,
-        )
-        receiver_bed = _optional_bounded_int(
-            message.get("receiver_bed"),
-            "receiver_bed",
-            texture.MIN_RECEIVER_BED,
-            texture.MAX_RECEIVER_BED,
-        )
-        cadence_variation = _optional_bounded_int(
-            message.get("cadence_variation"),
-            "cadence_variation",
-            texture.MIN_CADENCE_VARIATION,
-            texture.MAX_CADENCE_VARIATION,
-        )
-        keyer_mode = _optional_non_empty_string(
-            message.get("keyer_mode"),
-            "keyer_mode",
-        )
-        hh_clear_enabled = _optional_bool(
-            message.get("hh_clear_enabled"),
-            "hh_clear_enabled",
-        )
-        save_directory_input = _optional_non_empty_string(
-            message.get("save_directory"),
-            "save_directory",
-        )
-        params = save_audio_timing(
-            character_speed_wpm=character_wpm,
-            effective_speed_wpm=effective_wpm,
-            tone_shape=tone_shape,
-            receiver_bed=receiver_bed,
-            cadence_variation=cadence_variation,
-            path=config_path,
-        )
-        if keyer_mode is not None:
-            keyer_settings = save_keyer_settings(
-                keyer_mode=keyer_mode,
-                path=config_path,
-            )
-        else:
-            keyer_settings = load_keyer_settings(config_path)
-        if hh_clear_enabled is not None:
-            developer_settings = save_developer_settings(
-                hh_clear_enabled=hh_clear_enabled,
-                path=config_path,
-            )
-        else:
-            developer_settings = load_developer_settings(config_path)
-        if save_directory_input is not None:
-            save_directory = save_save_directory(save_directory_input, path=config_path)
-        else:
-            save_directory = load_save_directory(config_path)
-        raw_warm_up = message.get("warm_up_timeout_minutes")
-        if raw_warm_up is not None:
-            if not isinstance(raw_warm_up, (int, float)) or isinstance(raw_warm_up, bool):
-                raise ValueError("warm_up_timeout_minutes must be a number")
-            warm_up_timeout = save_warm_up_timeout_seconds(
-                float(raw_warm_up) * 60, path=config_path
-            )
-        else:
-            warm_up_timeout = load_warm_up_timeout_seconds(config_path)
-    except ValueError as exc:
-        await _send_event(
-            ws,
-            {
-                "type": "error",
-                "reason": "invalid-audio-settings",
-                "detail": str(exc),
-            },
-        )
-        return
-
-    await _send_event(
-        ws,
-        _audio_settings_event_from_params(
-            params,
-            keyer_settings,
-            developer_settings,
-            save_directory,
-            warm_up_timeout_seconds=warm_up_timeout,
-        ),
-    )
-
-
-async def _play_test_message_action(
-    ws: WebSocketServerProtocol,
-    message: dict[str, Any],
-) -> None:
-    try:
-        params = _audio_params_from_settings_message(message)
-    except ValueError as exc:
-        await _send_event(
-            ws,
-            {
-                "type": "error",
-                "reason": "invalid-test-message-settings",
-                "detail": str(exc),
-            },
-        )
-        return
-
-    await _send_event(ws, {"type": "test-message-start"})
-    try:
-        await asyncio.to_thread(playback.play, build_marconi_test_message(params), params)
-    except asyncio.CancelledError:
-        try:
-            import sounddevice as sd
-
-            sd.stop()
-        except Exception:
-            pass
-        raise
-    except Exception as exc:
-        await _send_event(
-            ws,
-            {
-                "type": "error",
-                "reason": "test-message-playback-failed",
-                "detail": str(exc),
-            },
-        )
-        raise
-    await _send_event(ws, {"type": "test-message-end"})
-
-
-async def _save_test_message_action(
-    ws: WebSocketServerProtocol,
-    message: dict[str, Any],
-) -> None:
-    try:
-        params = _audio_params_from_settings_message(message)
-        wav_bytes = await asyncio.to_thread(
-            lambda: encode_pcm16_wav(build_marconi_test_message(params), params.sample_rate_hz)
-        )
-    except ValueError as exc:
-        await _send_event(
-            ws,
-            {
-                "type": "error",
-                "reason": "invalid-test-message-settings",
-                "detail": str(exc),
-            },
-        )
-        return
-
-    filename = "copy-653-marconi-test-message.wav"
-    await _send_event(
-        ws,
-        {
-            "type": "test-message-wav-start",
-            "filename": filename,
-            "byte_length": len(wav_bytes),
-        },
-    )
-    for start in range(0, len(wav_bytes), WAV_EXPORT_CHUNK_SIZE):
-        encoded = base64.b64encode(wav_bytes[start : start + WAV_EXPORT_CHUNK_SIZE]).decode("ascii")
-        await _send_event(ws, {"type": "test-message-wav-chunk", "data": encoded})
-    await _send_event(ws, {"type": "test-message-wav-end", "filename": filename})
-
-
 async def _run_key_input_action(
     ws: WebSocketServerProtocol,
     config_path: Path,
@@ -1195,77 +979,3 @@ async def _flush_key_symbol(
         await _send_event(ws, sent_event)
         if recorder is not None:
             recorder(sent_event)
-
-
-async def _run_morse_repeat(
-    ws: WebSocketServerProtocol,
-    symbol: str,
-    repeats: int,
-    config_path: Path,
-) -> None:
-    """Play bare Morse for ``symbol`` ``repeats`` times. Emits start/end frames.
-
-    Used by the Cadence page's Alt+character preview keybind. Reads
-    audio params fresh so a learner who edits WPM mid-session hears the
-    change on the next preview.
-    """
-    audio_params = load_audio_parameters(config_path)
-
-    await _send_event(ws, {"type": "morse-repeat-start", "symbol": symbol, "repeats": repeats})
-    try:
-        await play_morse_sequence(symbol, audio_params, repeats=repeats)
-    except asyncio.CancelledError:
-        raise
-    except Exception as exc:
-        await _send_event(
-            ws,
-            {
-                "type": "error",
-                "reason": "morse-repeat-failed",
-                "symbol": symbol,
-                "detail": str(exc),
-            },
-        )
-        raise
-    await _send_event(ws, {"type": "morse-repeat-end", "symbol": symbol})
-
-
-async def _run_letter_sequence(
-    ws: WebSocketServerProtocol,
-    symbol: str,
-    config_path: Path,
-    anchors_dir: Path,
-) -> None:
-    """Send ``letter-start``, play the sequence, send ``letter-end``.
-
-    Reads audio and letters config fresh per call (per the project's
-    no-caching contract — the learner's hand-edited config takes
-    effect immediately). Any exception during playback surfaces as an
-    ``error`` event then re-raises so the caller's task records it.
-
-    On :class:`asyncio.CancelledError` (a new ``play-letter`` arrived),
-    no terminal event is sent — the new sequence's ``letter-start`` is
-    the authoritative new state.
-    """
-    audio_params = load_audio_parameters(config_path)
-    letters_config = load_letters_config(config_path)
-
-    await _send_event(ws, {"type": "letter-start", "symbol": symbol})
-    try:
-        await play_letter_sequence(symbol, audio_params, letters_config, anchors_dir)
-    except asyncio.CancelledError:
-        # Superseded by another play-letter; the new task already sent
-        # its own letter-start.
-        raise
-    except Exception as exc:
-        await _send_event(
-            ws,
-            {
-                "type": "error",
-                "reason": "letter-playback-failed",
-                "symbol": symbol,
-                "detail": str(exc),
-            },
-        )
-        raise
-    await _send_event(ws, {"type": "letter-end", "symbol": symbol})

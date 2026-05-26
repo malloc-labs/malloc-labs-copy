@@ -32,7 +32,6 @@ from copy_653.sequence.exercise_analysis import (
 )
 from copy_653.sequence.cadence_analysis import (
     DEFAULT_EVIDENCE_WINDOW_SIZE as CADENCE_EVIDENCE_WINDOW_SIZE,
-    apply_copy_key_analysis,
     load_band_evidence as load_cadence_band_evidence,
     load_band_history as load_cadence_band_history,
     record_claimed_set_key as cadence_record_claimed_set_key,
@@ -42,8 +41,12 @@ from copy_653.server.records import (
     _iter_copy_key_records,
     _iter_koch_records,
 )
+from copy_653.session.compat import backfill_copy_key_record, backfill_copy_key_records
 
 logger = logging.getLogger(__name__)
+
+HttpResponse = tuple[HTTPStatus, list[tuple[str, str]], bytes]
+ApiHandler = Callable[[dict[str, list[str]], Path | None], HttpResponse]
 
 
 def find_web_root() -> Path:
@@ -88,137 +91,9 @@ def _build_static_handler(web_root: Path, config_path: Path | None = None):
         if clean_path == "/ws":
             return None
 
-        if clean_path == "/api/version":
-            return _json_response({"version": __version__})
-
-        if clean_path == "/api/koch-exercises":
-            return _json_response(_list_koch_exercises(config_path))
-
-        if clean_path == "/api/koch-exercise":
-            params = parse_qs(parsed_path.query)
-            filename_values = params.get("file") or params.get("filename") or []
-            filename = filename_values[0] if filename_values else ""
-            return _read_koch_exercise(config_path, filename)
-
-        if clean_path == "/api/delete-koch-exercise":
-            params = parse_qs(parsed_path.query)
-            filename_values = params.get("file") or params.get("filename") or []
-            filename = filename_values[0] if filename_values else ""
-            return _delete_koch_exercise(config_path, filename)
-
-        if clean_path == "/api/koch-band-evidence":
-            params = parse_qs(parsed_path.query)
-            key_values = params.get("claimed_set_key") or []
-            window_values = params.get("window_size") or []
-            return _json_response(
-                _read_koch_band_evidence(
-                    config_path,
-                    claimed_set_key=key_values[0] if key_values else None,
-                    window_size_raw=window_values[0] if window_values else None,
-                )
-            )
-
-        if clean_path == "/api/koch-band-history":
-            params = parse_qs(parsed_path.query)
-            key_values = params.get("claimed_set_key") or []
-            return _json_response(
-                _read_koch_band_history(
-                    config_path,
-                    claimed_set_key=key_values[0] if key_values else None,
-                )
-            )
-
-        if clean_path == "/api/koch-confusion":
-            params = parse_qs(parsed_path.query)
-            key_values = params.get("claimed_set_key") or []
-            return _json_response(
-                _read_koch_confusion(
-                    config_path,
-                    claimed_set_key=key_values[0] if key_values else None,
-                )
-            )
-
-        if clean_path == "/api/cadence-sends":
-            return _json_response(_list_cadence_sends(config_path))
-
-        if clean_path == "/api/cadence-send":
-            params = parse_qs(parsed_path.query)
-            filename_values = params.get("file") or params.get("filename") or []
-            filename = filename_values[0] if filename_values else ""
-            return _read_cadence_send(config_path, filename)
-
-        if clean_path == "/api/delete-cadence-send":
-            params = parse_qs(parsed_path.query)
-            filename_values = params.get("file") or params.get("filename") or []
-            filename = filename_values[0] if filename_values else ""
-            return _delete_cadence_send(config_path, filename)
-
-        if clean_path == "/api/cadence-band-evidence":
-            params = parse_qs(parsed_path.query)
-            key_values = params.get("claimed_set_key") or []
-            window_values = params.get("window_size") or []
-            return _json_response(
-                _read_cadence_band_evidence(
-                    config_path,
-                    claimed_set_key=key_values[0] if key_values else None,
-                    window_size_raw=window_values[0] if window_values else None,
-                )
-            )
-
-        if clean_path == "/api/cadence-band-history":
-            params = parse_qs(parsed_path.query)
-            key_values = params.get("claimed_set_key") or []
-            return _json_response(
-                _read_cadence_band_history(
-                    config_path,
-                    claimed_set_key=key_values[0] if key_values else None,
-                )
-            )
-
-        if clean_path == "/api/copy-key-sessions":
-            return _json_response(_list_copy_key_sessions(config_path))
-
-        if clean_path == "/api/copy-key-session":
-            params = parse_qs(parsed_path.query)
-            filename_values = params.get("file") or params.get("filename") or []
-            filename = filename_values[0] if filename_values else ""
-            return _read_copy_key_session(config_path, filename)
-
-        if clean_path == "/api/delete-copy-key-session":
-            params = parse_qs(parsed_path.query)
-            filename_values = params.get("file") or params.get("filename") or []
-            filename = filename_values[0] if filename_values else ""
-            return _delete_copy_key_session(config_path, filename)
-
-        if clean_path == "/api/copy-key-band-evidence":
-            params = parse_qs(parsed_path.query)
-            key_values = params.get("claimed_set_key") or []
-            window_values = params.get("window_size") or []
-            return _json_response(
-                _read_copy_key_band_evidence(
-                    config_path,
-                    claimed_set_key=key_values[0] if key_values else None,
-                    window_size_raw=window_values[0] if window_values else None,
-                )
-            )
-
-        if clean_path == "/api/copy-key-band-history":
-            params = parse_qs(parsed_path.query)
-            key_values = params.get("claimed_set_key") or []
-            return _json_response(
-                _read_copy_key_band_history(
-                    config_path,
-                    claimed_set_key=key_values[0] if key_values else None,
-                )
-            )
-
-        if clean_path == "/api/backup":
-            params = parse_qs(parsed_path.query)
-            kind_values = params.get("kind") or []
-            return _build_records_backup(
-                config_path,
-                kind=kind_values[0] if kind_values else "",
-            )
+        api_response = _handle_api_request(clean_path, parsed_path.query, config_path)
+        if api_response is not None:
+            return api_response
 
         target = "index.html" if clean_path == "/" else clean_path.lstrip("/")
         resolved = (web_root / target).resolve()
@@ -248,6 +123,178 @@ def _build_static_handler(web_root: Path, config_path: Path | None = None):
         )
 
     return process_request
+
+
+# ---------------------------------------------------------------------------
+# API dispatch helpers
+# ---------------------------------------------------------------------------
+
+
+def _handle_api_request(
+    clean_path: str, query: str, config_path: Path | None
+) -> HttpResponse | None:
+    handler = _API_ROUTES.get(clean_path)
+    if handler is None:
+        return None
+    return handler(parse_qs(query), config_path)
+
+
+def _first_query_value(params: dict[str, list[str]], *names: str) -> str:
+    for name in names:
+        values = params.get(name) or []
+        if values:
+            return values[0]
+    return ""
+
+
+def _optional_query_value(params: dict[str, list[str]], name: str) -> str | None:
+    return _first_query_value(params, name) or None
+
+
+def _api_version(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
+    return _json_response({"version": __version__})
+
+
+def _api_koch_exercises(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
+    return _json_response(_list_koch_exercises(config_path))
+
+
+def _api_koch_exercise(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
+    return _read_koch_exercise(config_path, _first_query_value(params, "file", "filename"))
+
+
+def _api_delete_koch_exercise(
+    params: dict[str, list[str]], config_path: Path | None
+) -> HttpResponse:
+    return _delete_koch_exercise(config_path, _first_query_value(params, "file", "filename"))
+
+
+def _api_koch_band_evidence(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
+    return _json_response(
+        _read_koch_band_evidence(
+            config_path,
+            claimed_set_key=_optional_query_value(params, "claimed_set_key"),
+            window_size_raw=_optional_query_value(params, "window_size"),
+        )
+    )
+
+
+def _api_koch_band_history(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
+    return _json_response(
+        _read_koch_band_history(
+            config_path,
+            claimed_set_key=_optional_query_value(params, "claimed_set_key"),
+        )
+    )
+
+
+def _api_koch_confusion(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
+    return _json_response(
+        _read_koch_confusion(
+            config_path,
+            claimed_set_key=_optional_query_value(params, "claimed_set_key"),
+        )
+    )
+
+
+def _api_cadence_sends(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
+    return _json_response(_list_cadence_sends(config_path))
+
+
+def _api_cadence_send(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
+    return _read_cadence_send(config_path, _first_query_value(params, "file", "filename"))
+
+
+def _api_delete_cadence_send(
+    params: dict[str, list[str]], config_path: Path | None
+) -> HttpResponse:
+    return _delete_cadence_send(config_path, _first_query_value(params, "file", "filename"))
+
+
+def _api_cadence_band_evidence(
+    params: dict[str, list[str]], config_path: Path | None
+) -> HttpResponse:
+    return _json_response(
+        _read_cadence_band_evidence(
+            config_path,
+            claimed_set_key=_optional_query_value(params, "claimed_set_key"),
+            window_size_raw=_optional_query_value(params, "window_size"),
+        )
+    )
+
+
+def _api_cadence_band_history(
+    params: dict[str, list[str]], config_path: Path | None
+) -> HttpResponse:
+    return _json_response(
+        _read_cadence_band_history(
+            config_path,
+            claimed_set_key=_optional_query_value(params, "claimed_set_key"),
+        )
+    )
+
+
+def _api_copy_key_sessions(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
+    return _json_response(_list_copy_key_sessions(config_path))
+
+
+def _api_copy_key_session(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
+    return _read_copy_key_session(config_path, _first_query_value(params, "file", "filename"))
+
+
+def _api_delete_copy_key_session(
+    params: dict[str, list[str]], config_path: Path | None
+) -> HttpResponse:
+    return _delete_copy_key_session(config_path, _first_query_value(params, "file", "filename"))
+
+
+def _api_copy_key_band_evidence(
+    params: dict[str, list[str]], config_path: Path | None
+) -> HttpResponse:
+    return _json_response(
+        _read_copy_key_band_evidence(
+            config_path,
+            claimed_set_key=_optional_query_value(params, "claimed_set_key"),
+            window_size_raw=_optional_query_value(params, "window_size"),
+        )
+    )
+
+
+def _api_copy_key_band_history(
+    params: dict[str, list[str]], config_path: Path | None
+) -> HttpResponse:
+    return _json_response(
+        _read_copy_key_band_history(
+            config_path,
+            claimed_set_key=_optional_query_value(params, "claimed_set_key"),
+        )
+    )
+
+
+def _api_backup(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
+    return _build_records_backup(config_path, kind=_first_query_value(params, "kind"))
+
+
+_API_ROUTES: dict[str, ApiHandler] = {
+    "/api/version": _api_version,
+    "/api/koch-exercises": _api_koch_exercises,
+    "/api/koch-exercise": _api_koch_exercise,
+    "/api/delete-koch-exercise": _api_delete_koch_exercise,
+    "/api/koch-band-evidence": _api_koch_band_evidence,
+    "/api/koch-band-history": _api_koch_band_history,
+    "/api/koch-confusion": _api_koch_confusion,
+    "/api/cadence-sends": _api_cadence_sends,
+    "/api/cadence-send": _api_cadence_send,
+    "/api/delete-cadence-send": _api_delete_cadence_send,
+    "/api/cadence-band-evidence": _api_cadence_band_evidence,
+    "/api/cadence-band-history": _api_cadence_band_history,
+    "/api/copy-key-sessions": _api_copy_key_sessions,
+    "/api/copy-key-session": _api_copy_key_session,
+    "/api/delete-copy-key-session": _api_delete_copy_key_session,
+    "/api/copy-key-band-evidence": _api_copy_key_band_evidence,
+    "/api/copy-key-band-history": _api_copy_key_band_history,
+    "/api/backup": _api_backup,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -771,34 +818,6 @@ def _read_cadence_band_history(
 # ---------------------------------------------------------------------------
 
 
-def _backfill_copy_key_record(data: dict[str, Any]) -> None:
-    """Apply copy-key analysis to a record saved before analysis was wired in."""
-    exercises = data.get("exercises")
-    if not isinstance(exercises, list) or not exercises:
-        return
-    first = exercises[0] if isinstance(exercises[0], dict) else {}
-    if (first.get("analysis") or {}).get("saved"):
-        return
-    audio = data.get("audio") or {}
-    data["exercises"] = apply_copy_key_analysis(
-        exercises,
-        sent=data.get("sent") or [],
-        key_events=data.get("key_events") or [],
-        character_wpm=audio.get("character_speed_wpm", 20),
-    )
-
-
-def _backfill_copy_key_analysis(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    for record in records:
-        _backfill_copy_key_record(record)
-    return records
-
-
-def _transform_copy_key_record(data: dict[str, Any]) -> dict[str, Any]:
-    _backfill_copy_key_record(data)
-    return data
-
-
 def _list_copy_key_sessions(config_path: Path | None) -> dict[str, Any]:
     return _list_records(config_path, subdirectory="copy-key", mode="copy-key")
 
@@ -812,7 +831,7 @@ def _read_copy_key_session(
         filename_re=_COPY_KEY_FILENAME_RE,
         subdirectory="copy-key",
         mode="copy-key",
-        transform=_transform_copy_key_record,
+        transform=backfill_copy_key_record,
     )
 
 
@@ -840,7 +859,7 @@ def _read_copy_key_band_evidence(
             iter_records=_iter_copy_key_records,
             extract_key=cadence_record_claimed_set_key,
             claimed_set_key=claimed_set_key,
-            transform=_backfill_copy_key_analysis,
+            transform=backfill_copy_key_records,
         )
     except Exception:
         logger.exception("could not resolve save_directory for copy-key evidence read")
@@ -872,7 +891,7 @@ def _read_copy_key_band_history(
             iter_records=_iter_copy_key_records,
             extract_key=cadence_record_claimed_set_key,
             claimed_set_key=claimed_set_key,
-            transform=_backfill_copy_key_analysis,
+            transform=backfill_copy_key_records,
         )
     except Exception:
         logger.exception("could not resolve save_directory for copy-key band-history read")
