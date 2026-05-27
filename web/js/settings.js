@@ -25,6 +25,7 @@ const keyerModeRadios = document.querySelectorAll('input[name="keyer_mode"]');
 const keyerModeSyncButton = document.getElementById("keyer-mode-sync");
 const keyerModeSyncStatusEl = document.getElementById("keyer-mode-sync-status");
 const observedDitReadoutEl = document.getElementById("observed-dit-readout");
+const lastSyncReadoutEl = document.getElementById("last-sync-readout");
 const saveDirectoryInput = document.getElementById("save-directory");
 const warmUpTimeoutInput = document.getElementById("warm-up-timeout");
 const saveButton = document.getElementById("save-audio-settings");
@@ -326,7 +327,9 @@ function renderAudioSettings(event) {
             // step with Copy's configured intent.
             syncTrinkey({
                 mode: modeChanged ? incomingKeyerMode : null,
+                modeFrom: modeChanged ? previousKeyerMode : null,
                 wpm: wpmChanged ? event.character_wpm : null,
+                wpmFrom: wpmChanged ? previousCharacterWpm : null,
             });
         }
     }
@@ -444,18 +447,80 @@ form.addEventListener("submit", (event) => {
     );
 });
 
-async function syncTrinkey({ mode = null, wpm = null } = {}) {
+const LAST_SYNC_KEY = "copy653_last_trinkey_sync";
+
+function formatSyncDate(ts) {
+    const d = new Date(ts);
+    const day = d.getDate();
+    const mon = d.toLocaleString("en-GB", { month: "short" });
+    const h = String(d.getHours()).padStart(2, "0");
+    const m = String(d.getMinutes()).padStart(2, "0");
+    return `${day} ${mon} ${h}:${m}`;
+}
+
+function describeLastSyncChanges(entry) {
+    const parts = [];
+    if (entry.wpmFrom != null && entry.wpmTo != null) {
+        parts.push(`WPM ${entry.wpmFrom} → ${entry.wpmTo}`);
+    } else if (entry.wpmTo != null) {
+        parts.push(`WPM → ${entry.wpmTo}`);
+    }
+    if (entry.modeFrom != null && entry.modeTo != null) {
+        parts.push(`mode ${entry.modeFrom} → ${entry.modeTo}`);
+    } else if (entry.modeTo != null) {
+        parts.push(`mode → ${entry.modeTo}`);
+    }
+    return parts.join(", ");
+}
+
+function renderLastSync() {
+    let entry;
+    try {
+        entry = JSON.parse(localStorage.getItem(LAST_SYNC_KEY));
+    } catch { /* ignore */ }
+    if (!entry || !entry.ts) {
+        lastSyncReadoutEl.dataset.state = "idle";
+        lastSyncReadoutEl.textContent = "no syncs yet";
+        return;
+    }
+    const changes = describeLastSyncChanges(entry);
+    lastSyncReadoutEl.dataset.state = "match";
+    lastSyncReadoutEl.textContent = `Last sync: ${formatSyncDate(entry.ts)}${changes ? ` — ${changes}` : ""}`;
+}
+
+function recordSync({ mode = null, modeFrom = null, wpm = null, wpmFrom = null }) {
+    const entry = { ts: Date.now() };
+    if (wpm != null) {
+        entry.wpmTo = wpm;
+        if (wpmFrom != null) entry.wpmFrom = wpmFrom;
+    }
+    if (mode != null) {
+        entry.modeTo = mode;
+        if (modeFrom != null) entry.modeFrom = modeFrom;
+    }
+    try {
+        localStorage.setItem(LAST_SYNC_KEY, JSON.stringify(entry));
+    } catch { /* quota */ }
+    renderLastSync();
+}
+
+renderLastSync();
+
+async function syncTrinkey({ mode = null, wpm = null, modeFrom = null, wpmFrom = null } = {}) {
     if (mode == null && wpm == null) return;
     setKeyerModeSyncStatus("sending");
     const outcome = await sendTrinkeySync({ mode, wpm });
     setKeyerModeSyncStatus(describeSyncResult(outcome));
+    if (outcome.result === TRINKEY_SYNC_RESULT.SENT) {
+        recordSync({ mode, modeFrom, wpm, wpmFrom });
+    }
 }
 
 keyerModeSyncButton.addEventListener("click", () => {
     const mode = savedSettings?.keyerMode || getKeyerMode();
     const wpm = savedSettings?.character
         ?? (Number.isFinite(Number(characterInput.value)) ? Number(characterInput.value) : null);
-    syncTrinkey({ mode, wpm });
+    syncTrinkey({ mode, wpm, modeFrom: null, wpmFrom: null });
 });
 
 function testMessagePayload() {
