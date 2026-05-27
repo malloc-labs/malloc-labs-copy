@@ -14,11 +14,20 @@
 //   collapsible    — boolean; render the toggle-button header
 //                    (#sequence-toggle) and start the row hidden.
 //   read-only      — boolean; add the sequence-row--read-only
-//                    modifier. /key/ pages set this; Koch pages
+//                    modifier and render <span> tokens instead of
+//                    <button>. /key/ pages set this; Koch pages
 //                    (where users claim symbols) do not.
 //
 // Load order: this module must precede scripts that touch the
 // sequence-row id or #sequence-toggle.
+
+// Canonical Koch order — mirrors KOCH_ORDER in patterns.py.
+export const KOCH_ORDER = [
+    "K", "M", "U", "R", "E", "S", "N", "A", "P", "T",
+    "L", "W", "I", ".", "J", "Z", "=", "F", "O", "Y",
+    ",", "V", "G", "5", "/", "Q", "9", "2", "H", "3",
+    "8", "B", "?", "4", "7", "C", "1", "D", "6", "0", "X",
+];
 
 const toggleHeader = (rowId) => `<button type="button" class="koch-sequence__toggle" id="sequence-toggle" aria-expanded="false" aria-controls="${rowId}">
         <span class="koch-sequence__label" id="sequence-toggle-label"></span>
@@ -44,6 +53,18 @@ class CopyKochSequence extends HTMLElement {
     ${header}
     <div class="${rowClasses}" id="${rowId}" role="list"${hiddenAttr}></div>
 </section>`;
+        const row = this.querySelector(`#${CSS.escape(rowId)}`);
+        const tag = readOnly ? "span" : "button";
+        KOCH_ORDER.forEach((sym) => {
+            const token = document.createElement(tag);
+            if (tag === "button") token.type = "button";
+            token.textContent = sym;
+            token.dataset.symbol = sym;
+            token.dataset.state = "available";
+            token.setAttribute("role", "listitem");
+            token.classList.add("seq-token");
+            row.appendChild(token);
+        });
     }
 }
 

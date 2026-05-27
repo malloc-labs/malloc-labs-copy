@@ -285,6 +285,57 @@
             </details>
 
             <details class="settings-section">
+                <summary>Symbol Recognition</summary>
+                <p class="settings-section__desc">Training flow per symbol: optional NATO phonetic, morse, silence for recognition, optional NATO phonetic confirm.</p>
+
+                <div class="settings-field settings-field--check">
+                    <label for="recognition-say-before">Say Before</label>
+                    <input
+                        id="recognition-say-before"
+                        type="checkbox"
+                    >
+                    <p>Play the NATO phonetic word before the morse — anchors the sound to a name.</p>
+                </div>
+
+                <div class="settings-field">
+                    <label for="recognition-morse-count">Morse Repeats</label>
+                    <input
+                        id="recognition-morse-count"
+                        name="morse_count"
+                        type="number"
+                        inputmode="numeric"
+                        min="1"
+                        step="1"
+                        required
+                    >
+                    <p>How many times the morse plays for each symbol.</p>
+                </div>
+
+                <div class="settings-field">
+                    <label for="recognition-time">Recognition Time (ms)</label>
+                    <input
+                        id="recognition-time"
+                        name="recognition_time_ms"
+                        type="number"
+                        inputmode="numeric"
+                        min="0"
+                        step="100"
+                        required
+                    >
+                    <p>Silence window in milliseconds for the learner to verbalise the symbol.</p>
+                </div>
+
+                <div class="settings-field settings-field--check">
+                    <label for="recognition-say-after">Say After</label>
+                    <input
+                        id="recognition-say-after"
+                        type="checkbox"
+                    >
+                    <p>Play the NATO phonetic word after the recognition pause — the confirm.</p>
+                </div>
+            </details>
+
+            <details class="settings-section">
                 <summary>Test Message</summary>
                 <div class="settings-test">
                     <p>ARE YOU READY / CAN YOU HEAR ME / YES LOUD AND CLEAR</p>

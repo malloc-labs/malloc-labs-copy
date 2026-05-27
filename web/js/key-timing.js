@@ -48,7 +48,6 @@ import {
     renderRhythmReview,
 } from "./key-timing/review.js";
 import {
-    buildSequenceRow,
     claimedSymbolHas,
     renderSequence,
     setSequenceTokenPlaying,
@@ -195,7 +194,6 @@ function connect() {
     });
 }
 
-buildSequenceRow();
 document.addEventListener("visibilitychange", () => {
     recordDiagnostic("page-lifecycle", {
         event: "visibilitychange",

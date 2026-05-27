@@ -11,17 +11,20 @@ from copy_653.audio.parameters import AudioParameters
 from copy_653.config import (
     DEFAULT_SESSION_DURATION_SECONDS,
     KeyerSettings,
+    RecognitionSettings,
     ServerSettings,
     load_audio_parameters,
     load_claimed_symbols,
     load_keyer_settings,
     load_letters_config,
+    load_recognition_settings,
     load_save_directory,
     load_server_settings,
     load_session_duration,
     save_audio_timing,
     save_claimed_symbols,
     save_keyer_settings,
+    save_recognition_settings,
     save_save_directory,
 )
 from copy_653.letters.sequence import LettersConfig
@@ -646,3 +649,100 @@ def test_load_letters_config_propagates_validation_errors(tmp_path: Path):
     config_file.write_text("[letters]\ngap_within_pair_seconds = -1.0\n")
     with pytest.raises(ValueError, match="gap_within_pair_seconds"):
         load_letters_config(config_file)
+
+
+# ---------- recognition ------------------------------------------------
+
+
+def test_load_recognition_settings_defaults_when_missing(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    result = load_recognition_settings(config_file)
+    assert result == RecognitionSettings()
+    assert result.say_before is True
+    assert result.morse_count == 1
+    assert result.recognition_time_ms == 3000
+    assert result.say_after is True
+
+
+def test_load_recognition_settings_reads_table(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(textwrap.dedent("""
+            [recognition]
+            say_before = false
+            morse_count = 2
+            recognition_time_ms = 5000
+            say_after = false
+            """))
+    cfg = load_recognition_settings(config_file)
+    assert cfg.say_before is False
+    assert cfg.morse_count == 2
+    assert cfg.recognition_time_ms == 5000
+    assert cfg.say_after is False
+
+
+def test_load_recognition_settings_ignores_unknown_keys(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(textwrap.dedent("""
+            [recognition]
+            morse_count = 3
+            future_knob = "ignored"
+            """))
+    cfg = load_recognition_settings(config_file)
+    assert cfg.morse_count == 3
+    assert cfg.say_before is True
+
+
+def test_recognition_settings_rejects_zero_morse_count():
+    with pytest.raises(ValueError, match="morse_count"):
+        RecognitionSettings(morse_count=0)
+
+
+def test_recognition_settings_rejects_negative_recognition_time():
+    with pytest.raises(ValueError, match="recognition_time_ms"):
+        RecognitionSettings(recognition_time_ms=-1)
+
+
+def test_recognition_settings_rejects_non_bool_say_before():
+    with pytest.raises(ValueError, match="say_before"):
+        RecognitionSettings(say_before="yes")
+
+
+def test_save_recognition_settings_round_trips(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    saved = save_recognition_settings(
+        say_before=False,
+        morse_count=2,
+        recognition_time_ms=5000,
+        say_after=False,
+        path=config_file,
+    )
+    loaded = load_recognition_settings(config_file)
+    assert loaded == saved
+    assert loaded.say_before is False
+    assert loaded.morse_count == 2
+    assert loaded.recognition_time_ms == 5000
+    assert loaded.say_after is False
+
+
+def test_save_recognition_settings_preserves_other_tables(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(textwrap.dedent("""
+            [audio]
+            character_speed_wpm = 25
+
+            [symbols]
+            claimed = ["K", "M", "U"]
+            """))
+    save_recognition_settings(
+        say_before=True,
+        morse_count=1,
+        recognition_time_ms=3000,
+        say_after=True,
+        path=config_file,
+    )
+    import tomllib
+
+    data = tomllib.loads(config_file.read_text())
+    assert data["audio"]["character_speed_wpm"] == 25
+    assert data["symbols"]["claimed"] == ["K", "M", "U"]
+    assert data["recognition"]["say_before"] is True

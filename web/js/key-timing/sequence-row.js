@@ -11,32 +11,12 @@
 // module-internal state.
 
 import { copyHistoryEl, sequenceRow } from "./dom.js";
-
-// Canonical Koch order — mirrors KOCH_ORDER in patterns.py.
-const KOCH_ORDER = [
-    "K", "M", "U", "R", "E", "S", "N", "A", "P", "T",
-    "L", "W", "I", ".", "J", "Z", "=", "F", "O", "Y",
-    ",", "V", "G", "5", "/", "Q", "9", "2", "H", "3",
-    "8", "B", "?", "4", "7", "C", "1", "D", "6", "0", "X",
-];
+import { KOCH_ORDER } from "../partials/koch-sequence.js";
 
 let claimedSymbolSet = new Set();
 
 export function claimedSymbolHas(symbol) {
     return claimedSymbolSet.has(symbol);
-}
-
-export function buildSequenceRow() {
-    sequenceRow.replaceChildren();
-    KOCH_ORDER.forEach((sym) => {
-        const token = document.createElement("span");
-        token.textContent = sym;
-        token.dataset.symbol = sym;
-        token.dataset.state = "available";
-        token.setAttribute("role", "listitem");
-        token.classList.add("seq-token");
-        sequenceRow.appendChild(token);
-    });
 }
 
 export function setSequenceTokenPlaying(symbol, playing) {

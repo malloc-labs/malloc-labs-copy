@@ -21,7 +21,12 @@ from websockets.server import WebSocketServerProtocol
 
 from copy_653.audio import patterns, texture, timing
 from copy_653.audio.parameters import AudioParameters
-from copy_653.config import DEFAULT_CONFIG_PATH, DeveloperSettings, KeyerSettings
+from copy_653.config import (
+    DEFAULT_CONFIG_PATH,
+    DeveloperSettings,
+    KeyerSettings,
+    RecognitionSettings,
+)
 from copy_653.midi import DecodedSymbol, KeyElement, MidiNoteEvent
 
 logger = logging.getLogger(__name__)
@@ -149,6 +154,7 @@ def _audio_settings_event_from_params(
     developer_settings: DeveloperSettings | None = None,
     save_directory: Path | None = None,
     warm_up_timeout_seconds: float | None = None,
+    recognition_settings: RecognitionSettings | None = None,
 ) -> dict[str, Any]:
     """Build the learner-facing audio timing event payload."""
     from copy_653.config import DEFAULT_WARM_UP_TIMEOUT_SECONDS
@@ -159,6 +165,8 @@ def _audio_settings_event_from_params(
         developer_settings = DeveloperSettings()
     if save_directory is None:
         save_directory = DEFAULT_CONFIG_PATH.parent
+    if recognition_settings is None:
+        recognition_settings = RecognitionSettings()
     return {
         "type": "audio-settings",
         "character_wpm": params.character_speed_wpm,
@@ -173,6 +181,10 @@ def _audio_settings_event_from_params(
         "warm_up_timeout_minutes": round(
             (warm_up_timeout_seconds or DEFAULT_WARM_UP_TIMEOUT_SECONDS) / 60, 1
         ),
+        "say_before": recognition_settings.say_before,
+        "morse_count": recognition_settings.morse_count,
+        "recognition_time_ms": recognition_settings.recognition_time_ms,
+        "say_after": recognition_settings.say_after,
     }
 
 

@@ -1617,6 +1617,10 @@ async def test_get_audio_settings_returns_configured_timing(tmp_path, patched_pl
                 "hh_clear_enabled": False,
                 "save_directory": str(config_path.parent),
                 "warm_up_timeout_minutes": 10.0,
+                "say_before": True,
+                "morse_count": 1,
+                "recognition_time_ms": 3000,
+                "say_after": True,
             }
     finally:
         server.close()
@@ -1665,6 +1669,10 @@ async def test_set_audio_settings_persists_and_returns_timing(tmp_path, patched_
                 "hh_clear_enabled": True,
                 "save_directory": str(config_path.parent),
                 "warm_up_timeout_minutes": 10.0,
+                "say_before": True,
+                "morse_count": 1,
+                "recognition_time_ms": 3000,
+                "say_after": True,
             }
 
         from copy_653.config import (
