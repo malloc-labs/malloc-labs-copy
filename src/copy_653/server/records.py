@@ -38,6 +38,7 @@ from copy_653.session import (
     CadenceSendRecord,
     CopyKeyRecord,
     KochExerciseRecord,
+    RecognitionRecord,
     update_koch_answers,
     write_record,
 )
@@ -321,6 +322,23 @@ def _iter_koch_records(save_directory: Path) -> list[dict[str, Any]]:
     return records
 
 
+def _iter_recognition_records(save_directory: Path) -> list[dict[str, Any]]:
+    """Load every parseable recognition record under ``save_directory``."""
+    target_dir = save_directory / "recognition"
+    records: list[dict[str, Any]] = []
+    if not target_dir.is_dir():
+        return records
+    for entry in target_dir.rglob("recognition-*.json"):
+        try:
+            data = json.loads(entry.read_text())
+        except (OSError, ValueError):
+            logger.exception("skipping unreadable recognition record: %s", entry)
+            continue
+        if isinstance(data, dict) and data.get("mode") == "recognition":
+            records.append(data)
+    return records
+
+
 def _iter_cadence_records(save_directory: Path) -> list[dict[str, Any]]:
     """Load every parseable cadence-send record under ``save_directory``."""
     target_dir = save_directory / "cadence-send"
@@ -537,4 +555,34 @@ def _write_koch_record(
         return write_record(record, save_directory)
     except Exception:
         logger.exception("failed to write koch-exercise record")
+        return None
+
+
+def _write_recognition_record(
+    *,
+    config_path: Path,
+    audio_params: AudioParameters,
+    claimed: tuple[str, ...],
+    seed: int,
+    generation: dict[str, Any],
+    exercises: list[dict[str, Any]],
+    symbols: list[dict[str, Any]],
+    started_at: datetime,
+) -> Path | None:
+    """Persist a Symbol Recognition session record."""
+    try:
+        save_directory = load_save_directory(config_path)
+        record = RecognitionRecord(
+            started_at=started_at,
+            ended_at=datetime.now(timezone.utc),
+            audio=audio_params,
+            claimed_set=claimed,
+            seed=seed,
+            generation=dict(generation),
+            exercises=exercises,
+            symbols=symbols,
+        )
+        return write_record(record, save_directory)
+    except Exception:
+        logger.exception("failed to write recognition record")
         return None

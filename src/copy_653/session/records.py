@@ -123,6 +123,37 @@ class KochExerciseRecord:
 
 
 @dataclass(slots=True)
+class RecognitionRecord:
+    """A completed Symbol Recognition training session."""
+
+    started_at: datetime
+    ended_at: datetime
+    audio: AudioParameters
+    claimed_set: tuple[str, ...]
+    seed: int
+    generation: dict[str, Any] = field(default_factory=dict)
+    exercises: list[dict[str, Any]] = field(default_factory=list)
+    symbols: list[dict[str, Any]] = field(default_factory=list)
+
+    mode: str = "recognition"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "engine_version": __version__,
+            "mode": self.mode,
+            "started_at": _format_iso8601_utc(self.started_at),
+            "ended_at": _format_iso8601_utc(self.ended_at),
+            "audio": _audio_snapshot(self.audio),
+            "claimed_set": list(self.claimed_set),
+            "seed": self.seed,
+            "generation": dict(self.generation),
+            "exercises": [dict(exercise) for exercise in self.exercises],
+            "symbols": list(self.symbols),
+        }
+
+
+@dataclass(slots=True)
 class CadenceSendRecord:
     """A completed Cadence (Key → Send) session."""
 
@@ -266,7 +297,7 @@ def update_koch_answers(path: Path, answers: list[str]) -> int:
 
 
 def write_record(
-    record: KochExerciseRecord | CadenceSendRecord | CopyKeyRecord,
+    record: KochExerciseRecord | RecognitionRecord | CadenceSendRecord | CopyKeyRecord,
     save_directory: Path,
 ) -> Path:
     """Write a session record to ``<save_directory>/<mode>/<stamp>.json``.

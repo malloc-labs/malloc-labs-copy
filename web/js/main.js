@@ -6,10 +6,12 @@
 
 import { PATTERNS, spokenMorsePattern } from "./morse-display.js";
 import {
+    clearCountdown as clearCountdownCore,
     connectKoch,
     installClaimHandlers,
     renderSequence as renderKochSequence,
     setSequenceTokenPlaying,
+    startCountdown,
 } from "./koch-core.js";
 
 const eventsEl     = document.getElementById("events");
@@ -410,38 +412,21 @@ function setStartButtonMode(mode) {
 }
 
 function clearCountdown() {
-    if (countdownTimer !== null) {
-        clearInterval(countdownTimer);
-        countdownTimer = null;
-    }
-    countdownEl.hidden = true;
-    countdownEl.textContent = "";
+    clearCountdownCore(countdownEl, countdownTimer);
+    countdownTimer = null;
 }
 
 function beginCountdownThenStart() {
-    let remaining = COUNTDOWN_SECONDS;
-    countdownEl.hidden = false;
-    countdownEl.textContent = String(remaining);
-    setStartButtonMode("counting");
     resetReviewSection();
-
-    countdownTimer = setInterval(() => {
-        remaining -= 1;
-        if (remaining > 0) {
-            countdownEl.textContent = String(remaining);
-            return;
-        }
-        clearInterval(countdownTimer);
+    countdownTimer = startCountdown(countdownEl, startBtn, COUNTDOWN_SECONDS, () => {
         countdownTimer = null;
-        countdownEl.hidden = true;
-        countdownEl.textContent = "";
         if (!socket || socket.readyState !== WebSocket.OPEN) {
             setStartButtonMode("idle");
             return;
         }
         socket.send(JSON.stringify({ action: "start" }));
         startBtn.disabled = true;
-    }, 1000);
+    });
 }
 
 function resetReviewSection() {
