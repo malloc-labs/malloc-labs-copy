@@ -46,12 +46,19 @@ DEFAULT_ENVELOPE_RAMP_SECONDS = 0.005
 # Copy to be loud by default. See spec §2.7.
 DEFAULT_AMPLITUDE = 0.3
 
-# Signal texture defaults are intentionally conservative but non-zero. Tone
-# shape continues to be represented by envelope_ramp_seconds; these two values
-# add quiet receiver presence and very small spacing movement by default.
+# Signal texture defaults are intentionally conservative but non-zero.
+# Envelope ramp controls keying softness; tone_distortion and tone_ripple
+# add harmonic roughness and AC-hum character respectively. receiver_bed
+# sets the noise floor, and cadence_variation adds micro-timing movement.
 DEFAULT_RECEIVER_BED = 2
 MIN_RECEIVER_BED = 0
 MAX_RECEIVER_BED = 10
+DEFAULT_TONE_DISTORTION = 0.0
+MIN_TONE_DISTORTION = 0.0
+MAX_TONE_DISTORTION = 1.0
+DEFAULT_TONE_RIPPLE = 0.0
+MIN_TONE_RIPPLE = 0.0
+MAX_TONE_RIPPLE = 1.0
 DEFAULT_CADENCE_VARIATION = 1
 MIN_CADENCE_VARIATION = 0
 MAX_CADENCE_VARIATION = 5
@@ -90,9 +97,19 @@ class AudioParameters:
         headphone users; the learner is expected to adjust hardware
         volume to a comfortable level rather than relying on Copy to
         be loud. See spec §2.7.
+    tone_distortion:
+        Odd-harmonic clipping depth, 0.0 (pure sine) to 1.0 (heavily
+        clipped, buzzy). At 1.0 the waveform approaches a hard-clipped
+        sine rich in 3rd/5th/7th harmonics — the "rough AC" character
+        of low RST Tone values.
+    tone_ripple:
+        Amplitude-modulation depth at ~60 Hz, 0.0 (steady) to 1.0
+        (deep AM). Simulates the rectified-AC hum audible on low-T
+        signals where the transmitter's power supply filtering is poor.
     receiver_bed:
-        Learner-facing 0-10 level for a very quiet receiver-like
-        listening floor under generated session audio.
+        Learner-facing 0-10 level for the noise floor under generated
+        session audio. The dB mapping is steep enough that S1 produces
+        a signal-to-noise ratio that requires effort to copy.
     cadence_variation:
         Learner-facing 0-5 level for tiny deterministic movement in
         inter-character and inter-word spacing.
@@ -112,6 +129,8 @@ class AudioParameters:
     sample_rate_hz: int = DEFAULT_SAMPLE_RATE_HZ
     envelope_ramp_seconds: float = DEFAULT_ENVELOPE_RAMP_SECONDS
     amplitude: float = DEFAULT_AMPLITUDE
+    tone_distortion: float = DEFAULT_TONE_DISTORTION
+    tone_ripple: float = DEFAULT_TONE_RIPPLE
     receiver_bed: int = DEFAULT_RECEIVER_BED
     cadence_variation: int = DEFAULT_CADENCE_VARIATION
     output_device: int | str | None = None
@@ -147,6 +166,27 @@ class AudioParameters:
             # asks for, and clipping (>1) would distort. The valid range
             # is (0, 1] — the default sits well below 1 by design.
             raise ValueError(f"amplitude must be in (0, 1], got {self.amplitude}")
+        if not isinstance(self.tone_distortion, (int, float)) or isinstance(
+            self.tone_distortion, bool
+        ):
+            raise ValueError(
+                f"tone_distortion must be a number from {MIN_TONE_DISTORTION} "
+                f"to {MAX_TONE_DISTORTION}"
+            )
+        if not MIN_TONE_DISTORTION <= self.tone_distortion <= MAX_TONE_DISTORTION:
+            raise ValueError(
+                f"tone_distortion must be from {MIN_TONE_DISTORTION} "
+                f"to {MAX_TONE_DISTORTION}, got {self.tone_distortion}"
+            )
+        if not isinstance(self.tone_ripple, (int, float)) or isinstance(self.tone_ripple, bool):
+            raise ValueError(
+                f"tone_ripple must be a number from {MIN_TONE_RIPPLE} " f"to {MAX_TONE_RIPPLE}"
+            )
+        if not MIN_TONE_RIPPLE <= self.tone_ripple <= MAX_TONE_RIPPLE:
+            raise ValueError(
+                f"tone_ripple must be from {MIN_TONE_RIPPLE} "
+                f"to {MAX_TONE_RIPPLE}, got {self.tone_ripple}"
+            )
         if not isinstance(self.receiver_bed, int) or isinstance(self.receiver_bed, bool):
             raise ValueError(
                 f"receiver_bed must be an integer from {MIN_RECEIVER_BED} " f"to {MAX_RECEIVER_BED}"

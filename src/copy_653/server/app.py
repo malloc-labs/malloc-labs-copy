@@ -42,6 +42,11 @@ Client → server, JSON over WS::
      "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1}
     {"action": "save-test-message", "character_wpm": 20, "effective_wpm": 10,
      "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1}
+    {"action": "play-texture-preview", "character_wpm": 20, "effective_wpm": 10,
+     "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1}
+    {"action": "stop-texture-preview"}
+    {"action": "save-texture-preview", "character_wpm": 20, "effective_wpm": 10,
+     "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1}
     {"action": "start-key-input"}
     {"action": "stop-key-input"}
     {"action": "request-copy-exercises"}
@@ -113,6 +118,17 @@ During Settings test-message playback/export::
     {"type": "test-message-wav-start", "filename": "...wav", "byte_length": 123}
     {"type": "test-message-wav-chunk", "data": "<base64>"}
     {"type": "test-message-wav-end", "filename": "...wav"}
+
+During texture-preview looping playback::
+
+    {"type": "texture-preview-start"}
+    {"type": "texture-preview-end"}
+
+During texture-preview WAV export::
+
+    {"type": "texture-preview-wav-start", "filename": "...wav", "byte_length": 123}
+    {"type": "texture-preview-wav-chunk", "data": "<base64>"}
+    {"type": "texture-preview-wav-end", "filename": "...wav"}
 
 During Key timing input::
 

@@ -58,6 +58,10 @@ from copy_653.server.test_message_actions import (
     _play_test_message_action,
     _save_test_message_action,
 )
+from copy_653.server.texture_preview_actions import (
+    _play_texture_preview_loop,
+    _save_texture_preview_action,
+)
 from copy_653.server.letter_playback_actions import (
     _run_letter_sequence,
     _run_morse_repeat,
@@ -105,10 +109,10 @@ async def supersede(task: asyncio.Task[Any] | None) -> None:
 class ConnectionState:
     """All per-WS-connection state.
 
-    Owns four per-slot task references (session, letter, test-message,
-    key-input), the optional browser-key-input state, and the optional
-    active Cadence session. The dispatch loop in :func:`handler` is the
-    only mutator.
+    Owns per-slot task references (session, letter, test-message,
+    texture-preview, key-input, copy-key-play), the optional
+    browser-key-input state, and the optional active Cadence session.
+    The dispatch loop in :func:`handler` is the only mutator.
     """
 
     ws: WebSocketServerProtocol
@@ -118,6 +122,7 @@ class ConnectionState:
     session_task: asyncio.Task[None] | None = None
     letter_task: asyncio.Task[None] | None = None
     test_message_task: asyncio.Task[None] | None = None
+    texture_preview_task: asyncio.Task[None] | None = None
     key_input_task: asyncio.Task[None] | None = None
     browser: BrowserKeyInputState | None = None
     cadence: _ActiveCadenceSession | None = None
@@ -516,6 +521,16 @@ async def handler(
                 state.test_message_task = asyncio.create_task(
                     _play_test_message_action(ws, message)
                 )
+            elif action == "play-texture-preview":
+                await supersede(state.texture_preview_task)
+                state.texture_preview_task = asyncio.create_task(
+                    _play_texture_preview_loop(ws, message, state.config_path)
+                )
+            elif action == "stop-texture-preview":
+                await supersede(state.texture_preview_task)
+                state.texture_preview_task = None
+            elif action == "save-texture-preview":
+                await _save_texture_preview_action(ws, message, state.config_path)
             elif action == "play-letter":
                 symbol = message.get("symbol", "")
                 if not isinstance(symbol, str) or len(symbol) != 1:
@@ -579,6 +594,7 @@ async def handler(
             state.session_task,
             state.letter_task,
             state.test_message_task,
+            state.texture_preview_task,
             state.key_input_task,
             state.copy_key_play_task,
         ):
