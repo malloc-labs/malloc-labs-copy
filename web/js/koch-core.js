@@ -80,6 +80,37 @@ export function installClaimHandlers(sequenceRow, getSocket, isBlocked) {
     });
 }
 
+// ─── Countdown ──────────────────────────────────────────────────────────────
+
+export function startCountdown(countdownEl, startBtn, seconds, onComplete) {
+    let remaining = seconds;
+    countdownEl.hidden = false;
+    countdownEl.textContent = String(remaining);
+    startBtn.dataset.mode = "counting";
+    startBtn.disabled = false;
+    startBtn.textContent = "Cancel";
+
+    const timer = setInterval(() => {
+        remaining -= 1;
+        if (remaining > 0) {
+            countdownEl.textContent = String(remaining);
+            return;
+        }
+        clearInterval(timer);
+        countdownEl.hidden = true;
+        countdownEl.textContent = "";
+        onComplete();
+    }, 1000);
+
+    return timer;
+}
+
+export function clearCountdown(countdownEl, timer) {
+    if (timer !== null) clearInterval(timer);
+    countdownEl.hidden = true;
+    countdownEl.textContent = "";
+}
+
 // ─── WebSocket connection ────────────────────────────────────────────────────
 
 export function connectKoch({ onOpen, onMessage, onClose }) {
