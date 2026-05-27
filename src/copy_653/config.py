@@ -130,6 +130,43 @@ class DeveloperSettings:
     hh_clear_enabled: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class RecognitionSettings:
+    """Settings for the Symbol Recognition training mode (spec §2.6).
+
+    Defaults are tuned for initial training: both phonetic anchors
+    enabled, single morse play, and a generous 3-second recognition
+    window.
+    """
+
+    say_before: bool = True
+    morse_count: int = 1
+    recognition_time_ms: int = 3000
+    say_after: bool = True
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.say_before, bool):
+            raise ValueError(
+                f"[recognition].say_before must be a boolean, got {type(self.say_before).__name__}"
+            )
+        if not isinstance(self.morse_count, int) or isinstance(self.morse_count, bool):
+            raise ValueError("[recognition].morse_count must be a positive integer")
+        if self.morse_count < 1:
+            raise ValueError(f"[recognition].morse_count must be >= 1, got {self.morse_count}")
+        if not isinstance(self.recognition_time_ms, int) or isinstance(
+            self.recognition_time_ms, bool
+        ):
+            raise ValueError("[recognition].recognition_time_ms must be a non-negative integer")
+        if self.recognition_time_ms < 0:
+            raise ValueError(
+                f"[recognition].recognition_time_ms must be >= 0, got {self.recognition_time_ms}"
+            )
+        if not isinstance(self.say_after, bool):
+            raise ValueError(
+                f"[recognition].say_after must be a boolean, got {type(self.say_after).__name__}"
+            )
+
+
 # ---------- server -----------------------------------------------------
 
 
@@ -444,6 +481,62 @@ def save_developer_settings(
     )
 
     developer_table["hh_clear_enabled"] = settings.hh_clear_enabled
+
+    _write_toml_atomic(data, config_path)
+    return settings
+
+
+# ---------- recognition ------------------------------------------------
+
+
+def load_recognition_settings(path: Path | None = None) -> RecognitionSettings:
+    """Load Symbol Recognition training settings from ``[recognition]``.
+
+    Missing settings default to training-mode defaults — say-before and
+    say-after enabled, single morse play, 3-second recognition window.
+    """
+    data = _read_toml(path)
+    if data is None:
+        return RecognitionSettings()
+
+    recognition_table: dict[str, Any] = data.get("recognition", {})
+    if not isinstance(recognition_table, dict):
+        return RecognitionSettings()
+
+    known_keys = set(RecognitionSettings.__dataclass_fields__.keys())
+    filtered = {k: v for k, v in recognition_table.items() if k in known_keys}
+
+    return RecognitionSettings(**filtered)
+
+
+def save_recognition_settings(
+    *,
+    say_before: bool,
+    morse_count: int,
+    recognition_time_ms: int,
+    say_after: bool,
+    path: Path | None = None,
+) -> RecognitionSettings:
+    """Persist Symbol Recognition settings, preserving other tables."""
+    config_path = path if path is not None else DEFAULT_CONFIG_PATH
+    data = _read_toml(config_path) or {}
+
+    recognition_table = data.get("recognition")
+    if not isinstance(recognition_table, dict):
+        recognition_table = {}
+        data["recognition"] = recognition_table
+
+    settings = RecognitionSettings(
+        say_before=say_before,
+        morse_count=morse_count,
+        recognition_time_ms=recognition_time_ms,
+        say_after=say_after,
+    )
+
+    recognition_table["say_before"] = settings.say_before
+    recognition_table["morse_count"] = settings.morse_count
+    recognition_table["recognition_time_ms"] = settings.recognition_time_ms
+    recognition_table["say_after"] = settings.say_after
 
     _write_toml_atomic(data, config_path)
     return settings

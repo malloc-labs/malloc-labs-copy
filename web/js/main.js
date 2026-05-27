@@ -5,11 +5,13 @@
 // until session-end. No framework, no build step (spec §12).
 
 import { PATTERNS, spokenMorsePattern } from "./morse-display.js";
+import {
+    connectKoch,
+    installClaimHandlers,
+    renderSequence as renderKochSequence,
+    setSequenceTokenPlaying,
+} from "./koch-core.js";
 
-const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
-const wsUrl = `${wsProtocol}//${location.host}/ws`;
-
-const statusEl     = document.querySelector(".status");
 const eventsEl     = document.getElementById("events");
 const answersEl    = document.getElementById("answers");
 const startBtn     = document.getElementById("start");
@@ -25,18 +27,6 @@ const primedSetEl  = document.getElementById("primed-set");
 // reads as "Cancel" during the count) or pressing the S keybind.
 const COUNTDOWN_SECONDS = 5;
 let countdownTimer = null;
-
-// Canonical Koch order — mirrors KOCH_ORDER in patterns.py.
-// This is the single source of truth for the UI sequence display.
-const KOCH_ORDER = [
-    "K", "M", "U", "R", "E", "S", "N", "A", "P", "T",
-    "L", "W", "I", ".", "J", "Z", "=", "F", "O", "Y",
-    ",", "V", "G", "5", "/", "Q", "9", "2", "H", "3",
-    "8", "B", "?", "4", "7", "C", "1", "D", "6", "0", "X",
-];
-
-// K and M are the permanent starting pair — cannot be unclaimed.
-const PERMANENT = new Set(["K", "M"]);
 
 // Latest claimed-symbols payload from the engine.
 let claimedState     = { symbols: [], suggested_next: null, set_is_fresh: true };
@@ -58,87 +48,11 @@ let sessionStartedAtMs = null;
 let socket = null;
 
 // ─── Koch sequence row ────────────────────────────────────────────────────────
-// Renders the full 41-symbol sequence as clickable token buttons.
-// Each token carries data-state: "claimed" | "next" | "available"
-// Clicking a claimed token unclaims it (unless it's K or M).
-// Clicking an available or next token claims it.
-
-function buildSequenceRow() {
-    sequenceRow.replaceChildren();
-    KOCH_ORDER.forEach((sym) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.textContent = sym;
-        btn.dataset.symbol = sym;
-        btn.dataset.state = "available";
-        btn.setAttribute("role", "listitem");
-        btn.classList.add("seq-token");
-        btn.addEventListener("click", () => onTokenClick(sym));
-        sequenceRow.appendChild(btn);
-    });
-}
 
 function renderSequence(state) {
     claimedState = state;
-    const claimedSet = new Set(state.symbols);
-    claimedSymbolSet = claimedSet;
-    // The next-symbol visual is layered onto two signals from the
-    // engine, both painted as row-level attributes so the per-token
-    // render stays a simple data-state assignment:
-    //   • evidence_ready_for_next → data-evidence → box around the
-    //     suggested-next token (CSS: anchor-coloured border only).
-    //     Band-evidence alone; the durability probe is running.
-    //   • ready_for_next → data-ready → adds anchor colour and full
-    //     opacity to the same token (CSS: full nudge).
-    //     Evidence AND the 60-min per-claimed-set wall-clock floor.
-    //
-    // data-ready retains its original "full nudge" semantic — the Key
-    // page reuses it for its single-signal send-side nudge. The new
-    // data-evidence attribute is Koch-only, layered underneath.
-    //
-    // data-state="next" is always assigned to the engine's
-    // suggested-next symbol, regardless of either gate, so the CSS
-    // selectors above have a target to attach to. With both gates
-    // closed the token still renders identically to any other
-    // unclaimed symbol — neither rule matches.
-    sequenceRow.dataset.evidence = state.evidence_ready_for_next ? "true" : "false";
-    sequenceRow.dataset.ready = state.ready_for_next ? "true" : "false";
-    const next = state.suggested_next;
-
-    KOCH_ORDER.forEach((sym) => {
-        const btn = sequenceRow.querySelector(`[data-symbol="${CSS.escape(sym)}"]`);
-        if (!btn) return;
-
-        if (claimedSet.has(sym)) {
-            btn.dataset.state = "claimed";
-            btn.disabled = PERMANENT.has(sym); // K and M are non-interactive
-            btn.title = PERMANENT.has(sym)
-                ? `${sym} — starting pair, always claimed`
-                : `${sym} — claimed (click to remove)`;
-        } else if (sym === next) {
-            btn.dataset.state = "next";
-            btn.disabled = false;
-            btn.title = `${sym} — next in sequence (click to claim)`;
-        } else {
-            btn.dataset.state = "available";
-            btn.disabled = false;
-            btn.title = `${sym} — click to claim`;
-        }
-    });
-
+    claimedSymbolSet = renderKochSequence(sequenceRow, state);
     renderPrimed();
-}
-
-function onTokenClick(sym) {
-    if (!socket || socket.readyState !== WebSocket.OPEN) return;
-    if (sessionActive) return; // no claim changes mid-session
-    const claimedSet = new Set(claimedState.symbols);
-    if (claimedSet.has(sym)) {
-        if (PERMANENT.has(sym)) return; // K and M cannot be unclaimed
-        socket.send(JSON.stringify({ action: "unclaim-symbol", symbol: sym }));
-    } else {
-        socket.send(JSON.stringify({ action: "claim-symbol", symbol: sym }));
-    }
 }
 
 function renderPrimed() {
@@ -330,13 +244,6 @@ function setSaveState(state) {
 
 setSaveState("locked");
 
-// ─── Status ───────────────────────────────────────────────────────────────────
-
-function setStatus(state, text) {
-    statusEl.dataset.status = state;
-    statusEl.textContent    = text;
-}
-
 // ─── Event rendering ──────────────────────────────────────────────────────────
 
 function formatClockTime(secondsAfterSessionStart) {
@@ -353,26 +260,17 @@ function formatSymbolReview(event) {
     return `${formatClockTime(event.t_on)} ${event.symbol}${spoken}`;
 }
 
-function setSequenceTokenPlaying(symbol, playing) {
-    sequenceRow.querySelectorAll("[data-playing]").forEach((el) => {
-        delete el.dataset.playing;
-    });
-    if (!playing || !symbol) return;
-    const token = sequenceRow.querySelector(`[data-symbol="${CSS.escape(symbol)}"]`);
-    if (token) token.dataset.playing = "true";
-}
-
 function appendEvent(event) {
     if (event.type === "claimed-symbols") {
         renderSequence(event);
         return;
     }
     if (event.type === "morse-repeat-start") {
-        setSequenceTokenPlaying(event.symbol, true);
+        setSequenceTokenPlaying(sequenceRow, event.symbol, true);
         return;
     }
     if (event.type === "morse-repeat-end") {
-        setSequenceTokenPlaying(event.symbol, false);
+        setSequenceTokenPlaying(sequenceRow, event.symbol, false);
         return;
     }
 
@@ -480,39 +378,6 @@ function appendEvent(event) {
 }
 
 // ─── WebSocket ────────────────────────────────────────────────────────────────
-
-function connect() {
-    socket = new WebSocket(wsUrl);
-
-    socket.addEventListener("open", () => {
-        setStatus("connected", "connected");
-        setStartButtonMode("idle");
-    });
-
-    socket.addEventListener("message", (msg) => {
-        let event;
-        try {
-            event = JSON.parse(msg.data);
-        } catch {
-            event = { type: "error", reason: "invalid-json-from-engine" };
-        }
-        appendEvent(event);
-    });
-
-    socket.addEventListener("close", () => {
-        setStatus("disconnected", "disconnected");
-        clearCountdown();
-        startBtn.disabled = true;
-        sessionActive     = false;
-        sessionStartedAtMs = null;
-        setSaveState("locked");
-        setTimelineLocked(false);
-    });
-
-    socket.addEventListener("error", () => {
-        setStatus("error", "connection error");
-    });
-}
 
 // ─── Controls ─────────────────────────────────────────────────────────────────
 
@@ -715,5 +580,16 @@ window.addEventListener("blur", () => {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
-buildSequenceRow();
-connect();
+installClaimHandlers(sequenceRow, () => socket, () => sessionActive);
+socket = connectKoch({
+    onOpen() { setStartButtonMode("idle"); },
+    onMessage: appendEvent,
+    onClose() {
+        clearCountdown();
+        startBtn.disabled  = true;
+        sessionActive      = false;
+        sessionStartedAtMs = null;
+        setSaveState("locked");
+        setTimelineLocked(false);
+    },
+});

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Copy 653 — Koch Method — Symbol Recognition</title>
+    <link rel="stylesheet" href="../css/core.css">
+    <link rel="stylesheet" href="../css/copy-653.css">
+    <!-- Runs blocking before CSS paint to prevent theme flash -->
+    <script src="../js/theme.js"></script>
+    <script src="../js/landing-keybinds.js" defer></script>
+</head>
+<body class="landing-body">
+    <copy-theme-btn></copy-theme-btn>
+    <main class="landing-shell exercises-shell">
+        <copy-header eyebrow="Koch Method" eyebrow-key="K" title="Symbol Recognition"></copy-header>
+
+        <copy-koch-sequence section-label="Koch symbol sequence"></copy-koch-sequence>
+
+        <section class="controls" aria-label="Listening controls">
+            <button type="button"
+                    id="start"
+                    disabled
+                    data-mode="idle"
+                    aria-keyshortcuts="S"
+                    title="Start (S)"><u>S</u>tart</button>
+            <span class="countdown" id="countdown" hidden aria-live="polite"></span>
+        </section>
+        <p class="primed" id="primed"><span id="primed-text">Primed: —</span><span class="primed__set" id="primed-set"></span></p>
+        <section class="timeline" aria-label="Truth">
+            <button type="button"
+                    class="timeline-toggle"
+                    aria-expanded="false"
+                    aria-disabled="true"
+                    aria-controls="timeline-body">
+                <span class="timeline-arrow">▶</span>
+                <span class="timeline-meta">—</span>
+            </button>
+            <div class="timeline-body" id="timeline-body" aria-live="polite">
+                <div class="timeline-tabs" role="tablist" aria-label="Truth view">
+                    <button type="button"
+                            class="timeline-tab"
+                            role="tab"
+                            id="timeline-tab-answers"
+                            aria-controls="timeline-panel-answers"
+                            aria-selected="true"
+                            data-selected="true"
+                            data-tab="answers">Answers</button>
+                    <button type="button"
+                            class="timeline-tab"
+                            role="tab"
+                            id="timeline-tab-truth"
+                            aria-controls="timeline-panel-truth"
+                            aria-selected="false"
+                            data-selected="false"
+                            data-tab="truth">Truth</button>
+                </div>
+                <div class="timeline-panel"
+                     id="timeline-panel-answers"
+                     role="tabpanel"
+                     aria-labelledby="timeline-tab-answers">
+                    <table id="answers" class="answers-table"></table>
+                    <div class="answers-actions">
+                        <button type="button" id="save-answers" disabled>Save</button>
+                    </div>
+                </div>
+                <div class="timeline-panel"
+                     id="timeline-panel-truth"
+                     role="tabpanel"
+                     aria-labelledby="timeline-tab-truth"
+                     hidden>
+                    <ol id="events"></ol>
+                </div>
+            </div>
+        </section>
+    </main>
+    <script type="module" src="../js/partials/header.js"></script>
+    <script type="module" src="../js/partials/koch-sequence.js"></script>
+    <script type="module" src="../js/partials/theme-btn.js"></script>
+    <script type="module" src="../js/recognition.js"></script>
+</body>
+</html>

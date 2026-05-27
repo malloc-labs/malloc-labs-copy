@@ -36,6 +36,10 @@ const saveTestButton = document.getElementById("save-test-message");
 const statusEl = document.getElementById("settings-status");
 const characterSummary = document.getElementById("character-speed-summary");
 const effectiveSummary = document.getElementById("effective-speed-summary");
+const recognitionSayBeforeInput = document.getElementById("recognition-say-before");
+const recognitionMorseCountInput = document.getElementById("recognition-morse-count");
+const recognitionTimeInput = document.getElementById("recognition-time");
+const recognitionSayAfterInput = document.getElementById("recognition-say-after");
 const developerModeInput = document.getElementById("developer-mode");
 const hhClearInput = document.getElementById("hh-clear-enabled");
 
@@ -99,6 +103,10 @@ function setInputsEnabled(enabled) {
     keyerModeSyncButton.disabled = !enabled;
     saveDirectoryInput.disabled = !enabled;
     warmUpTimeoutInput.disabled = !enabled;
+    recognitionSayBeforeInput.disabled = !enabled;
+    recognitionMorseCountInput.disabled = !enabled;
+    recognitionTimeInput.disabled = !enabled;
+    recognitionSayAfterInput.disabled = !enabled;
     hhClearInput.disabled = !enabled;
     playTestButton.disabled = !enabled;
     saveTestButton.disabled = !enabled;
@@ -149,6 +157,10 @@ function currentSettings() {
     const hhClearEnabled = hhClearInput.checked;
     const saveDirectory = saveDirectoryInput.value.trim();
     const warmUpTimeout = Number(warmUpTimeoutInput.value);
+    const sayBefore = recognitionSayBeforeInput.checked;
+    const morseCount = Number(recognitionMorseCountInput.value);
+    const recognitionTime = Number(recognitionTimeInput.value);
+    const sayAfter = recognitionSayAfterInput.checked;
     return {
         character,
         effective,
@@ -159,11 +171,15 @@ function currentSettings() {
         hhClearEnabled,
         saveDirectory,
         warmUpTimeout,
+        sayBefore,
+        morseCount,
+        recognitionTime,
+        sayAfter,
     };
 }
 
 function backendPayload() {
-    const { character, effective, s, t, cadenceVariation, keyerMode, hhClearEnabled, saveDirectory, warmUpTimeout } =
+    const { character, effective, s, t, cadenceVariation, keyerMode, hhClearEnabled, saveDirectory, warmUpTimeout, sayBefore, morseCount, recognitionTime, sayAfter } =
         currentSettings();
     const receiverBed = savedSettings && s === savedSettings.s
         ? savedSettings.bed
@@ -181,6 +197,10 @@ function backendPayload() {
         hh_clear_enabled: hhClearEnabled,
         save_directory: saveDirectory,
         warm_up_timeout_minutes: warmUpTimeout,
+        say_before: sayBefore,
+        morse_count: morseCount,
+        recognition_time_ms: recognitionTime,
+        say_after: sayAfter,
     };
 }
 
@@ -193,7 +213,7 @@ function updateSummaries() {
 }
 
 function validateSettings() {
-    const { character, effective, s, t, cadenceVariation, saveDirectory, warmUpTimeout } = currentSettings();
+    const { character, effective, s, t, cadenceVariation, saveDirectory, warmUpTimeout, morseCount, recognitionTime } = currentSettings();
     if (!Number.isInteger(character) || character <= 0) {
         return "Character speed must be a positive whole number.";
     }
@@ -218,6 +238,12 @@ function validateSettings() {
     if (!Number.isInteger(warmUpTimeout) || warmUpTimeout < 1) {
         return "Warm-up timeout must be a positive whole number of minutes.";
     }
+    if (!Number.isInteger(morseCount) || morseCount < 1) {
+        return "Morse Repeats must be a positive whole number.";
+    }
+    if (!Number.isInteger(recognitionTime) || recognitionTime < 0) {
+        return "Recognition Time must be a non-negative whole number.";
+    }
     return "";
 }
 
@@ -231,6 +257,10 @@ const DIRTY_FIELDS = [
     "hhClearEnabled",
     "saveDirectory",
     "warmUpTimeout",
+    "sayBefore",
+    "morseCount",
+    "recognitionTime",
+    "sayAfter",
 ];
 
 function isDirty() {
@@ -302,6 +332,10 @@ function renderAudioSettings(event) {
     hhClearInput.checked = Boolean(event.hh_clear_enabled);
     saveDirectoryInput.value = event.save_directory || "";
     warmUpTimeoutInput.value = event.warm_up_timeout_minutes || 10;
+    recognitionSayBeforeInput.checked = event.say_before !== false;
+    recognitionMorseCountInput.value = event.morse_count || 1;
+    recognitionTimeInput.value = event.recognition_time_ms != null ? event.recognition_time_ms : 3000;
+    recognitionSayAfterInput.checked = event.say_after !== false;
     // Keep the localStorage cache that Key pages read in sync with the
     // authoritative server state.
     setHHClearEnabled(Boolean(event.hh_clear_enabled));
@@ -319,6 +353,10 @@ function renderAudioSettings(event) {
         hhClearEnabled: Boolean(event.hh_clear_enabled),
         saveDirectory: event.save_directory || "",
         warmUpTimeout: event.warm_up_timeout_minutes || 10,
+        sayBefore: event.say_before !== false,
+        morseCount: event.morse_count || 1,
+        recognitionTime: event.recognition_time_ms != null ? event.recognition_time_ms : 3000,
+        sayAfter: event.say_after !== false,
     };
     updateSummaries();
     updateRstMarker();
@@ -691,10 +729,14 @@ function onSettingsInput() {
     cadenceVariationInput,
     saveDirectoryInput,
     warmUpTimeoutInput,
+    recognitionMorseCountInput,
+    recognitionTimeInput,
 ].forEach((input) => input.addEventListener("input", onSettingsInput));
 
 keyerModeRadios.forEach((radio) => radio.addEventListener("change", onSettingsInput));
 hhClearInput.addEventListener("change", onSettingsInput);
+recognitionSayBeforeInput.addEventListener("change", onSettingsInput);
+recognitionSayAfterInput.addEventListener("change", onSettingsInput);
 
 // Within ±5% of the configured dit duration counts as a match; outside
 // that band we flag drift so the learner can either re-sync (Path A) or

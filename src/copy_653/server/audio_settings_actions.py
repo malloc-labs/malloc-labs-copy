@@ -12,11 +12,13 @@ from copy_653.config import (
     load_audio_parameters,
     load_developer_settings,
     load_keyer_settings,
+    load_recognition_settings,
     load_save_directory,
     load_warm_up_timeout_seconds,
     save_audio_timing,
     save_developer_settings,
     save_keyer_settings,
+    save_recognition_settings,
     save_save_directory,
     save_warm_up_timeout_seconds,
 )
@@ -24,6 +26,7 @@ from copy_653.server.validation import (
     _optional_bool,
     _optional_bounded_int,
     _optional_non_empty_string,
+    _optional_positive_int,
     _strict_positive_int,
 )
 from copy_653.server.wire_events import (
@@ -41,6 +44,7 @@ async def _get_audio_settings_action(
     developer_settings = load_developer_settings(config_path)
     save_directory = load_save_directory(config_path)
     warm_up_timeout = load_warm_up_timeout_seconds(config_path)
+    recognition_settings = load_recognition_settings(config_path)
     await _send_event(
         ws,
         _audio_settings_event_from_params(
@@ -49,6 +53,7 @@ async def _get_audio_settings_action(
             developer_settings,
             save_directory,
             warm_up_timeout_seconds=warm_up_timeout,
+            recognition_settings=recognition_settings,
         ),
     )
 
@@ -126,6 +131,40 @@ async def _set_audio_settings_action(
             )
         else:
             warm_up_timeout = load_warm_up_timeout_seconds(config_path)
+
+        raw_say_before = _optional_bool(message.get("say_before"), "say_before")
+        raw_morse_count = _optional_positive_int(message.get("morse_count"), "morse_count")
+        raw_recognition_time = _optional_bounded_int(
+            message.get("recognition_time_ms"), "recognition_time_ms", 0, 60000
+        )
+        raw_say_after = _optional_bool(message.get("say_after"), "say_after")
+        has_recognition = any(
+            v is not None
+            for v in [raw_say_before, raw_morse_count, raw_recognition_time, raw_say_after]
+        )
+        if has_recognition:
+            current_recognition = load_recognition_settings(config_path)
+            recognition_settings = save_recognition_settings(
+                say_before=(
+                    raw_say_before if raw_say_before is not None else current_recognition.say_before
+                ),
+                morse_count=(
+                    raw_morse_count
+                    if raw_morse_count is not None
+                    else current_recognition.morse_count
+                ),
+                recognition_time_ms=(
+                    raw_recognition_time
+                    if raw_recognition_time is not None
+                    else current_recognition.recognition_time_ms
+                ),
+                say_after=(
+                    raw_say_after if raw_say_after is not None else current_recognition.say_after
+                ),
+                path=config_path,
+            )
+        else:
+            recognition_settings = load_recognition_settings(config_path)
     except ValueError as exc:
         await _send_event(
             ws,
@@ -145,5 +184,6 @@ async def _set_audio_settings_action(
             developer_settings,
             save_directory,
             warm_up_timeout_seconds=warm_up_timeout,
+            recognition_settings=recognition_settings,
         ),
     )
