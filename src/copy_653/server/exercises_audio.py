@@ -200,7 +200,12 @@ def _params_for_exercise(
     _, t = rst_draws[exercise_index - 1]
     if t is None:
         return audio_params
-    return replace(audio_params, envelope_ramp_seconds=texture.envelope_seconds_for_rst_tone(t))
+    return replace(
+        audio_params,
+        envelope_ramp_seconds=texture.envelope_seconds_for_rst_tone(t),
+        tone_distortion=texture.distortion_for_rst_tone(t),
+        tone_ripple=texture.ripple_for_rst_tone(t),
+    )
 
 
 def _bed_level_for_exercise(

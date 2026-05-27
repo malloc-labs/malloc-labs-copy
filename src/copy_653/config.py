@@ -62,7 +62,11 @@ import tomli_w
 
 from copy_653.audio import patterns
 from copy_653.audio.parameters import AudioParameters
-from copy_653.audio.texture import envelope_seconds_for_tone_shape
+from copy_653.audio.texture import (
+    distortion_for_tone_shape,
+    envelope_seconds_for_tone_shape,
+    ripple_for_tone_shape,
+)
 from copy_653.letters.sequence import LettersConfig
 
 # XDG-style default. Used on both Linux and macOS for consistency
@@ -238,6 +242,8 @@ def save_audio_timing(
     filtered["effective_speed_wpm"] = effective_speed_wpm
     if tone_shape is not None:
         filtered["envelope_ramp_seconds"] = envelope_seconds_for_tone_shape(tone_shape)
+        filtered["tone_distortion"] = distortion_for_tone_shape(tone_shape)
+        filtered["tone_ripple"] = ripple_for_tone_shape(tone_shape)
     if receiver_bed is not None:
         filtered["receiver_bed"] = receiver_bed
     if cadence_variation is not None:

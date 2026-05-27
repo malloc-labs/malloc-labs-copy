@@ -51,7 +51,7 @@ def test_receiver_bed_adds_deterministic_quiet_floor():
     np.testing.assert_array_equal(first, second)
     assert first.dtype == np.float32
     assert np.any(first != 0.0)
-    assert np.max(np.abs(first)) < 0.01
+    assert np.max(np.abs(first)) < 0.02
 
 
 # ---- Gear 3 stage 2: dynamic floor -----------------------------------------

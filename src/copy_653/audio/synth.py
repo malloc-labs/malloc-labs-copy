@@ -24,7 +24,7 @@ from copy_653.audio.parameters import AudioParameters
 
 
 def generate_tone(duration_seconds: float, params: AudioParameters) -> np.ndarray:
-    """Generate a sine-wave tone of the given duration.
+    """Generate a tone of the given duration, optionally with distortion and ripple.
 
     Returns a 1-D float32 numpy array, suitable to write directly to a
     PortAudio stream. The peak amplitude is ``params.amplitude``,
@@ -32,13 +32,48 @@ def generate_tone(duration_seconds: float, params: AudioParameters) -> np.ndarra
     (see spec §2.7).
     """
     n_samples = int(round(duration_seconds * params.sample_rate_hz))
-    # float32 throughout — matches what sounddevice expects by default
-    # and halves the memory footprint vs float64.
     t = np.arange(n_samples, dtype=np.float32) / np.float32(params.sample_rate_hz)
     sine = np.sin(2 * np.pi * params.tone_frequency_hz * t)
-    # Apply amplitude as a final scalar multiply. AudioParameters
-    # validates 0 < amplitude <= 1 so we cannot silently clip here.
+
+    if params.tone_distortion > 0:
+        sine = _apply_distortion(sine, params.tone_distortion)
+
+    if params.tone_ripple > 0:
+        sine = _apply_ripple(sine, t, params.tone_ripple)
+
     return (sine * params.amplitude).astype(np.float32)
+
+
+_RIPPLE_FREQUENCY_HZ = 60.0
+
+
+def _apply_distortion(samples: np.ndarray, amount: float) -> np.ndarray:
+    """Add odd-harmonic richness by soft-clipping the sine wave.
+
+    ``amount`` 0.0–1.0 maps to a drive level that progressively
+    saturates the waveform. At 1.0 the result is close to a hard clip,
+    producing strong 3rd/5th/7th harmonics — the buzzy, rough character
+    of a poorly filtered transmitter.
+    """
+    drive = 1.0 + amount * 9.0
+    clipped = np.tanh(samples * drive)
+    peak = float(np.max(np.abs(clipped)))
+    if peak > 0:
+        clipped /= peak
+    return clipped.astype(np.float32)
+
+
+def _apply_ripple(samples: np.ndarray, t: np.ndarray, depth: float) -> np.ndarray:
+    """Amplitude-modulate the tone at ~60 Hz to simulate AC-hum ripple.
+
+    ``depth`` 0.0–1.0 controls how deep the AM goes. At 1.0 the signal
+    dips to near-zero at the modulation troughs — unmistakable rectified-
+    AC character. The modulation envelope is ``1 - depth * |sin(…)|``
+    (half-wave rectified) so the hum is asymmetric, matching real-world
+    poorly filtered power supplies.
+    """
+    modulator = 1.0 - depth * np.abs(np.sin(np.float32(np.pi) * _RIPPLE_FREQUENCY_HZ * t))
+    return (samples * modulator).astype(np.float32)
 
 
 def apply_envelope(samples: np.ndarray, params: AudioParameters) -> np.ndarray:

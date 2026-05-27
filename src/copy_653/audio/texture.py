@@ -48,6 +48,26 @@ def envelope_seconds_for_tone_shape(level: int) -> float:
     return _TONE_SHAPE_SECONDS[level]
 
 
+def distortion_for_tone_shape(level: int) -> float:
+    """Map Tone Shape ``0..10`` to tone_distortion (0.0..1.0).
+
+    Level 10 (cleanest) = 0.0; level 0 (roughest) = 0.8.
+    """
+    _validate_int_range(level, "tone_shape", MIN_TONE_SHAPE, MAX_TONE_SHAPE)
+    return max(0.0, min(1.0, (10 - level) * 0.08))
+
+
+def ripple_for_tone_shape(level: int) -> float:
+    """Map Tone Shape ``0..10`` to tone_ripple (0.0..1.0).
+
+    Engages below level 5; level 0 = 0.7 (deep hum).
+    """
+    _validate_int_range(level, "tone_shape", MIN_TONE_SHAPE, MAX_TONE_SHAPE)
+    if level >= 5:
+        return 0.0
+    return max(0.0, min(1.0, (5 - level) * 0.14))
+
+
 def tone_shape_for_envelope_seconds(seconds: float) -> int:
     """Return the nearest learner-facing Tone Shape for a physical ramp value."""
     if seconds < 0:
@@ -63,12 +83,38 @@ def envelope_seconds_for_rst_tone(t: int) -> float:
     stays on the same physical scale as the configured baseline; the
     UI's 1..9 → 0..10 conversion is linear-rounded (see settings.js).
     """
+    _validate_rst_tone(t)
+    tone_shape = max(MIN_TONE_SHAPE, min(MAX_TONE_SHAPE, round((t - 1) * 10 / 8)))
+    return _TONE_SHAPE_SECONDS[tone_shape]
+
+
+def distortion_for_rst_tone(t: int) -> float:
+    """Map an RST Tone value (1..9) to tone_distortion (0.0..1.0).
+
+    T9 = 0.0 (pure sine), T1 = 0.8 (heavily clipped, buzzy).
+    The curve is linear; T5 sits at ~0.4.
+    """
+    _validate_rst_tone(t)
+    return max(0.0, min(1.0, (9 - t) * 0.1))
+
+
+def ripple_for_rst_tone(t: int) -> float:
+    """Map an RST Tone value (1..9) to tone_ripple (0.0..1.0).
+
+    T9 = 0.0 (steady tone), T1 = 0.7 (deep AC-hum modulation).
+    Engages below T6 so the upper half of the scale stays clean.
+    """
+    _validate_rst_tone(t)
+    if t >= 6:
+        return 0.0
+    return max(0.0, min(1.0, (6 - t) * 0.14))
+
+
+def _validate_rst_tone(t: int) -> None:
     if not isinstance(t, int) or isinstance(t, bool):
         raise ValueError(f"rst tone must be an integer 1..9, got {t!r}")
     if not 1 <= t <= 9:
         raise ValueError(f"rst tone must be in 1..9, got {t}")
-    tone_shape = max(MIN_TONE_SHAPE, min(MAX_TONE_SHAPE, round((t - 1) * 10 / 8)))
-    return _TONE_SHAPE_SECONDS[tone_shape]
 
 
 def bed_level_for_rst_strength(s: int | float) -> float:
@@ -130,7 +176,12 @@ def add_receiver_bed(
     ``dynamic`` since the schedule itself is the (now deterministic)
     band-conditions envelope.
 
-    The tone itself is never modulated — only the noise floor.
+    Constant-loudness normalisation keeps the total perceived volume
+    stable regardless of bed level — the signal attenuates as the
+    floor rises so the learner's headphone volume stays safe. This
+    mirrors real-radio AGC: the noise is the constant, the signal
+    fades.
+
     Bed continuity is preserved end-to-end.
     """
     if len(samples) == 0:
@@ -150,10 +201,16 @@ def add_receiver_bed(
     if level_schedule is not None:
         target_rms = _build_bed_target_rms_envelope(len(samples), params.amplitude, level_schedule)
     else:
-        # Level 1 sits around -48 dB below the tone; level 10 reaches about -35 dB.
-        relative_db = -50.0 + (params.receiver_bed * 1.5)
+        relative_db = -50.0 + (params.receiver_bed * 4.4)
         target_rms_value = params.amplitude * (10.0 ** (relative_db / 20.0))
         target_rms = np.full(len(samples), target_rms_value, dtype=np.float32)
+
+    # Constant-loudness gain: signal_gain = 1/sqrt(1 + ratio²) where
+    # ratio = noise_rms / signal_amplitude. Computed from the static
+    # target_rms so dynamic-floor drift (±2 dB) passes through as
+    # natural band-condition variation rather than being flattened.
+    ratio = target_rms / np.float32(params.amplitude)
+    loudness_gain = (1.0 / np.sqrt(1.0 + ratio * ratio)).astype(np.float32)
 
     floor = (floor * target_rms).astype(np.float32)
 
@@ -165,13 +222,13 @@ def add_receiver_bed(
         )
         floor = floor * envelope
 
-    mixed = samples.astype(np.float32, copy=False) + floor
+    mixed = (samples.astype(np.float32, copy=False) + floor) * loudness_gain
     return np.clip(mixed, -1.0, 1.0).astype(np.float32, copy=False)
 
 
 def _bed_level_to_relative_db(bed_level: float) -> float:
     """Inverse of the constant-bed relative_db formula, accepting floats."""
-    return -50.0 + (float(bed_level) * 1.5)
+    return -50.0 + (float(bed_level) * 4.4)
 
 
 def _build_bed_target_rms_envelope(

@@ -26,6 +26,8 @@ const keyerModeSyncButton = document.getElementById("keyer-mode-sync");
 const keyerModeSyncStatusEl = document.getElementById("keyer-mode-sync-status");
 const observedDitReadoutEl = document.getElementById("observed-dit-readout");
 const lastSyncReadoutEl = document.getElementById("last-sync-readout");
+const texturePreviewButton = document.getElementById("texture-preview-toggle");
+const texturePreviewSaveButton = document.getElementById("texture-preview-save");
 const saveDirectoryInput = document.getElementById("save-directory");
 const warmUpTimeoutInput = document.getElementById("warm-up-timeout");
 const saveButton = document.getElementById("save-audio-settings");
@@ -47,6 +49,9 @@ let isSaving = false;
 let savedSettings = null;
 let isPlayingTestMessage = false;
 let isSavingTestMessage = false;
+let isPlayingTexturePreview = false;
+let isSavingTexturePreview = false;
+let textureWavExport = null;
 let wavExport = null;
 
 function setStatus(status, text) {
@@ -97,6 +102,8 @@ function setInputsEnabled(enabled) {
     hhClearInput.disabled = !enabled;
     playTestButton.disabled = !enabled;
     saveTestButton.disabled = !enabled;
+    texturePreviewButton.disabled = !enabled;
+    texturePreviewSaveButton.disabled = !enabled;
 }
 
 function getKeyerMode() {
@@ -253,6 +260,7 @@ function updateSaveState() {
     }
 
     updateTestMessageState(validationError);
+    updateTexturePreviewState(validationError);
     return { validationError, dirty };
 }
 
@@ -400,6 +408,34 @@ function connect() {
             wavExport = null;
             setStatus("error", event.detail || "test message failed");
             updateTestMessageState();
+        } else if (event.type === "texture-preview-start") {
+            isPlayingTexturePreview = true;
+            updateTexturePreviewState();
+        } else if (event.type === "texture-preview-end") {
+            isPlayingTexturePreview = false;
+            updateTexturePreviewState();
+        } else if (event.type === "texture-preview-wav-start") {
+            textureWavExport = { filename: event.filename, chunks: [] };
+            isSavingTexturePreview = true;
+            updateTexturePreviewState();
+        } else if (event.type === "texture-preview-wav-chunk" && textureWavExport) {
+            textureWavExport.chunks.push(event.data);
+        } else if (event.type === "texture-preview-wav-end" && textureWavExport) {
+            saveBase64Wav(textureWavExport.chunks, event.filename || textureWavExport.filename);
+            textureWavExport = null;
+            isSavingTexturePreview = false;
+            updateTexturePreviewState();
+        } else if (
+            event.type === "error" &&
+            (event.reason === "invalid-texture-preview-settings" ||
+                event.reason === "texture-preview-playback-failed" ||
+                event.reason === "texture-preview-no-symbols")
+        ) {
+            isPlayingTexturePreview = false;
+            isSavingTexturePreview = false;
+            textureWavExport = null;
+            setStatus("error", event.detail || "texture preview failed");
+            updateTexturePreviewState();
         }
     });
 
@@ -407,10 +443,17 @@ function connect() {
         isSaving = false;
         isPlayingTestMessage = false;
         isSavingTestMessage = false;
+        isPlayingTexturePreview = false;
+        isSavingTexturePreview = false;
+        textureWavExport = null;
         wavExport = null;
         setInputsEnabled(false);
         saveButton.disabled = true;
         playTestButton.disabled = true;
+        texturePreviewButton.disabled = true;
+        texturePreviewButton.textContent = "Preview";
+        texturePreviewSaveButton.disabled = true;
+        texturePreviewSaveButton.textContent = "Save WAV";
         saveButton.classList.remove("btn--primary");
         setStatus("disconnected", "disconnected");
     });
@@ -419,8 +462,12 @@ function connect() {
         isSaving = false;
         isPlayingTestMessage = false;
         isSavingTestMessage = false;
+        isPlayingTexturePreview = false;
+        isSavingTexturePreview = false;
+        textureWavExport = null;
         setStatus("error", "connection error");
         updateTestMessageState();
+        updateTexturePreviewState();
     });
 }
 
@@ -435,6 +482,7 @@ form.addEventListener("submit", (event) => {
     }
     if (!isDirty()) return;
 
+    stopTexturePreview();
     setInputsEnabled(false);
     isSaving = true;
     updateSaveState();
@@ -568,6 +616,53 @@ saveTestButton.addEventListener("click", () => {
     setStatus("connected", "saving WAV");
     updateTestMessageState();
     socket.send(JSON.stringify({ action: "save-test-message", ...testMessagePayload() }));
+});
+
+function updateTexturePreviewState(validationError = validateSettings()) {
+    const ready = !validationError && socket && socket.readyState === WebSocket.OPEN;
+    texturePreviewButton.disabled = !ready || isSaving;
+    texturePreviewButton.textContent = isPlayingTexturePreview ? "Stop" : "Preview";
+    texturePreviewSaveButton.disabled = !ready || isSaving || isSavingTexturePreview;
+    texturePreviewSaveButton.textContent = isSavingTexturePreview ? "Saving WAV" : "Save WAV";
+}
+
+function stopTexturePreview() {
+    if (!isPlayingTexturePreview) return;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ action: "stop-texture-preview" }));
+    }
+}
+
+texturePreviewButton.addEventListener("click", () => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
+    if (isPlayingTexturePreview) {
+        stopTexturePreview();
+        return;
+    }
+
+    const validationError = validateSettings();
+    if (validationError) {
+        setStatus("error", validationError);
+        return;
+    }
+
+    socket.send(JSON.stringify({ action: "play-texture-preview", ...testMessagePayload() }));
+});
+
+texturePreviewSaveButton.addEventListener("click", () => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
+    const validationError = validateSettings();
+    if (validationError) {
+        setStatus("error", validationError);
+        return;
+    }
+
+    isSavingTexturePreview = true;
+    textureWavExport = null;
+    updateTexturePreviewState();
+    socket.send(JSON.stringify({ action: "save-texture-preview", ...testMessagePayload() }));
 });
 
 function onSettingsInput() {

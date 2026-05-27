@@ -44,28 +44,31 @@ If that port is in use, the engine probes upward by up to 20 ports and prints
 the bound URL on stdout (per spec §1.5 — fail loudly, never silently). Press
 `Ctrl-C` to stop.
 
-Status: audio synthesis, Koch sequence generation, Symbol Exposure playback, audio timing and signal texture settings, Settings-page test message playback/export, Trinkey MIDI key input with Freeplay, Cadence, and Copy Key pages, locked post-session review, per-record-kind backup/export, and persistent JSON session records (`koch-exercise`, `cadence-send`, `copy-key`) are wired.
+Status: audio synthesis, Koch sequence generation, Symbol Exposure playback, audio timing and signal texture settings with looping texture preview, Settings-page test message playback/export, Trinkey MIDI key input with Freeplay, Cadence, and Copy Key pages, locked post-session review, per-record-kind backup/export, and persistent JSON session records (`koch-exercise`, `cadence-send`, `copy-key`) are wired.
 
 ## Signal texture
 
 Copy's generated CW is intentionally clean, but not completely sterile. A
 perfect sine tone in silence can become tiring over longer listening sessions,
 more like a monitor beep than a signal with physical presence. Signal texture
-adds a restrained listening condition beneath the normal CW timing: the learner
-still hears the configured character speed and Farnsworth spacing, but the tone
-has enough shape, floor, and small cadence movement to feel more natural.
+adds listening conditions beneath the normal CW timing using the RST (Readability,
+Strength, Tone) model from amateur radio: the learner still hears the configured
+character speed and Farnsworth spacing, but the signal has realistic floor, tone
+quality, and small cadence movement.
 
 | Setting | Default | Range | Mathematical mapping | Intent |
 | --- | ---: | ---: | --- | --- |
-| Tone Shape | 2 | 0-10 | Maps to raised-cosine envelope ramp seconds: `0 -> 0ms`, `1 -> 3ms`, `2 -> 5ms`, `3 -> 7ms`, `4 -> 8.5ms`, `5 -> 10ms`, then 11-15ms through level 10. | Softens the keying edge without changing the symbol timing contract. |
-| Receiver Bed | 2 | 0-10 | Adds deterministic shaped floor at roughly `-50 + (level * 1.5)` dB relative to configured tone amplitude; level 2 is about -47 dB. | Gives the signal quiet acoustic space without turning it into band-condition training. |
+| Tone Shape (T) | 2 | 0-10 | Drives three mechanisms together: raised-cosine envelope ramp (0-15 ms), harmonic distortion via `tanh` soft-clip (0.0-0.8), and 60 Hz AC-ripple AM (0.0-0.7, engages below level 5). Low values produce the buzzy, hum-modulated character of poorly filtered transmitters. | Shapes the tone quality from clinical sine to rough real-world signal. |
+| Receiver Bed (S) | 2 | 0-10 | Adds deterministic shaped floor at `-50 + (level * 4.4)` dB relative to configured tone amplitude, with constant-loudness normalisation (`gain = 1/sqrt(1 + ratio²)`) so total perceived volume stays safe regardless of bed level. At level 2 the floor is about -41 dB; at level 10 the signal-to-noise ratio is ~6 dB. | Gives the signal acoustic space from gentle hiss to genuinely challenging noise floor, without changing headphone volume. |
 | Cadence Variation | 1 | 0-5 | Applies deterministic spacing variation up to `level * 0.6%` around inter-character and inter-word gaps; level 1 is at most +/-0.6%, level 5 is at most +/-3%. | Reduces metronomic sterility while preserving dit/dah identity and configured WPM. |
 
-The Settings page includes a fixed Morse test message for quickly auditioning
-those values: `ARE YOU READY`, a two-second phrase gap, `CAN YOU HEAR ME`,
-another two-second gap, then `YES LOUD AND CLEAR`. **Play** sends it through the
-current audio output; **Save WAV** exports the same generated signal so the
-clean and textured versions can be inspected or compared with external tools.
+The Settings page exposes S and T as RST 1-9 inputs in the Signal Texture
+section. A **Preview** toggle loops random CW from the claimed symbol set through
+the current texture settings so the learner can hear changes before saving;
+**Save WAV** exports a single preview chunk for external analysis. A separate
+fixed Morse test message (**Play** / **Save WAV** in the Test Message section)
+sends `ARE YOU READY / CAN YOU HEAR ME / YES LOUD AND CLEAR` through the
+current settings.
 
 ## Browser test
 
@@ -78,7 +81,7 @@ After `python -m copy_653`, open the URL it prints (default `http://127.0.0.1:86
 - **Key → Copy Key**: head-copy exercises — listen to audio, hold it, then key it back. Exercises are shorter (1-4 symbols, max 2 words) and scored on the head-copy task itself. Gear 0 applies tighter symbol caps per burden band.
 - **Operational** and **Utilities**: placeholder landing pages for future callsign/prosign/noise work and audio/device tooling respectively.
 - Diagnostic readouts on the Key pages (raw MIDI log, decoder telemetry) are hidden until Developer Mode is enabled in Settings.
-- **Settings**: four tabs — **App** (Words Per Minute, Signal Texture, Key Input incl. Keyer Mode and Sync now, Test Message, Developer), **Koch Exercises** (per-symbol rollup tables, lifetime history dialog, calendar, and backup — drawn from `koch-exercise` records), **Key Exercises** (the same rollup/lifetime/calendar/backup view for `cadence-send` records), and **Copy > Key** (the same for `copy-key` records). The Developer section holds the Developer Mode toggle (reveals diagnostics on the Key pages) and the HH Clear easter egg (keying two H's in a row clears the Sent area). The server persists audio, key-input, and HH-Clear values to the shared config; Developer Mode is local to the browser via `localStorage`.
+- **Settings**: four tabs — **App** (Words Per Minute, Signal Texture with Preview/Save WAV, Operator/Fist, Key Input incl. Keyer Mode and Sync now, Test Message, Developer), **Koch Exercises** (per-symbol rollup tables, lifetime history dialog, calendar, and backup — drawn from `koch-exercise` records), **Key Exercises** (the same rollup/lifetime/calendar/backup view for `cadence-send` records), and **Copy > Key** (the same for `copy-key` records). The Developer section holds the Developer Mode toggle (reveals diagnostics on the Key pages) and the HH Clear easter egg (keying two H's in a row clears the Sent area). The server persists audio, key-input, and HH-Clear values to the shared config; Developer Mode is local to the browser via `localStorage`.
 
 The WebSocket protocol is documented at the top of [`src/copy_653/server/app.py`](src/copy_653/server/app.py).
 
@@ -107,9 +110,10 @@ EOF
 
 Any subset of `[audio]` and `[server]` keys is valid; omitted keys take defaults.
 `effective_speed_wpm` must be less than or equal to `character_speed_wpm`; set
-them equal to disable Farnsworth spacing. Tone Shape is stored as
-`envelope_ramp_seconds` in config; the Settings page maps the 0-10 control to
-the ramp values shown above. Unknown keys are silently ignored (forward
+them equal to disable Farnsworth spacing. Tone Shape is stored as `envelope_ramp_seconds` in config; the Settings page
+maps the 0-10 control to the ramp, distortion, and ripple values described
+above. `tone_distortion` and `tone_ripple` are derived at load time and not
+persisted separately. Unknown keys are silently ignored (forward
 compatibility). Validation errors surface honestly per spec §1.5.
 
 The same file also holds several engine-managed or rarely-edited tables:

@@ -101,6 +101,8 @@ def _audio_params_from_settings_message(message: dict[str, Any]) -> AudioParamet
         character_speed_wpm=character_wpm,
         effective_speed_wpm=effective_wpm,
         envelope_ramp_seconds=texture.envelope_seconds_for_tone_shape(tone_shape),
+        tone_distortion=texture.distortion_for_tone_shape(tone_shape),
+        tone_ripple=texture.ripple_for_tone_shape(tone_shape),
         receiver_bed=receiver_bed,
         cadence_variation=cadence_variation,
     )
