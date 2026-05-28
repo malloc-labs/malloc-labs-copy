@@ -40,6 +40,7 @@ from copy_653.session import (
     KochExerciseRecord,
     RecognitionRecord,
     update_koch_answers,
+    update_recognition_answers,
     write_record,
 )
 
@@ -297,6 +298,16 @@ def _save_koch_answers(path: Path, answers: list[str]) -> int:
     WS ``error`` frames per spec §1.5.
     """
     return update_koch_answers(path, answers)
+
+
+def _save_recognition_answers(path: Path, answers: list[str]) -> int:
+    """Merge learner answers into an existing recognition record.
+
+    Thin wrapper over :func:`update_recognition_answers` — same shape
+    as :func:`_save_koch_answers`, returning the expected exercise
+    count so the WS action can echo it on success.
+    """
+    return update_recognition_answers(path, answers)
 
 
 def _iter_koch_records(save_directory: Path) -> list[dict[str, Any]]:

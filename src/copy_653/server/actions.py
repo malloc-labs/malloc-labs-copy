@@ -44,6 +44,7 @@ from copy_653.server.records import (
     _resolve_copy_key_session_gears,
     _resolve_session_gears_and_rst,
     _save_koch_answers,
+    _save_recognition_answers,
     _write_koch_record,
 )
 from copy_653.server.validation import (
@@ -424,6 +425,49 @@ async def _save_koch_answers_action(
         ws,
         {
             "type": "koch-answers-saved",
+            "answer_count": len(raw_answers),
+            "exercise_count": exercise_count,
+        },
+    )
+    return True
+
+
+async def _save_recognition_answers_action(
+    ws: WebSocketServerProtocol,
+    message: dict[str, Any],
+    pending_path: Path | None,
+) -> bool:
+    """Merge learner answers into the most recently written recognition record.
+
+    Mirrors :func:`_save_koch_answers_action`. ``answers`` is parallel
+    to the record's ``exercises``; length mismatch is rejected per
+    spec §1.5 rather than silently padded.
+    """
+    if pending_path is None:
+        await _send_event(ws, {"type": "error", "reason": "no-pending-recognition-record"})
+        return False
+
+    raw_answers = message.get("answers")
+    if not isinstance(raw_answers, list) or not all(isinstance(a, str) for a in raw_answers):
+        await _send_event(ws, {"type": "error", "reason": "invalid-answers"})
+        return False
+
+    try:
+        exercise_count = _save_recognition_answers(pending_path, list(raw_answers))
+    except ValueError as exc:
+        await _send_event(
+            ws,
+            {"type": "error", "reason": "answers-length-mismatch", "detail": str(exc)},
+        )
+        return False
+    except FileNotFoundError:
+        await _send_event(ws, {"type": "error", "reason": "pending-recognition-record-missing"})
+        return False
+
+    await _send_event(
+        ws,
+        {
+            "type": "recognition-answers-saved",
             "answer_count": len(raw_answers),
             "exercise_count": exercise_count,
         },

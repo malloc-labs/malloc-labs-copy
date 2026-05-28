@@ -7,6 +7,7 @@ from copy_653.session.records import (
     RecognitionRecord,
     SCHEMA_VERSION,
     update_koch_answers,
+    update_recognition_answers,
     write_record,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "RecognitionRecord",
     "SCHEMA_VERSION",
     "update_koch_answers",
+    "update_recognition_answers",
     "write_record",
 ]

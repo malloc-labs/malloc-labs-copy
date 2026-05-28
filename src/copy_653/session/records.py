@@ -251,6 +251,48 @@ class CopyKeyRecord:
         }
 
 
+def update_recognition_answers(path: Path, answers: list[str]) -> int:
+    """Rewrite an existing recognition record with learner-typed/spoken answers.
+
+    Mirrors :func:`update_koch_answers` for the Symbol Recognition page.
+    Sets each exercise object's ``answer`` field and writes the result
+    back atomically. Returns the number of exercises in the record so
+    the caller can verify length agreement.
+
+    Raises :class:`ValueError` if the file is not a recognition record
+    or if ``answers`` does not match the record's exercise count.
+    Per the honesty contract (spec §1.5) we do not silently pad or
+    truncate; the caller surfaces the error as a WS event.
+    """
+    data = json.loads(path.read_text())
+    if data.get("mode") != "recognition":
+        raise ValueError(f"not a recognition record: {path}")
+    expected = len(data.get("exercises", []))
+    if len(answers) != expected:
+        raise ValueError(
+            f"answers length {len(answers)} does not match exercises length {expected}"
+        )
+    exercises = data.get("exercises", [])
+    if not isinstance(exercises, list) or not all(isinstance(ex, dict) for ex in exercises):
+        raise ValueError(f"invalid recognition exercises shape: {path}")
+    updated: list[dict[str, Any]] = []
+    for entry, answer in zip(exercises, answers):
+        merged = dict(entry)
+        merged["answer"] = answer
+        updated.append(merged)
+    data["exercises"] = updated
+    serialised = json.dumps(data, indent=2).encode("utf-8")
+    fd, tmp_path = tempfile.mkstemp(prefix=".record-", suffix=".json", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(serialised)
+        os.replace(tmp_path, path)
+    except Exception:
+        Path(tmp_path).unlink(missing_ok=True)
+        raise
+    return expected
+
+
 def update_koch_answers(path: Path, answers: list[str]) -> int:
     """Rewrite an existing koch-exercise record with learner answers.
 
