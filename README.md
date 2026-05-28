@@ -128,15 +128,21 @@ list.
 
 ## Voice input (optional)
 
-Voice is one input modality for the Symbol Recognition page (spec §2.6).
-Audio is captured in the browser, streamed as 16-kHz mono PCM over a
-WebSocket at `/voice/ws`, and decoded by an offline
+Voice is the answer-entry modality for the **Symbol Recognition** page
+(spec §2.6). Audio is captured in the browser, streamed as 16-kHz mono
+PCM over a WebSocket at `/voice/ws`, and decoded by an offline
 [Vosk](https://alphacephei.com/vosk/) recogniser whose grammar is
 restricted to the NATO phonetic words, English digit words, and the
 prosign phrases the Koch curriculum uses (`.` `,` `?` `/` `=`). Any
 off-vocabulary speech collapses to `[unk]` server-side.
 
-Install the optional dependency and download a Vosk model:
+The recogniser **faithfully transcribes whatever was uttered** — it does
+not filter to the claimed-symbol set. If the learner says "zulu" during
+a session where Z isn't claimed, the record shows it. That's the spec
+§9 honesty contract: failures (operator-side or recogniser-side)
+surface plainly so post-session analysis can tell them apart.
+
+### Install
 
 ```sh
 pip install -e ".[voice]"
@@ -147,7 +153,7 @@ curl -L -o /tmp/vosk-model.zip \
 unzip /tmp/vosk-model.zip -d ~/.local/share/copy_653/models/
 ```
 
-Tell the engine where the model lives:
+Then tell the engine where the model lives:
 
 ```toml
 [voice]
@@ -155,11 +161,31 @@ language = "en"
 model_path = "vosk-model-small-en-us-0.15"
 ```
 
-`model_path` is resolved against `~/.local/share/copy_653/models/` when
-relative; absolute paths are honoured as given. When the `[voice]` table
-is absent the recognition page's voice button is inert — the WS endpoint
-returns a structured `voice-unavailable` error and closes, the rest of
-the engine is unaffected.
+`model_path` resolves against `~/.local/share/copy_653/models/` when
+relative; absolute paths are honoured as given.
+
+### Where it shows up
+
+- **Settings → Voice** tab: status grid (language, resolved model path,
+  whether the model and `vosk` are installed, overall ready boolean),
+  the merged lexicon as a flat reference table, the per-category raw
+  JSON files under `<details>`, and a **Recogniser test** dialog that
+  opens a real `/voice/ws` and shows live partial/final/symbol output
+  alongside a peak level meter. Editable language + model_path inputs
+  write the `[voice]` table back through the engine.
+- **Koch Method → Symbol Recognition**: when `/api/voice/status` reports
+  `ready: true`, the Start button arms voice alongside the listening
+  session. As the engine plays each exercise the active answer row
+  highlights and accumulates the symbols Vosk hears. After session-end
+  the rows unlock for correction and Save persists answers — plus the
+  per-exercise `voice_capture` list (`{t, text, symbols}` per Vosk
+  final) — into the JSON record. The Truth panel interleaves engine
+  symbols and Vosk events on a shared timestamp column so the "two
+  recognitions" comparison is visible at a glance.
+
+If `[voice]` is absent or the model directory is missing, the
+Recognition page disables Start with an inline notice naming exactly
+what's wrong; the rest of Copy is unaffected.
 
 ## Tests
 

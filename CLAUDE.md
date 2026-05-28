@@ -36,8 +36,9 @@ Two-process design (spec §1): a headless Python **engine** that owns audio out,
 
 - `audio/` — pure synthesis (`synth.py`, `timing.py`, `patterns.py`, `parameters.py`) separated from side-effecting `playback.py`. `demo.py` is the CLI verification path. `synth.compute_timeline` produces the per-symbol `(symbol, t_on, t_off)` schedule the server emits. `patterns.KOCH_ORDER` carries the Koch curriculum (letters + digits subset of PATTERNS) and `next_koch_after()` is the suggestion engine — *suggestion*, not gate (philosophy §3.7).
 - `sequence/` — `generator.py` produces a `GeneratedSequence(symbols, seed, claimed_set)` from a claimed set + duration + audio params. Owns its `random.Random()` instance; module-level random is never touched (spec §2.8). The seed is always concrete on output so session records can replay.
-- `server/` — `app.py` runs one asyncio loop, one TCP port, with `websockets` multiplexing static-HTTP and WS upgrades. WS wire protocol is pinned in the `server/app.py` docstring. Two client→server actions: `start` (no args; reads claimed/duration/audio fresh from config and calls `sequence.generate`) and `claim-symbol`. Server pushes `claimed-symbols` on connect and after every claim. `find_available_port` probes upward from `--port` (default 8653) and fails loudly if exhausted (spec §1.5).
-- `midi/`, `session/` — empty stubs awaiting implementation. `session/` will own lifecycle, mode dispatch (Introduction / Detection / Full Copy), and JSON record writing per spec §5.1.
+- `server/` — `app.py` runs one asyncio loop, one TCP port, with `websockets` multiplexing static-HTTP and WS upgrades. Path-based dispatch routes `/ws` to the main JSON action handler and `/voice/ws` to the binary-PCM voice recogniser (see below). WS wire protocol for `/ws` is pinned in the `server/app.py` docstring; `/voice/ws` is documented at the top of `server/voice_ws.py`. `find_available_port` probes upward from `--port` (default 8653) and fails loudly if exhausted (spec §1.5).
+- `voice/` — offline speech recognition for the Symbol Recognition page (spec §2.6). `lexicon.py` loads bundled per-language phrase files from `assets/lexicon/*_<lang>.json`. `grammar.py` builds the Vosk grammar and runs longest-match-first tokenisation (`resolve_symbols`) so utterances like `"uniform kilo mike"` decode to `["U","K","M"]`. `recognizer.py` wraps `vosk.KaldiRecognizer` with **lazy import** of `vosk` — so `copy_653.voice` is safe to import without the optional `voice` extra installed. The recogniser **never filters to the claimed set or curriculum** — what was said is what gets recorded (honesty contract, §9). The `voice` extra is opt-in; absent `[voice]` config or model, the recognition page disables Start with a named error rather than failing silently.
+- `midi/`, `session/` — `midi/` is partially implemented for the Trinkey input pipeline; `session/` owns the JSON record writers (`KochExerciseRecord`, `RecognitionRecord`, `CadenceSendRecord`, `CopyKeyRecord`) and the `update_*_answers` rewriters used by the save-answers WS actions. Mode dispatch (Introduction / Detection / Full Copy) per spec §5.1 still pending.
 
 Important architectural points in the audio module:
 
@@ -75,11 +76,13 @@ System dependency for playback: PortAudio (`libportaudio2` on Debian/Ubuntu). Sy
 
 ## Config
 
-Single TOML file at `~/.local/share/copy_653/config.toml` (XDG-style on both Linux and macOS — see spec §6.3). Optional; missing means defaults across the board. Three tables today:
+Single TOML file at `~/.local/share/copy_653/config.toml` (XDG-style on both Linux and macOS — see spec §6.3). Optional; missing means defaults across the board. Tables today (see `config.py` for the exhaustive field list):
 
 - `[audio]` — hand-authored. WPM, tone, amplitude, etc. Loaded by `load_audio_parameters`.
 - `[symbols]` — partly machine-managed. `claimed = ["K", "M", ...]`. The engine writes this when the learner claims a symbol via the WS action; reads on every `start`. Atomic write via `tomli-w` (comments are NOT preserved across writes — documented).
-- `[session]` — hand-authored. `duration_seconds` is the dev default (30s); per-mode keys arrive with `session/`.
+- `[session]` — hand-authored. `duration_seconds` is the dev default (30s).
+- `[server]`, `[storage]`, `[midi.key]`, `[recognition]`, `[letters]`, `[developer]` — feature-specific settings, each loaded by its own `load_*` function.
+- `[voice]` — offline speech recogniser. `language` selects which `*_<lang>.json` lexicon files load; `model_path` resolves against `~/.local/share/copy_653/models/` if relative, honoured as-is if absolute. Absent table = voice disabled (Recognition page Start is gated on `/api/voice/status` reporting `ready: true`).
 
 Unknown keys in known tables and unknown top-level tables are silently ignored for forward compatibility. Invalid *values* raise per spec §1.5 — at load time, not later.
 
