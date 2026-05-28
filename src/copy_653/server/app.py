@@ -165,6 +165,15 @@ disk per request rather than cached at server boot. A learner who
 hand-edits ``config.toml`` mid-session sees their change on the next
 ``start``. This costs one TOML parse per action and keeps the engine
 honest about what is actually configured.
+
+Voice input — a separate path
+=============================
+
+Voice for the Symbol Recognition page lives at ``/voice/ws`` and
+speaks a different protocol: binary Int16 PCM at 16 kHz mono in,
+JSON event frames out. The shape is documented at the top of
+:mod:`copy_653.server.voice_ws`. The separation is deliberate —
+binary audio frames stay off the main JSON action protocol.
 """
 
 from __future__ import annotations
@@ -190,6 +199,7 @@ from copy_653.midi import KeyElement  # noqa: F401  — re-exported for tests/se
 from copy_653.server.key_input_actions import KeyNoteSource
 from copy_653.server.connection import handler
 from copy_653.server.http_static import _build_static_handler, find_web_root
+from copy_653.server.voice_ws import voice_handler
 from copy_653.server.records import _ActiveCadenceSession as _ActiveCadenceSession  # noqa: F401
 from copy_653.server.wire_events import (
     _key_event_event,  # noqa: F401  — re-exported for tests/server/test_app.py
@@ -259,6 +269,14 @@ async def serve_app(
     process_request = _build_static_handler(resolved_web_root, config_path=config_path)
 
     async def _connection(ws: WebSocketServerProtocol) -> None:
+        # Path-based dispatch: /voice/ws is binary PCM in, JSON events
+        # out (see :mod:`copy_653.server.voice_ws`); every other path
+        # falls through to the main JSON action handler. Keeping voice
+        # on its own path means binary audio frames never collide with
+        # the action protocol in :mod:`copy_653.server.connection`.
+        if ws.path == "/voice/ws":
+            await voice_handler(ws, config_path=config_path)
+            return
         await handler(
             ws,
             config_path=config_path,

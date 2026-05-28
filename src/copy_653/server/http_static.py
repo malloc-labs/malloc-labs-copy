@@ -88,7 +88,10 @@ def _build_static_handler(web_root: Path, config_path: Path | None = None):
         parsed_path = urlsplit(path)
         clean_path = parsed_path.path
 
-        if clean_path == "/ws":
+        # Allow WS upgrades for the main JSON action protocol and for
+        # the binary-PCM voice endpoint. Any other path falls through
+        # to API dispatch and then static-file lookup.
+        if clean_path in ("/ws", "/voice/ws"):
             return None
 
         api_response = _handle_api_request(clean_path, parsed_path.query, config_path)

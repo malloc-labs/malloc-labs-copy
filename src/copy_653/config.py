@@ -21,6 +21,11 @@ each in its own table:
 - ``[midi.key]`` — physical key input defaults for the reference
   TRRS Trinkey and Copy-owned sidetone.
 - ``[developer]`` — dev-only behaviour toggles (e.g. HH-clear).
+- ``[voice]`` — offline speech recogniser language + model path
+  (phase 2 of voice input for the Symbol Recognition page).
+  Optional — when absent, the voice WS endpoint returns a structured
+  "not configured" error and closes; the rest of the engine is
+  unaffected.
 
 Per spec §6.1 / §6.3:
 
@@ -87,6 +92,14 @@ DEFAULT_SERVER_PORT_SEARCH_SPAN = 20
 # itself, so a learner who relocates their config also relocates their
 # session records by default.
 DEFAULT_SAVE_DIRECTORY = DEFAULT_CONFIG_PATH.parent
+
+# Voice (speech-recogniser) defaults. The model directory holds Vosk
+# language models — too large for the repo, downloaded out-of-band per
+# README. Per phase 2 honesty contract: a relative ``model_path`` is
+# resolved against this directory; an absolute ``model_path`` is honoured
+# as given.
+DEFAULT_VOICE_MODELS_DIR = DEFAULT_CONFIG_PATH.parent / "models"
+DEFAULT_VOICE_LANGUAGE = "en"
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,6 +178,42 @@ class RecognitionSettings:
             raise ValueError(
                 f"[recognition].say_after must be a boolean, got {type(self.say_after).__name__}"
             )
+
+
+@dataclass(frozen=True, slots=True)
+class VoiceSettings:
+    """Settings for the offline speech recogniser (phase 2 of voice input).
+
+    ``model_path`` may be relative (resolved against
+    :data:`DEFAULT_VOICE_MODELS_DIR`) or absolute (honoured as given).
+    A missing :data:`[voice]` table yields ``model_path=None``, which the
+    server treats as "voice disabled" — the WS endpoint returns a
+    structured error and closes, the rest of the engine is unaffected.
+
+    A *present but broken* :data:`[voice]` table — wrong types, unknown
+    language — raises at config-load time per the honesty contract
+    (spec §1.5).
+    """
+
+    language: str = DEFAULT_VOICE_LANGUAGE
+    model_path: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.language, str) or not self.language.strip():
+            raise ValueError(f"[voice].language must be a non-empty string, got {self.language!r}")
+        if self.model_path is not None and (
+            not isinstance(self.model_path, str) or not self.model_path.strip()
+        ):
+            raise ValueError(
+                f"[voice].model_path must be a non-empty string or absent, got {self.model_path!r}"
+            )
+
+    def resolved_model_path(self) -> Path | None:
+        """Return the absolute path the recogniser should load, or ``None``."""
+        if self.model_path is None:
+            return None
+        raw = Path(self.model_path).expanduser()
+        return raw if raw.is_absolute() else (DEFAULT_VOICE_MODELS_DIR / raw)
 
 
 # ---------- server -----------------------------------------------------
@@ -537,6 +586,60 @@ def save_recognition_settings(
     recognition_table["morse_count"] = settings.morse_count
     recognition_table["recognition_time_ms"] = settings.recognition_time_ms
     recognition_table["say_after"] = settings.say_after
+
+    _write_toml_atomic(data, config_path)
+    return settings
+
+
+# ---------- voice ------------------------------------------------------
+
+
+def load_voice_settings(path: Path | None = None) -> VoiceSettings:
+    """Load speech-recogniser settings from ``[voice]``.
+
+    A missing table yields :class:`VoiceSettings` with
+    ``model_path=None`` — the WS endpoint then returns a structured
+    "voice not configured" error to the UI rather than crashing the
+    engine. A *present but broken* table raises per spec §1.5.
+    """
+    data = _read_toml(path)
+    if data is None:
+        return VoiceSettings()
+
+    voice_table = data.get("voice")
+    if voice_table is None:
+        return VoiceSettings()
+    if not isinstance(voice_table, dict):
+        raise ValueError(f"[voice] must be a TOML table, got {type(voice_table).__name__}")
+
+    # Forward-compat: unknown keys are dropped silently per config.py
+    # convention. The dataclass's __post_init__ enforces value shape.
+    known_keys = set(VoiceSettings.__dataclass_fields__.keys())
+    filtered = {k: v for k, v in voice_table.items() if k in known_keys}
+    return VoiceSettings(**filtered)
+
+
+def save_voice_settings(
+    *,
+    language: str,
+    model_path: str | None,
+    path: Path | None = None,
+) -> VoiceSettings:
+    """Persist speech-recogniser settings, preserving other tables."""
+    config_path = path if path is not None else DEFAULT_CONFIG_PATH
+    data = _read_toml(config_path) or {}
+
+    voice_table = data.get("voice")
+    if not isinstance(voice_table, dict):
+        voice_table = {}
+        data["voice"] = voice_table
+
+    settings = VoiceSettings(language=language, model_path=model_path)
+    voice_table["language"] = settings.language
+    if settings.model_path is None:
+        voice_table.pop("model_path", None)
+    else:
+        voice_table["model_path"] = settings.model_path
 
     _write_toml_atomic(data, config_path)
     return settings

@@ -10,9 +10,12 @@ from copy_653.audio import patterns
 from copy_653.audio.parameters import AudioParameters
 from copy_653.config import (
     DEFAULT_SESSION_DURATION_SECONDS,
+    DEFAULT_VOICE_LANGUAGE,
+    DEFAULT_VOICE_MODELS_DIR,
     KeyerSettings,
     RecognitionSettings,
     ServerSettings,
+    VoiceSettings,
     load_audio_parameters,
     load_claimed_symbols,
     load_keyer_settings,
@@ -21,11 +24,13 @@ from copy_653.config import (
     load_save_directory,
     load_server_settings,
     load_session_duration,
+    load_voice_settings,
     save_audio_timing,
     save_claimed_symbols,
     save_keyer_settings,
     save_recognition_settings,
     save_save_directory,
+    save_voice_settings,
 )
 from copy_653.letters.sequence import LettersConfig
 
@@ -746,3 +751,125 @@ def test_save_recognition_settings_preserves_other_tables(tmp_path: Path):
     assert data["audio"]["character_speed_wpm"] == 25
     assert data["symbols"]["claimed"] == ["K", "M", "U"]
     assert data["recognition"]["say_before"] is True
+
+
+# ---------- voice ------------------------------------------------------
+
+
+def test_load_voice_settings_defaults_when_missing(tmp_path: Path):
+    """Absent config file → defaults; model_path stays None."""
+    result = load_voice_settings(tmp_path / "missing.toml")
+    assert result == VoiceSettings()
+    assert result.language == DEFAULT_VOICE_LANGUAGE
+    assert result.model_path is None
+    assert result.resolved_model_path() is None
+
+
+def test_load_voice_settings_defaults_when_table_absent(tmp_path: Path):
+    """Config file exists but [voice] table missing → defaults."""
+    config_file = tmp_path / "config.toml"
+    config_file.write_text("[audio]\ncharacter_speed_wpm = 25\n")
+    assert load_voice_settings(config_file) == VoiceSettings()
+
+
+def test_load_voice_settings_reads_table(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(textwrap.dedent("""
+            [voice]
+            language = "en"
+            model_path = "vosk-model-small-en-us-0.15"
+            """))
+    cfg = load_voice_settings(config_file)
+    assert cfg.language == "en"
+    assert cfg.model_path == "vosk-model-small-en-us-0.15"
+    # Relative path → resolved under the default models directory.
+    assert cfg.resolved_model_path() == DEFAULT_VOICE_MODELS_DIR / "vosk-model-small-en-us-0.15"
+
+
+def test_load_voice_settings_honours_absolute_model_path(tmp_path: Path):
+    abs_path = tmp_path / "elsewhere" / "model"
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(f'[voice]\nmodel_path = "{abs_path}"\n')
+    cfg = load_voice_settings(config_file)
+    assert cfg.resolved_model_path() == abs_path
+
+
+def test_load_voice_settings_expands_user_in_model_path(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[voice]\nmodel_path = "~/models/vosk-small"\n')
+    cfg = load_voice_settings(config_file)
+    resolved = cfg.resolved_model_path()
+    assert resolved is not None
+    assert "~" not in str(resolved)
+    assert resolved.is_absolute()
+
+
+def test_load_voice_settings_ignores_unknown_keys(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(textwrap.dedent("""
+            [voice]
+            language = "en"
+            future_knob = "ignored"
+            """))
+    cfg = load_voice_settings(config_file)
+    assert cfg.language == "en"
+
+
+def test_load_voice_settings_raises_on_non_dict_table(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('voice = "not a table"\n')
+    with pytest.raises(ValueError, match=r"\[voice\] must be a TOML table"):
+        load_voice_settings(config_file)
+
+
+def test_voice_settings_rejects_empty_language():
+    with pytest.raises(ValueError, match=r"\[voice\].language"):
+        VoiceSettings(language="   ")
+
+
+def test_voice_settings_rejects_non_string_language():
+    with pytest.raises(ValueError, match=r"\[voice\].language"):
+        VoiceSettings(language=42)  # type: ignore[arg-type]
+
+
+def test_voice_settings_rejects_empty_model_path():
+    with pytest.raises(ValueError, match=r"\[voice\].model_path"):
+        VoiceSettings(model_path="   ")
+
+
+def test_save_voice_settings_round_trips(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    saved = save_voice_settings(
+        language="en",
+        model_path="vosk-model-small-en-us-0.15",
+        path=config_file,
+    )
+    loaded = load_voice_settings(config_file)
+    assert loaded == saved
+    assert loaded.language == "en"
+    assert loaded.model_path == "vosk-model-small-en-us-0.15"
+
+
+def test_save_voice_settings_drops_model_path_when_none(tmp_path: Path):
+    """Saving with model_path=None removes the key, not the table."""
+    config_file = tmp_path / "config.toml"
+    save_voice_settings(language="en", model_path="x", path=config_file)
+    save_voice_settings(language="en", model_path=None, path=config_file)
+    data = tomllib.loads(config_file.read_text())
+    assert data["voice"] == {"language": "en"}
+
+
+def test_save_voice_settings_preserves_other_tables(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(textwrap.dedent("""
+            [audio]
+            character_speed_wpm = 25
+
+            [symbols]
+            claimed = ["K", "M", "U"]
+            """))
+    save_voice_settings(language="en", model_path="vosk-model-small-en-us-0.15", path=config_file)
+    data = tomllib.loads(config_file.read_text())
+    assert data["audio"]["character_speed_wpm"] == 25
+    assert data["symbols"]["claimed"] == ["K", "M", "U"]
+    assert data["voice"]["language"] == "en"

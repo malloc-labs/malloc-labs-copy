@@ -19,10 +19,24 @@ view of the lexicon suitable for handing to
 
 from copy_653.voice.grammar import build_grammar, resolve_symbol
 from copy_653.voice.lexicon import Lexicon, LexiconError, load_lexicon
+from copy_653.voice.recognizer import (
+    SAMPLE_RATE_HZ,
+    FinalResult,
+    PartialResult,
+    Recognizer,
+    VoiceEvent,
+    VoiceUnavailableError,
+)
 
 __all__ = [
+    "FinalResult",
     "Lexicon",
     "LexiconError",
+    "PartialResult",
+    "Recognizer",
+    "SAMPLE_RATE_HZ",
+    "VoiceEvent",
+    "VoiceUnavailableError",
     "build_grammar",
     "load_lexicon",
     "resolve_symbol",
