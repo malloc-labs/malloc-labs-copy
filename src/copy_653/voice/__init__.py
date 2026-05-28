@@ -17,7 +17,7 @@ view of the lexicon suitable for handing to
 :class:`vosk.KaldiRecognizer`.
 """
 
-from copy_653.voice.grammar import build_grammar, resolve_symbol
+from copy_653.voice.grammar import build_grammar, resolve_symbols
 from copy_653.voice.lexicon import Lexicon, LexiconError, load_lexicon
 from copy_653.voice.recognizer import (
     SAMPLE_RATE_HZ,
@@ -39,5 +39,5 @@ __all__ = [
     "VoiceUnavailableError",
     "build_grammar",
     "load_lexicon",
-    "resolve_symbol",
+    "resolve_symbols",
 ]

@@ -167,8 +167,8 @@ async def test_voice_ws_streams_partial_then_final(tmp_path, monkeypatch):
 
     rec = _ScriptedRecognizer(
         events_per_frame=[
-            [PartialResult(text="al", symbol=None)],
-            [FinalResult(text="alpha", symbol="A")],
+            [PartialResult(text="al", symbols=())],
+            [FinalResult(text="uniform kilo mike", symbols=("U", "K", "M"))],
         ]
     )
 
@@ -197,11 +197,15 @@ async def test_voice_ws_streams_partial_then_final(tmp_path, monkeypatch):
 
             await ws.send(b"\x00\x00" * 256)
             raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
-            assert json.loads(raw) == {"type": "partial", "text": "al", "symbol": None}
+            assert json.loads(raw) == {"type": "partial", "text": "al", "symbols": []}
 
             await ws.send(b"\x00\x00" * 256)
             raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
-            assert json.loads(raw) == {"type": "final", "text": "alpha", "symbol": "A"}
+            assert json.loads(raw) == {
+                "type": "final",
+                "text": "uniform kilo mike",
+                "symbols": ["U", "K", "M"],
+            }
 
             await ws.send("reset")
             # No event from reset itself; just confirm the recogniser saw it.

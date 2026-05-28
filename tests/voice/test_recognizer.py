@@ -134,19 +134,30 @@ def test_feed_pcm_emits_partial_for_in_progress_decode():
     assert len(events) == 1
     assert isinstance(events[0], PartialResult)
     assert events[0].text == "al"
-    assert events[0].symbol is None  # "al" isn't a complete lexicon phrase
+    # "al" isn't a complete lexicon phrase — no symbols yet.
+    assert events[0].symbols == ()
 
 
 def test_feed_pcm_emits_final_with_resolved_symbol():
     rec = _build([(True, "alpha")])
-    # Pre-stash the final text the fake will report.
     rec._kaldi.__dict__["_pending_final"] = "alpha"  # type: ignore[attr-defined]
     events = rec.feed_pcm(b"\x00\x00" * 256)
     assert len(events) == 1
     final = events[0]
     assert isinstance(final, FinalResult)
     assert final.text == "alpha"
-    assert final.symbol == "A"
+    assert final.symbols == ("A",)
+
+
+def test_feed_pcm_emits_final_with_multiple_symbols():
+    """The screenshot regression — batched utterance fully tokenises."""
+    text = "uniform kilo mike uniform mike"
+    rec = _build([(True, text)])
+    rec._kaldi.__dict__["_pending_final"] = text  # type: ignore[attr-defined]
+    events = rec.feed_pcm(b"\x00\x00" * 256)
+    assert isinstance(events[0], FinalResult)
+    assert events[0].text == text
+    assert events[0].symbols == ("U", "K", "M", "U", "M")
 
 
 def test_feed_pcm_drops_unk_finals():
@@ -165,7 +176,17 @@ def test_feed_pcm_resolves_multiword_phrases():
     rec._kaldi.__dict__["_pending_final"] = "x ray"  # type: ignore[attr-defined]
     events = rec.feed_pcm(b"\x00\x00" * 256)
     assert isinstance(events[0], FinalResult)
-    assert events[0].symbol == "X"
+    assert events[0].symbols == ("X",)
+
+
+def test_feed_pcm_returns_empty_symbols_for_off_vocabulary_text():
+    """A final whose words don't match any lexicon phrase yields []."""
+    text = "nothing here matches"
+    rec = _build([(True, text)])
+    rec._kaldi.__dict__["_pending_final"] = text  # type: ignore[attr-defined]
+    events = rec.feed_pcm(b"\x00\x00" * 256)
+    assert events[0].symbols == ()
+    assert events[0].text == text  # text is still surfaced for diagnostics
 
 
 # ---------- reset ------------------------------------------------------
