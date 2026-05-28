@@ -187,6 +187,184 @@ async def test_save_recognition_answers_without_pending_record_errors(tmp_path):
         await server.wait_closed()
 
 
+async def test_save_recognition_answers_with_voice_capture(tmp_path, patched_playback):
+    """voice_capture is written per exercise alongside the answer fields."""
+    save_dir = tmp_path / "records"
+    config_path = _write_recognition_config(tmp_path, save_dir)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=_make_web_root(tmp_path),
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+            await ws.send(json.dumps({"action": "start-recognition"}))
+            await _drain_until(ws, lambda e: e["type"] == "session-end")
+
+            answers = ["K", "KM", "MK", "KK", "MM"]
+            voice_capture = [
+                [{"t": 0.7, "text": "kilo", "symbols": ["K"]}],
+                [
+                    {"t": 8.1, "text": "kilo", "symbols": ["K"]},
+                    {"t": 14.6, "text": "mike", "symbols": ["M"]},
+                ],
+                [
+                    {"t": 22.0, "text": "mike", "symbols": ["M"]},
+                    {"t": 29.0, "text": "kilo", "symbols": ["K"]},
+                ],
+                [
+                    {"t": 36.0, "text": "kilo", "symbols": ["K"]},
+                    {"t": 42.0, "text": "kilo", "symbols": ["K"]},
+                ],
+                [
+                    {"t": 49.0, "text": "mike", "symbols": ["M"]},
+                    {"t": 56.0, "text": "mike", "symbols": ["M"]},
+                ],
+            ]
+            await ws.send(
+                json.dumps(
+                    {
+                        "action": "save-recognition-answers",
+                        "answers": answers,
+                        "voice_capture": voice_capture,
+                    }
+                )
+            )
+            ack = await asyncio.wait_for(ws.recv(), timeout=5.0)
+
+        assert json.loads(ack)["type"] == "recognition-answers-saved"
+
+        record_dir = save_dir / "recognition"
+        files = list(record_dir.rglob("recognition-*.json"))
+        record = json.loads(files[0].read_text())
+        for i, exercise in enumerate(record["exercises"]):
+            assert exercise["answer"] == answers[i]
+            assert exercise["voice_capture"] == voice_capture[i]
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_save_recognition_answers_omits_voice_capture_field_when_not_sent(
+    tmp_path, patched_playback
+):
+    """Save without voice_capture leaves the field absent — not [] — so
+    records from phase 5 MVP saves and later 5.1 saves stay distinguishable."""
+    save_dir = tmp_path / "records"
+    config_path = _write_recognition_config(tmp_path, save_dir)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=_make_web_root(tmp_path),
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+            await ws.send(json.dumps({"action": "start-recognition"}))
+            await _drain_until(ws, lambda e: e["type"] == "session-end")
+
+            answers = ["K", "KM", "MK", "KK", "MM"]
+            await ws.send(json.dumps({"action": "save-recognition-answers", "answers": answers}))
+            await asyncio.wait_for(ws.recv(), timeout=5.0)
+
+        record_dir = save_dir / "recognition"
+        files = list(record_dir.rglob("recognition-*.json"))
+        record = json.loads(files[0].read_text())
+        assert all("voice_capture" not in exercise for exercise in record["exercises"])
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_save_recognition_answers_rejects_voice_capture_length_mismatch(
+    tmp_path, patched_playback
+):
+    save_dir = tmp_path / "records"
+    config_path = _write_recognition_config(tmp_path, save_dir)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=_make_web_root(tmp_path),
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+            await ws.send(json.dumps({"action": "start-recognition"}))
+            await _drain_until(ws, lambda e: e["type"] == "session-end")
+
+            # 5 answers, but only 3 voice_capture buckets → reject.
+            await ws.send(
+                json.dumps(
+                    {
+                        "action": "save-recognition-answers",
+                        "answers": ["a", "b", "c", "d", "e"],
+                        "voice_capture": [[], [], []],
+                    }
+                )
+            )
+            ack = await asyncio.wait_for(ws.recv(), timeout=5.0)
+
+        ack_event = json.loads(ack)
+        assert ack_event["type"] == "error"
+        assert ack_event["reason"] == "answers-length-mismatch"
+        assert "voice_capture" in ack_event["detail"]
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+async def test_save_recognition_answers_rejects_invalid_voice_capture_shape(
+    tmp_path, patched_playback
+):
+    """Strings instead of objects, missing text/symbols, etc. → reject."""
+    save_dir = tmp_path / "records"
+    config_path = _write_recognition_config(tmp_path, save_dir)
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=_make_web_root(tmp_path),
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await asyncio.wait_for(ws.recv(), timeout=2.0)
+            await ws.send(json.dumps({"action": "start-recognition"}))
+            await _drain_until(ws, lambda e: e["type"] == "session-end")
+
+            # voice_capture inner entries missing required `symbols`.
+            await ws.send(
+                json.dumps(
+                    {
+                        "action": "save-recognition-answers",
+                        "answers": ["K", "KM", "MK", "KK", "MM"],
+                        "voice_capture": [
+                            [{"text": "kilo"}],
+                            [],
+                            [],
+                            [],
+                            [],
+                        ],
+                    }
+                )
+            )
+            ack = await asyncio.wait_for(ws.recv(), timeout=5.0)
+
+        ack_event = json.loads(ack)
+        assert ack_event["type"] == "error"
+        assert ack_event["reason"] == "invalid-voice-capture"
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
 async def test_save_recognition_answers_is_one_shot_per_session(tmp_path, patched_playback):
     """A second save without an intervening session-end is rejected —
     the pending recognition record is cleared after the first save."""

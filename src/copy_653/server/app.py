@@ -29,6 +29,8 @@ Client → server, JSON over WS::
     {"action": "stop"}
     {"action": "save-koch-answers", "answers": ["DE K", "DE MK", "..."]}
     {"action": "save-recognition-answers", "answers": ["K", "KMU", "..."]}
+    {"action": "save-recognition-answers", "answers": ["K"],
+     "voice_capture": [[{"t": 0.7, "text": "kilo", "symbols": ["K"]}]]}
     {"action": "claim-symbol", "symbol": "U"}
     {"action": "unclaim-symbol", "symbol": "U"}
     {"action": "play-letter", "symbol": "K"}
