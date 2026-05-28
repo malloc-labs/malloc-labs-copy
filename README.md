@@ -126,6 +126,41 @@ listening sequence pacing knobs). See
 [`src/copy_653/config.py`](src/copy_653/config.py) for the exhaustive field
 list.
 
+## Voice input (optional)
+
+Voice is one input modality for the Symbol Recognition page (spec §2.6).
+Audio is captured in the browser, streamed as 16-kHz mono PCM over a
+WebSocket at `/voice/ws`, and decoded by an offline
+[Vosk](https://alphacephei.com/vosk/) recogniser whose grammar is
+restricted to the NATO phonetic words, English digit words, and the
+prosign phrases the Koch curriculum uses (`.` `,` `?` `/` `=`). Any
+off-vocabulary speech collapses to `[unk]` server-side.
+
+Install the optional dependency and download a Vosk model:
+
+```sh
+pip install -e ".[voice]"
+
+mkdir -p ~/.local/share/copy_653/models
+curl -L -o /tmp/vosk-model.zip \
+  https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
+unzip /tmp/vosk-model.zip -d ~/.local/share/copy_653/models/
+```
+
+Tell the engine where the model lives:
+
+```toml
+[voice]
+language = "en"
+model_path = "vosk-model-small-en-us-0.15"
+```
+
+`model_path` is resolved against `~/.local/share/copy_653/models/` when
+relative; absolute paths are honoured as given. When the `[voice]` table
+is absent the recognition page's voice button is inert — the WS endpoint
+returns a structured `voice-unavailable` error and closes, the rest of
+the engine is unaffected.
+
 ## Tests
 
 ```sh
