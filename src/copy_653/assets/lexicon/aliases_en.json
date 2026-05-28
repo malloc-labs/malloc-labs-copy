@@ -1,0 +1,14 @@
+{
+    "name": "Operator and civilian aliases, English",
+    "language": "en",
+    "category": "aliases",
+    "entries": {
+        "4": ["fower"],
+        "5": ["fife"],
+        "9": ["niner"],
+        ".": ["period", "full stop", "dot"],
+        "?": ["query", "interrogative"],
+        "/": ["stroke", "fraction bar"],
+        "=": ["equal sign", "equal"]
+    }
+}
