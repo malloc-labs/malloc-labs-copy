@@ -39,6 +39,14 @@ let currentSetSession = 0;
 let voiceReady = false;
 let voiceStatusMessage = "Checking voice configuration…";
 
+// Per-exercise buffer of Vosk final events captured during the session.
+// Each entry: { t: seconds since session-start, text: raw transcript,
+// symbols: tokenised list }. Sent verbatim in save-recognition-answers
+// so the session record carries both what Vosk heard and what the
+// learner committed — phase 5.1's "two recognitions" diagnostic.
+let voiceCapture = [];
+let sessionStartMs = 0;
+
 const voice = {
     ws: null,
     ctx: null,
@@ -175,6 +183,7 @@ async function startVoiceCapture() {
         if (voice.session !== session) return;
         if (msg.type === "final") {
             const symbols = Array.isArray(msg.symbols) ? msg.symbols : [];
+            recordVoiceFinal(msg.text || "", symbols);
             if (symbols.length) appendSymbolsToActiveRow(symbols);
         }
     };
@@ -295,6 +304,41 @@ function appendSymbolsToActiveRow(symbols) {
     );
     if (!input) return;
     input.value = input.value + symbols.join("");
+}
+
+// Push a Vosk final into the per-exercise capture buffer and render it
+// on the Truth view next to engine symbols. Events that arrive before
+// the first engine symbol fires (active index still 0) attach to the
+// first exercise's bucket — Vosk can fire mid-countdown if the user
+// speaks early, and dropping those entirely would hide an interesting
+// timing failure.
+function recordVoiceFinal(text, symbols) {
+    const exerciseIdx = Math.max(1, currentExerciseIndex);
+    const tSeconds = (performance.now() - sessionStartMs) / 1000;
+    const entry = { t: round4(tSeconds), text: text, symbols: Array.from(symbols) };
+    while (voiceCapture.length < exerciseIdx) voiceCapture.push([]);
+    voiceCapture[exerciseIdx - 1].push(entry);
+    renderVoiceEvent(entry);
+}
+
+function round4(n) {
+    return Math.round(n * 10000) / 10000;
+}
+
+function renderVoiceEvent(entry) {
+    const li = document.createElement("li");
+    li.dataset.kind = "voice";
+    li.dataset.exerciseIndex = String(Math.max(1, currentExerciseIndex));
+    const time = document.createElement("span");
+    time.className = "events-time";
+    time.textContent = `${entry.t.toFixed(2)}s`;
+    const arrow = document.createElement("span");
+    arrow.className = "events-voice-text";
+    arrow.textContent = entry.symbols.length
+        ? `${entry.text} → ${entry.symbols.join("")}`
+        : `${entry.text} → —`;
+    li.append(time, arrow);
+    eventsEl.appendChild(li);
 }
 
 function unlockAnswerInputs() {
@@ -419,6 +463,8 @@ function appendEvent(event) {
         currentExerciseIndex = 0;
         currentSetSession = event.set_session || 0;
         sessionActive = true;
+        sessionStartMs = performance.now();
+        voiceCapture = currentExercises.map(() => []);
         setStartButtonMode("active");
         const meta = toggleBtn.querySelector(".timeline-meta");
         meta.textContent = `seed ${event.seed} · ${currentExercises.length} exercises`;
@@ -467,9 +513,19 @@ function appendEvent(event) {
                 `Exercise ${currentExerciseIndex} of ${currentExercises.length}`;
         }
         const li = document.createElement("li");
-        li.textContent = `${event.symbol}`;
         li.dataset.kind = "symbol";
         li.dataset.exerciseIndex = String(event.exercise_index);
+        if (typeof event.t_on === "number") {
+            const time = document.createElement("span");
+            time.className = "events-time";
+            time.textContent = `${event.t_on.toFixed(2)}s`;
+            const sym = document.createElement("span");
+            sym.className = "events-symbol";
+            sym.textContent = event.symbol;
+            li.append(time, sym);
+        } else {
+            li.textContent = event.symbol;
+        }
         eventsEl.appendChild(li);
         return;
     }
@@ -539,6 +595,7 @@ saveBtn.addEventListener("click", () => {
     socket.send(JSON.stringify({
         action: "save-recognition-answers",
         answers: collectAnswers(),
+        voice_capture: voiceCapture,
     }));
 });
 

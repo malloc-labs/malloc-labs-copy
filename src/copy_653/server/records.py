@@ -300,14 +300,18 @@ def _save_koch_answers(path: Path, answers: list[str]) -> int:
     return update_koch_answers(path, answers)
 
 
-def _save_recognition_answers(path: Path, answers: list[str]) -> int:
-    """Merge learner answers into an existing recognition record.
+def _save_recognition_answers(
+    path: Path,
+    answers: list[str],
+    voice_capture: list[list[dict[str, Any]]] | None = None,
+) -> int:
+    """Merge learner answers (and optional per-exercise voice capture)
+    into an existing recognition record.
 
-    Thin wrapper over :func:`update_recognition_answers` — same shape
-    as :func:`_save_koch_answers`, returning the expected exercise
-    count so the WS action can echo it on success.
+    Thin wrapper over :func:`update_recognition_answers` — returns the
+    expected exercise count so the WS action can echo it on success.
     """
-    return update_recognition_answers(path, answers)
+    return update_recognition_answers(path, answers, voice_capture=voice_capture)
 
 
 def _iter_koch_records(save_directory: Path) -> list[dict[str, Any]]:

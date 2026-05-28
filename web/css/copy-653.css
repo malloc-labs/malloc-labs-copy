@@ -852,6 +852,39 @@ copy-top-menu {
     margin: var(--mr-space-3) 0;
 }
 
+/* Voice events: Vosk's per-final transcripts captured during the
+ * session, shown next to engine symbols on the Truth view so the
+ * learner can compare what they said vs what the engine played. The
+ * info colour distinguishes them from the engine's symbol rows
+ * without competing with the per-exercise header. */
+.timeline li[data-kind="voice"] {
+    color: var(--mr-info);
+    display: flex;
+    gap: var(--mr-space-3);
+    align-items: baseline;
+}
+
+.timeline li[data-kind="symbol"] {
+    display: flex;
+    gap: var(--mr-space-3);
+    align-items: baseline;
+}
+
+.events-time {
+    color: var(--mr-muted);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    min-width: 3.5em;
+}
+
+.events-symbol {
+    font-family: var(--mr-font-mono);
+}
+
+.events-voice-text {
+    font-family: var(--mr-font-mono);
+}
+
 /* Tab 1 (Answers) — two-column table (Answer | Sent) with a leading
  * row-header showing the exercise number. Inputs are disabled while the
  * session is in flight and enabled on session-end. The Sent column

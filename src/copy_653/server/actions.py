@@ -437,11 +437,18 @@ async def _save_recognition_answers_action(
     message: dict[str, Any],
     pending_path: Path | None,
 ) -> bool:
-    """Merge learner answers into the most recently written recognition record.
+    """Merge learner answers — and optional per-exercise voice capture —
+    into the most recently written recognition record.
 
     Mirrors :func:`_save_koch_answers_action`. ``answers`` is parallel
     to the record's ``exercises``; length mismatch is rejected per
     spec §1.5 rather than silently padded.
+
+    The optional ``voice_capture`` field is a list of lists parallel to
+    ``answers``: each inner list holds the Vosk events that produced
+    that exercise's answer, as ``{t, text, symbols}`` dicts (see phase
+    5.1). Shape is enforced strictly — invalid shapes are rejected
+    rather than silently dropped.
     """
     if pending_path is None:
         await _send_event(ws, {"type": "error", "reason": "no-pending-recognition-record"})
@@ -452,8 +459,22 @@ async def _save_recognition_answers_action(
         await _send_event(ws, {"type": "error", "reason": "invalid-answers"})
         return False
 
+    raw_voice = message.get("voice_capture")
+    voice_capture: list[list[dict[str, Any]]] | None
+    if raw_voice is None:
+        voice_capture = None
+    else:
+        voice_capture = _coerce_voice_capture(raw_voice)
+        if voice_capture is None:
+            await _send_event(ws, {"type": "error", "reason": "invalid-voice-capture"})
+            return False
+
     try:
-        exercise_count = _save_recognition_answers(pending_path, list(raw_answers))
+        exercise_count = _save_recognition_answers(
+            pending_path,
+            list(raw_answers),
+            voice_capture=voice_capture,
+        )
     except ValueError as exc:
         await _send_event(
             ws,
@@ -473,6 +494,38 @@ async def _save_recognition_answers_action(
         },
     )
     return True
+
+
+def _coerce_voice_capture(raw: Any) -> list[list[dict[str, Any]]] | None:
+    """Return a sanitised voice_capture or ``None`` if the shape is wrong.
+
+    Each entry must be a list (parallel to exercises) of dicts with
+    ``text: str`` and ``symbols: list[str]``. Optional numeric ``t``.
+    Unknown keys are dropped silently for forward compatibility.
+    """
+    if not isinstance(raw, list):
+        return None
+    out: list[list[dict[str, Any]]] = []
+    for per_exercise in raw:
+        if not isinstance(per_exercise, list):
+            return None
+        sanitised: list[dict[str, Any]] = []
+        for entry in per_exercise:
+            if not isinstance(entry, dict):
+                return None
+            text = entry.get("text")
+            symbols = entry.get("symbols")
+            if not isinstance(text, str):
+                return None
+            if not isinstance(symbols, list) or not all(isinstance(s, str) for s in symbols):
+                return None
+            clean: dict[str, Any] = {"text": text, "symbols": list(symbols)}
+            t = entry.get("t")
+            if isinstance(t, (int, float)) and not isinstance(t, bool):
+                clean["t"] = float(t)
+            sanitised.append(clean)
+        out.append(sanitised)
+    return out
 
 
 async def _broadcast_claimed_state(

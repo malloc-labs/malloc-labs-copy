@@ -251,18 +251,29 @@ class CopyKeyRecord:
         }
 
 
-def update_recognition_answers(path: Path, answers: list[str]) -> int:
+def update_recognition_answers(
+    path: Path,
+    answers: list[str],
+    voice_capture: list[list[dict[str, Any]]] | None = None,
+) -> int:
     """Rewrite an existing recognition record with learner-typed/spoken answers.
 
     Mirrors :func:`update_koch_answers` for the Symbol Recognition page.
-    Sets each exercise object's ``answer`` field and writes the result
-    back atomically. Returns the number of exercises in the record so
-    the caller can verify length agreement.
+    Sets each exercise object's ``answer`` field and, when
+    ``voice_capture`` is supplied, also writes the per-exercise list of
+    Vosk events that produced those answers. The capture is what Vosk
+    *heard* (raw transcript + tokenised symbols + timestamp); the
+    answer is what the learner *committed* (possibly after editing).
+    Storing both lets later analysis distinguish "Vosk got it wrong"
+    from "learner said the wrong thing".
 
-    Raises :class:`ValueError` if the file is not a recognition record
-    or if ``answers`` does not match the record's exercise count.
-    Per the honesty contract (spec §1.5) we do not silently pad or
-    truncate; the caller surfaces the error as a WS event.
+    Returns the number of exercises in the record so the caller can
+    verify length agreement.
+
+    Raises :class:`ValueError` if the file is not a recognition record,
+    if ``answers`` length does not match the exercise count, or if
+    ``voice_capture`` (when supplied) does not match. Per the honesty
+    contract (spec §1.5) we do not silently pad or truncate.
     """
     data = json.loads(path.read_text())
     if data.get("mode") != "recognition":
@@ -272,13 +283,20 @@ def update_recognition_answers(path: Path, answers: list[str]) -> int:
         raise ValueError(
             f"answers length {len(answers)} does not match exercises length {expected}"
         )
+    if voice_capture is not None and len(voice_capture) != expected:
+        raise ValueError(
+            f"voice_capture length {len(voice_capture)} does not match "
+            f"exercises length {expected}"
+        )
     exercises = data.get("exercises", [])
     if not isinstance(exercises, list) or not all(isinstance(ex, dict) for ex in exercises):
         raise ValueError(f"invalid recognition exercises shape: {path}")
     updated: list[dict[str, Any]] = []
-    for entry, answer in zip(exercises, answers):
+    for i, (entry, answer) in enumerate(zip(exercises, answers)):
         merged = dict(entry)
         merged["answer"] = answer
+        if voice_capture is not None:
+            merged["voice_capture"] = list(voice_capture[i])
         updated.append(merged)
     data["exercises"] = updated
     serialised = json.dumps(data, indent=2).encode("utf-8")
