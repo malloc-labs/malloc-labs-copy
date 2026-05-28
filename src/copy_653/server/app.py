@@ -28,6 +28,7 @@ Client → server, JSON over WS::
     {"action": "start"}
     {"action": "stop"}
     {"action": "save-koch-answers", "answers": ["DE K", "DE MK", "..."]}
+    {"action": "save-recognition-answers", "answers": ["K", "KMU", "..."]}
     {"action": "claim-symbol", "symbol": "U"}
     {"action": "unclaim-symbol", "symbol": "U"}
     {"action": "play-letter", "symbol": "K"}
@@ -91,6 +92,7 @@ per-exercise ``answer`` and internal ``analysis`` fields merged in and
 acknowledges::
 
     {"type": "koch-answers-saved", "answer_count": 5, "exercise_count": 5}
+    {"type": "recognition-answers-saved", "answer_count": 5, "exercise_count": 5}
 
 A save with no pending record, an answers list of the wrong length,
 or a missing record file surfaces an ``error`` frame with reason

@@ -48,6 +48,7 @@ from copy_653.server.actions import (
     _request_copy_exercises_action,
     _request_copy_key_exercises_action,
     _save_koch_answers_action,
+    _save_recognition_answers_action,
     _start_action,
     _start_warmup_action,
     _unclaim_symbol_action,
@@ -476,6 +477,12 @@ async def handler(
                     # One save per pending record. A subsequent save
                     # without a new session-end is a no-op error.
                     state.pending_koch_record_path = None
+            elif action == "save-recognition-answers":
+                saved = await _save_recognition_answers_action(
+                    ws, message, state.pending_recognition_record_path
+                )
+                if saved:
+                    state.pending_recognition_record_path = None
             elif action == "request-copy-exercises":
                 # A fresh request closes any in-flight Cadence session
                 # before opening a new one — we never silently merge

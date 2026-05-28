@@ -925,6 +925,29 @@ copy-top-menu {
     cursor: not-allowed;
 }
 
+.answer-row__input:read-only {
+    background: var(--mr-mono-bg);
+    color: var(--mr-text);
+}
+
+/* Active row receives Vosk-recognised symbols while the engine is
+ * playing exercise N. Subtle but unmistakable so the learner can see
+ * where their voice is landing. */
+.answer-row--active .answer-row__input {
+    border-bottom-color: var(--mr-anchor);
+    background: var(--mr-soft-surface);
+}
+
+/* Inline notice rendered next to the Start button when /api/voice/status
+ * reports not-ready. Plain text, no decoration — names exactly what's
+ * missing so the learner knows where to look (Settings → Voice). */
+.voice-notice {
+    color: var(--mr-warning);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    margin-top: var(--mr-space-2);
+}
+
 /* Sent cell colour signals correctness. Default (and `data-correct="true"`)
  * is muted — a correct copy needs no second look. A miss
  * (`data-correct="false"`) goes to --mr-text so it visually pairs with the
