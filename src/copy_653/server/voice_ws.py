@@ -28,6 +28,15 @@ Server → client (JSON text frames, one per event):
   …followed by close. The client is expected to render the message
   verbatim — the engine names exactly what went wrong (per spec §1.5).
 
+* On connect, if the recogniser is live::
+
+    {"type": "ready"}
+
+  The client gates audio capture on this event — no mic prompt, no
+  AudioWorklet, no streaming until the engine has confirmed it can
+  recognise. This avoids a race where the error+close above arrives
+  while the client is still setting up its audio graph.
+
 * During recognition::
 
     {"type": "partial", "text": "alp", "symbol": null}
@@ -79,6 +88,13 @@ async def voice_handler(
         await _send_error(ws, "voice-unavailable", str(err))
         await ws.close()
         return
+
+    # Tell the client the recogniser is live before any PCM is expected.
+    # The browser uses this to gate mic permission prompts — without it,
+    # an unconfigured engine's "error then close" races with the client's
+    # AudioWorklet setup and the dialog falsely shows "Listening" after
+    # the WS has already gone away.
+    await ws.send(_json({"type": "ready"}))
 
     logger.info("voice ws connected from %s", ws.remote_address)
     try:

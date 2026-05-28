@@ -58,6 +58,16 @@
                     data-tab="copy-key"
                     aria-keyshortcuts="P"
                     title="Copy > Key (P)">Co<u>p</u>y &gt; Key</button>
+            <button type="button"
+                    class="settings-tab"
+                    role="tab"
+                    id="settings-tab-voice"
+                    aria-controls="settings-panel-voice"
+                    aria-selected="false"
+                    data-selected="false"
+                    data-tab="voice"
+                    aria-keyshortcuts="V"
+                    title="Voice (V)"><u>V</u>oice</button>
         </nav>
 
         <section class="settings-panel"
@@ -747,6 +757,122 @@
             </dialog>
         </section>
 
+        <section class="settings-panel"
+                 id="settings-panel-voice"
+                 role="tabpanel"
+                 aria-labelledby="settings-tab-voice"
+                 hidden>
+            <details class="settings-section" open>
+                <summary>Status</summary>
+                <p class="settings-section__desc">Engine-side readiness of the offline speech recogniser. Voice is an optional input modality for the Symbol Recognition page; the rest of Copy works without it.</p>
+                <dl class="settings-voice-status" id="settings-voice-status">
+                    <dt>Language</dt>
+                    <dd data-field="language">—</dd>
+                    <dt>Model path</dt>
+                    <dd data-field="model_path">—</dd>
+                    <dt>Resolved to</dt>
+                    <dd data-field="model_path_resolved" class="mono">—</dd>
+                    <dt>Model present</dt>
+                    <dd data-field="model_exists">—</dd>
+                    <dt>vosk installed</dt>
+                    <dd data-field="vosk_installed">—</dd>
+                    <dt>Ready</dt>
+                    <dd data-field="ready">—</dd>
+                </dl>
+            </details>
+
+            <details class="settings-section">
+                <summary>Configuration</summary>
+                <p class="settings-section__desc">Writes the <code>[voice]</code> table to <code>config.toml</code>. A relative <code>model_path</code> is resolved against <code>~/.local/share/copy_653/models/</code>; absolute paths are honoured as given. Leave <code>model_path</code> empty to clear it (voice stays off).</p>
+                <form class="settings-form" id="settings-voice-form">
+                    <div class="settings-field">
+                        <label for="settings-voice-language">Language</label>
+                        <input
+                            id="settings-voice-language"
+                            name="language"
+                            type="text"
+                            required
+                            autocomplete="off"
+                            spellcheck="false">
+                        <p>Lexicon files matching <code>*_&lt;language&gt;.json</code> drive the grammar.</p>
+                    </div>
+                    <div class="settings-field">
+                        <label for="settings-voice-model-path">Model path</label>
+                        <input
+                            id="settings-voice-model-path"
+                            name="model_path"
+                            type="text"
+                            autocomplete="off"
+                            spellcheck="false"
+                            placeholder="e.g. vosk-model-small-en-us-0.15">
+                        <p>Directory name (resolved under the models folder) or absolute path. Empty clears the field.</p>
+                    </div>
+                    <div class="settings-field">
+                        <div class="settings-field__inline-actions">
+                            <button type="submit"
+                                    class="settings-section__action"
+                                    id="settings-voice-save">Save</button>
+                            <span class="settings-field__status"
+                                  id="settings-voice-save-status"
+                                  aria-live="polite"></span>
+                        </div>
+                    </div>
+                </form>
+            </details>
+
+            <details class="settings-section">
+                <summary>Lexicon</summary>
+                <p class="settings-section__desc">Symbol &rarr; spoken phrases. The grammar handed to Vosk is the union of every file below. Anything outside it collapses to <code>[unk]</code> server-side.</p>
+                <div class="table-wrap">
+                    <table id="settings-voice-lexicon-table">
+                        <thead>
+                            <tr><th scope="col">Symbol</th><th scope="col">Phrases</th></tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div id="settings-voice-lexicon-files"></div>
+            </details>
+
+            <details class="settings-section">
+                <summary>Recogniser test</summary>
+                <p class="settings-section__desc">Opens a microphone, streams to <code>/voice/ws</code>, and displays whatever Vosk decodes. Requires a configured <code>[voice]</code> table and a model on disk.</p>
+                <button type="button"
+                        class="settings-section__action"
+                        id="settings-voice-test-open">Open test…</button>
+            </details>
+
+            <dialog class="settings-koch-dialog" id="settings-voice-test-dialog">
+                <form method="dialog" class="settings-koch-dialog__bar">
+                    <h2 class="settings-koch-dialog__title">Voice recogniser test</h2>
+                    <button type="submit"
+                            class="settings-koch-dialog__close"
+                            aria-label="Close test">Close</button>
+                </form>
+                <div class="settings-koch-dialog__body">
+                    <div class="settings-voice-test">
+                        <div class="settings-voice-test__row">
+                            <button type="button"
+                                    class="settings-section__action"
+                                    id="settings-voice-test-start">Start listening</button>
+                            <span class="settings-voice-test__state" id="settings-voice-test-state" aria-live="polite">Idle</span>
+                        </div>
+                        <div class="settings-voice-test__meter" aria-label="Microphone input level">
+                            <div class="settings-voice-test__meter-fill" id="settings-voice-test-meter"></div>
+                        </div>
+                        <dl class="settings-voice-test__readout">
+                            <dt>Partial</dt>
+                            <dd class="mono" id="settings-voice-test-partial">—</dd>
+                            <dt>Final</dt>
+                            <dd class="mono" id="settings-voice-test-final">—</dd>
+                            <dt>Resolved</dt>
+                            <dd class="mono" id="settings-voice-test-symbol">—</dd>
+                        </dl>
+                    </div>
+                </div>
+            </dialog>
+        </section>
+
     </main>
     <script type="module" src="../js/partials/landing-header.js"></script>
     <script type="module" src="../js/partials/theme-btn.js"></script>
@@ -764,5 +890,6 @@
     <script type="module" src="../js/settings-copy-key-lifetime.js"></script>
     <script type="module" src="../js/settings-calendar.js"></script>
     <script type="module" src="../js/settings-backup.js"></script>
+    <script type="module" src="../js/settings-voice.js"></script>
 </body>
 </html>

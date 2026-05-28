@@ -41,6 +41,7 @@ from copy_653.server.records import (
     _iter_copy_key_records,
     _iter_koch_records,
 )
+from copy_653.server.voice_api import voice_lexicon_response, voice_status_response
 from copy_653.session.compat import backfill_copy_key_record, backfill_copy_key_records
 
 logger = logging.getLogger(__name__)
@@ -278,6 +279,15 @@ def _api_backup(params: dict[str, list[str]], config_path: Path | None) -> HttpR
     return _build_records_backup(config_path, kind=_first_query_value(params, "kind"))
 
 
+def _api_voice_lexicon(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
+    language = _first_query_value(params, "language") or "en"
+    return voice_lexicon_response(language)
+
+
+def _api_voice_status(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
+    return voice_status_response(config_path)
+
+
 _API_ROUTES: dict[str, ApiHandler] = {
     "/api/version": _api_version,
     "/api/koch-exercises": _api_koch_exercises,
@@ -297,6 +307,8 @@ _API_ROUTES: dict[str, ApiHandler] = {
     "/api/copy-key-band-evidence": _api_copy_key_band_evidence,
     "/api/copy-key-band-history": _api_copy_key_band_history,
     "/api/backup": _api_backup,
+    "/api/voice/lexicon": _api_voice_lexicon,
+    "/api/voice/status": _api_voice_status,
 }
 
 
