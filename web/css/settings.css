@@ -831,6 +831,14 @@
     opacity: 0.45;
 }
 
+/* Placeholders read at near-foreground brightness on dark themes by
+ * default; muted + italic makes "e.g. …" hints obviously not a value. */
+.settings-field input::placeholder {
+    color: var(--mr-muted);
+    opacity: 0.6;
+    font-style: italic;
+}
+
 .settings-field--check input {
     width: auto;
     justify-self: start;
