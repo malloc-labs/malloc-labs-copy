@@ -1,4 +1,4 @@
-"""Grammar construction from a validated :class:`Lexicon`.
+"""Grammar construction and tokenisation from a validated :class:`Lexicon`.
 
 Vosk's :class:`KaldiRecognizer` accepts a JSON list of allowed
 phrases as its grammar. Anything outside the grammar collapses to
@@ -9,12 +9,18 @@ This module is a thin view layer over :mod:`copy_653.voice.lexicon`:
 
 * :func:`build_grammar` returns the phrase list (plus ``[unk]``)
   ready to hand to ``KaldiRecognizer``.
-* :func:`resolve_symbol` is the reverse lookup the recogniser
-  callback uses to turn a recognised phrase back into a CW symbol.
+* :func:`resolve_symbols` tokenises a recognised utterance into the
+  ordered list of CW symbols it represents. Single-phrase
+  utterances yield a one-element list; batched utterances like
+  ``"uniform kilo mike uniform mike"`` yield ``["U","K","M","U","M"]``.
 
-Phase 1 does not import Vosk — :func:`build_grammar` returns a plain
-list. Phase 2 will hand the same list to ``KaldiRecognizer`` via
-``json.dumps``.
+The tokeniser walks the text left-to-right and prefers the
+**longest** lexicon phrase that matches at the current position
+(e.g. ``"x ray"`` and ``"question mark"`` win against their
+single-word substrings). Words that don't match any phrase are
+silently skipped — the grammar restriction at the recogniser
+already makes unknown words rare, and a clean output list is
+easier for downstream consumers to handle.
 """
 
 from __future__ import annotations
@@ -38,14 +44,42 @@ def build_grammar(lexicon: Lexicon) -> list[str]:
     return phrases
 
 
-def resolve_symbol(lexicon: Lexicon, phrase: str) -> str | None:
-    """Resolve a recognised phrase to its CW symbol.
+def resolve_symbols(lexicon: Lexicon, text: str) -> list[str]:
+    """Tokenise ``text`` into an ordered list of CW symbols.
 
-    Returns ``None`` for ``[unk]``, the empty string, or any phrase
-    that isn't in the lexicon. The lexicon's own uniqueness
-    invariant (enforced at load time) guarantees the lookup is
-    unambiguous.
+    Walks ``text.split()`` left-to-right, preferring the longest
+    available lexicon phrase at each position. Unknown words are
+    silently skipped (see the module docstring for the rationale).
+
+    Returns an empty list for empty / whitespace-only / ``[unk]``
+    input. Always returns a new list; the caller may mutate it.
     """
-    if not phrase or phrase == UNKNOWN_TOKEN:
-        return None
-    return lexicon.symbol_for(phrase.strip().lower())
+    if not text:
+        return []
+    cleaned = text.strip().lower()
+    if not cleaned or cleaned == UNKNOWN_TOKEN:
+        return []
+
+    # Precompute (phrase_words_tuple, symbol) pairs sorted by phrase
+    # word count descending so multi-word phrases match first.
+    indexed: list[tuple[tuple[str, ...], str]] = []
+    for symbol, phrases in lexicon.entries.items():
+        for phrase in phrases:
+            indexed.append((tuple(phrase.split()), symbol))
+    indexed.sort(key=lambda pair: -len(pair[0]))
+
+    words = cleaned.split()
+    out: list[str] = []
+    i = 0
+    while i < len(words):
+        matched = False
+        for phrase_words, symbol in indexed:
+            n = len(phrase_words)
+            if tuple(words[i : i + n]) == phrase_words:
+                out.append(symbol)
+                i += n
+                matched = True
+                break
+        if not matched:
+            i += 1
+    return out

@@ -1,4 +1,4 @@
-"""Vosk recogniser wrapper (phase 2 of voice input).
+"""Vosk recogniser wrapper.
 
 Wraps :class:`vosk.KaldiRecognizer` with the project's grammar
 (:func:`copy_653.voice.grammar.build_grammar`) and exposes a small
@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from copy_653.config import VoiceSettings
-from copy_653.voice.grammar import UNKNOWN_TOKEN, build_grammar, resolve_symbol
+from copy_653.voice.grammar import UNKNOWN_TOKEN, build_grammar, resolve_symbols
 from copy_653.voice.lexicon import Lexicon, load_lexicon
 
 SAMPLE_RATE_HZ = 16_000
@@ -48,18 +48,29 @@ class VoiceUnavailableError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class PartialResult:
-    """An interim transcript that may still change. ``symbol`` is best-effort."""
+    """An interim transcript that may still change.
+
+    ``symbols`` is the ordered list of CW symbols the tokeniser
+    extracted from ``text`` so far — empty when the partial contains
+    only off-vocabulary words.
+    """
 
     text: str
-    symbol: str | None
+    symbols: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class FinalResult:
-    """A committed transcript with the resolved CW symbol, or ``None`` if [unk]."""
+    """A committed transcript with the resolved CW symbols, in order.
+
+    Multi-symbol finals are produced when the user speaks several
+    grammar phrases in one breath (e.g. ``"uniform kilo mike"`` →
+    ``("U","K","M")``). Single-phrase utterances yield a one-element
+    tuple; off-vocabulary utterances yield an empty tuple.
+    """
 
     text: str
-    symbol: str | None
+    symbols: tuple[str, ...]
 
 
 VoiceEvent = PartialResult | FinalResult
@@ -132,19 +143,21 @@ class Recognizer:
         Returns an empty list if Vosk produced neither a partial nor a
         final for this chunk. A non-trivial chunk usually produces one
         :class:`PartialResult`; a chunk that crosses a silence boundary
-        produces a :class:`FinalResult`.
+        produces a :class:`FinalResult`. Either event carries the full
+        ordered list of symbols its text decoded to (see
+        :func:`copy_653.voice.grammar.resolve_symbols`).
         """
         events: list[VoiceEvent] = []
         if self._kaldi.AcceptWaveform(frame):
             text = _normalise(json.loads(self._kaldi.Result()).get("text"))
             if text and text != UNKNOWN_TOKEN:
-                events.append(FinalResult(text=text, symbol=resolve_symbol(self._lexicon, text)))
+                symbols = tuple(resolve_symbols(self._lexicon, text))
+                events.append(FinalResult(text=text, symbols=symbols))
         else:
             partial = _normalise(json.loads(self._kaldi.PartialResult()).get("partial"))
             if partial:
-                events.append(
-                    PartialResult(text=partial, symbol=resolve_symbol(self._lexicon, partial))
-                )
+                symbols = tuple(resolve_symbols(self._lexicon, partial))
+                events.append(PartialResult(text=partial, symbols=symbols))
         return events
 
     def reset(self) -> None:

@@ -274,11 +274,13 @@ async function _startTest() {
         if (!test.running) return;
         if (msg.type === "partial") {
             testPartialEl.textContent = msg.text || "—";
-            if (msg.symbol) testSymbolEl.textContent = msg.symbol;
+            const symbols = Array.isArray(msg.symbols) ? msg.symbols : [];
+            if (symbols.length) testSymbolEl.textContent = symbols.join(" ");
         } else if (msg.type === "final") {
             testFinalEl.textContent = msg.text || "—";
             testPartialEl.textContent = "—";
-            testSymbolEl.textContent = msg.symbol || "—";
+            const symbols = Array.isArray(msg.symbols) ? msg.symbols : [];
+            testSymbolEl.textContent = symbols.length ? symbols.join(" ") : "—";
         }
     };
     ws.onclose = () => {

@@ -39,12 +39,17 @@ Server → client (JSON text frames, one per event):
 
 * During recognition::
 
-    {"type": "partial", "text": "alp", "symbol": null}
-    {"type": "final",   "text": "alpha", "symbol": "A"}
+    {"type": "partial", "text": "alp",   "symbols": []}
+    {"type": "final",   "text": "alpha", "symbols": ["A"]}
+    {"type": "final",   "text": "uniform kilo mike",
+                        "symbols": ["U", "K", "M"]}
 
-  ``symbol`` is ``null`` for ``[unk]`` and for any phrase that
-  somehow isn't in the lexicon (shouldn't happen given the grammar
-  constraint, but the recogniser callback is defensive).
+  ``symbols`` is the ordered list the tokeniser extracted from
+  ``text`` (see :func:`copy_653.voice.grammar.resolve_symbols`).
+  It can be empty when ``text`` contains only off-vocabulary words;
+  the event is still emitted so the UI can display the raw transcript.
+  Words that don't match any lexicon phrase are silently skipped, so
+  the list contains canonical symbols only.
 """
 
 from __future__ import annotations
@@ -111,10 +116,8 @@ async def voice_handler(
 
 
 async def _send_event(ws: WebSocketServerProtocol, event: PartialResult | FinalResult) -> None:
-    if isinstance(event, FinalResult):
-        await ws.send(_json({"type": "final", "text": event.text, "symbol": event.symbol}))
-    else:
-        await ws.send(_json({"type": "partial", "text": event.text, "symbol": event.symbol}))
+    kind = "final" if isinstance(event, FinalResult) else "partial"
+    await ws.send(_json({"type": kind, "text": event.text, "symbols": list(event.symbols)}))
 
 
 async def _send_error(ws: WebSocketServerProtocol, reason: str, message: str) -> None:
