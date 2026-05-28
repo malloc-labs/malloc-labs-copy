@@ -14,6 +14,10 @@ const SAMPLE_RATE = 16_000;
 const statusEl       = document.getElementById("settings-voice-status");
 const tableBody      = document.querySelector("#settings-voice-lexicon-table tbody");
 const filesEl        = document.getElementById("settings-voice-lexicon-files");
+const formEl         = document.getElementById("settings-voice-form");
+const languageInput  = document.getElementById("settings-voice-language");
+const modelPathInput = document.getElementById("settings-voice-model-path");
+const saveStatusEl   = document.getElementById("settings-voice-save-status");
 const testOpenBtn    = document.getElementById("settings-voice-test-open");
 const testDialog     = document.getElementById("settings-voice-test-dialog");
 const testStartBtn   = document.getElementById("settings-voice-test-start");
@@ -22,6 +26,91 @@ const testMeterEl    = document.getElementById("settings-voice-test-meter");
 const testPartialEl  = document.getElementById("settings-voice-test-partial");
 const testFinalEl    = document.getElementById("settings-voice-test-final");
 const testSymbolEl   = document.getElementById("settings-voice-test-symbol");
+
+// ─── Main /ws connection (config read/write) ─────────────────────────────────
+
+let mainSocket = null;
+
+function _connectMainSocket() {
+    if (mainSocket && (mainSocket.readyState === WebSocket.OPEN
+                       || mainSocket.readyState === WebSocket.CONNECTING)) {
+        return mainSocket;
+    }
+    const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
+    mainSocket = new WebSocket(url);
+    mainSocket.addEventListener("message", (ev) => {
+        let event;
+        try { event = JSON.parse(ev.data); } catch { return; }
+        if (event.type === "voice-settings") {
+            _applyVoiceSettingsEvent(event);
+        } else if (event.type === "error" && event.reason === "invalid-voice-settings") {
+            _setSaveStatus(`error: ${event.detail || "invalid settings"}`, "error");
+        }
+    });
+    mainSocket.addEventListener("open", () => {
+        mainSocket.send(JSON.stringify({ action: "get-voice-settings" }));
+    });
+    return mainSocket;
+}
+
+function _applyVoiceSettingsEvent(event) {
+    if (languageInput && !languageInput.matches(":focus")) {
+        languageInput.value = event.language ?? "";
+    }
+    if (modelPathInput && !modelPathInput.matches(":focus")) {
+        modelPathInput.value = event.model_path ?? "";
+    }
+    _setField("language", event.language ?? "—");
+    _setField("model_path", event.model_path ?? "(unset)");
+    _setField("model_path_resolved", event.model_path_resolved ?? "—");
+    _setField("model_exists", _yesNo(event.model_exists));
+    // The voice-settings event doesn't carry vosk_installed / ready, so
+    // re-fetch the HTTP status to keep the dependent fields fresh.
+    refreshStatus();
+}
+
+function _setSaveStatus(text, kind = "info") {
+    if (!saveStatusEl) return;
+    saveStatusEl.textContent = text;
+    saveStatusEl.dataset.kind = kind;
+}
+
+if (formEl) {
+    formEl.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const language = (languageInput.value || "").trim();
+        const modelPathRaw = (modelPathInput.value || "").trim();
+        if (!language) {
+            _setSaveStatus("language is required", "error");
+            return;
+        }
+        const ws = _connectMainSocket();
+        _setSaveStatus("saving…", "info");
+        const send = () => ws.send(JSON.stringify({
+            action: "set-voice-settings",
+            language,
+            model_path: modelPathRaw || null,
+        }));
+        if (ws.readyState === WebSocket.OPEN) {
+            send();
+        } else {
+            ws.addEventListener("open", send, { once: true });
+        }
+        // The voice-settings echo handler clears the saving message by
+        // refreshing the status grid; show a confirmation after that.
+        const ackOnce = (ev) => {
+            let msg;
+            try { msg = JSON.parse(ev.data); } catch { return; }
+            if (msg.type === "voice-settings") {
+                _setSaveStatus("saved", "ok");
+                ws.removeEventListener("message", ackOnce);
+            } else if (msg.type === "error" && msg.reason === "invalid-voice-settings") {
+                ws.removeEventListener("message", ackOnce);
+            }
+        };
+        ws.addEventListener("message", ackOnce);
+    });
+}
 
 // ─── Status ──────────────────────────────────────────────────────────────────
 
@@ -162,10 +251,27 @@ async function _startTest() {
     const ws = new WebSocket(wsUrl);
     ws.binaryType = "arraybuffer";
     test.ws = ws;
+    // Identity so we can detect "torn down during setup" after each await.
+    const session = (test.session = Symbol("voice-test-session"));
+
+    let onReady;
+    const readyPromise = new Promise((resolve, reject) => {
+        onReady = { resolve, reject };
+    });
 
     ws.onmessage = (ev) => {
         let msg;
         try { msg = JSON.parse(ev.data); } catch { return; }
+        if (msg.type === "ready") {
+            onReady.resolve();
+            return;
+        }
+        if (msg.type === "error") {
+            onReady.reject(new Error(msg.message || msg.reason || "engine error"));
+            _teardownTest(`Engine: ${msg.message || msg.reason}`);
+            return;
+        }
+        if (!test.running) return;
         if (msg.type === "partial") {
             testPartialEl.textContent = msg.text || "—";
             if (msg.symbol) testSymbolEl.textContent = msg.symbol;
@@ -173,17 +279,26 @@ async function _startTest() {
             testFinalEl.textContent = msg.text || "—";
             testPartialEl.textContent = "—";
             testSymbolEl.textContent = msg.symbol || "—";
-        } else if (msg.type === "error") {
-            _teardownTest(`Engine: ${msg.message || msg.reason}`);
         }
     };
-    ws.onclose = () => { if (test.running) _teardownTest("Disconnected"); };
+    ws.onclose = () => {
+        onReady.reject(new Error("WebSocket closed before ready"));
+        if (test.session === session) _teardownTest("Disconnected");
+    };
     ws.onerror = () => (testStateEl.textContent = "WebSocket error");
 
     await new Promise((resolve, reject) => {
         ws.addEventListener("open", resolve, { once: true });
         ws.addEventListener("error", reject, { once: true });
     });
+    if (test.session !== session) return;
+
+    // Wait for the engine to confirm the recogniser is live before
+    // prompting the user for mic access. If the engine sent an error
+    // instead, this rejects and the catch in the click handler shows it.
+    testStateEl.textContent = "Waiting for recogniser…";
+    await readyPromise;
+    if (test.session !== session) return;
 
     testStateEl.textContent = "Requesting microphone…";
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -195,11 +310,13 @@ async function _startTest() {
             autoGainControl: true,
         },
     });
+    if (test.session !== session) { stream.getTracks().forEach((t) => t.stop()); return; }
     test.stream = stream;
 
     const ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
     test.ctx = ctx;
     await ctx.audioWorklet.addModule("../js/voice-recorder-worklet.js");
+    if (test.session !== session) { try { ctx.close(); } catch {} return; }
 
     const source = ctx.createMediaStreamSource(stream);
     const node = new AudioWorkletNode(ctx, "voice-recorder-processor");
@@ -223,6 +340,7 @@ async function _startTest() {
 
 function _teardownTest(stateText) {
     test.running = false;
+    test.session = null;
     if (test.node) {
         try { test.node.disconnect(); } catch {}
         test.node = null;
@@ -270,5 +388,9 @@ if (voiceTabBtn) {
         loaded = true;
         refreshStatus();
         refreshLexicon();
+        // Opens the main /ws lazily so the Voice tab can read and write
+        // [voice] config. Other tabs already use their own /ws clients
+        // (see settings.js); a second connection is the existing pattern.
+        _connectMainSocket();
     });
 }

@@ -47,6 +47,9 @@ Client → server, JSON over WS::
     {"action": "stop-texture-preview"}
     {"action": "save-texture-preview", "character_wpm": 20, "effective_wpm": 10,
      "tone_shape": 2, "receiver_bed": 2, "cadence_variation": 1}
+    {"action": "get-voice-settings"}
+    {"action": "set-voice-settings", "language": "en",
+     "model_path": "vosk-model-small-en-us-0.15"}
     {"action": "start-key-input"}
     {"action": "stop-key-input"}
     {"action": "request-copy-exercises"}
@@ -66,6 +69,10 @@ unsolicited on connect, and after every change::
      "cadence_variation": 1, "keyer_mode": "iambic_a",
      "hh_clear_enabled": false,
      "save_directory": "/home/learner/.local/share/copy_653"}
+    {"type": "voice-settings", "language": "en",
+     "model_path": "vosk-model-small-en-us-0.15",
+     "model_path_resolved": "/home/learner/.local/share/copy_653/models/vosk-model-small-en-us-0.15",
+     "model_exists": true}
 
 During a Koch Exercises session::
 

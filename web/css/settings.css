@@ -80,7 +80,8 @@
     overflow: hidden;
 }
 
-#settings-panel-app:not([hidden]) {
+#settings-panel-app:not([hidden]),
+#settings-panel-voice:not([hidden]) {
     overflow: auto;
 }
 

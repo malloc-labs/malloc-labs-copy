@@ -38,6 +38,10 @@ from copy_653.server.audio_settings_actions import (
     _get_audio_settings_action,
     _set_audio_settings_action,
 )
+from copy_653.server.voice_settings_actions import (
+    _get_voice_settings_action,
+    _set_voice_settings_action,
+)
 from copy_653.server.actions import (
     _claim_symbol_action,
     _play_copy_key_exercise,
@@ -395,6 +399,12 @@ _BARE_HANDLERS: dict[str, Callable[[ConnectionState, dict[str, Any]], Awaitable[
         state.ws, state.config_path
     ),
     "set-audio-settings": lambda state, msg: _set_audio_settings_action(
+        state.ws, msg, state.config_path
+    ),
+    "get-voice-settings": lambda state, msg: _get_voice_settings_action(
+        state.ws, state.config_path
+    ),
+    "set-voice-settings": lambda state, msg: _set_voice_settings_action(
         state.ws, msg, state.config_path
     ),
     "save-test-message": lambda state, msg: _save_test_message_action(state.ws, msg),

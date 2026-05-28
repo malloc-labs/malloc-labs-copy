@@ -191,6 +191,10 @@ async def test_voice_ws_streams_partial_then_final(tmp_path, monkeypatch):
     )
     try:
         async with ws_connect(f"ws://127.0.0.1:{port}/voice/ws") as ws:
+            # Recogniser-constructed handshake before any PCM is sent.
+            raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            assert json.loads(raw) == {"type": "ready"}
+
             await ws.send(b"\x00\x00" * 256)
             raw = await asyncio.wait_for(ws.recv(), timeout=2.0)
             assert json.loads(raw) == {"type": "partial", "text": "al", "symbol": None}

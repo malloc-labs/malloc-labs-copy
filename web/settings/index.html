@@ -782,6 +782,45 @@
             </details>
 
             <details class="settings-section">
+                <summary>Configuration</summary>
+                <p class="settings-section__desc">Writes the <code>[voice]</code> table to <code>config.toml</code>. A relative <code>model_path</code> is resolved against <code>~/.local/share/copy_653/models/</code>; absolute paths are honoured as given. Leave <code>model_path</code> empty to clear it (voice stays off).</p>
+                <form class="settings-form" id="settings-voice-form">
+                    <div class="settings-field">
+                        <label for="settings-voice-language">Language</label>
+                        <input
+                            id="settings-voice-language"
+                            name="language"
+                            type="text"
+                            required
+                            autocomplete="off"
+                            spellcheck="false">
+                        <p>Lexicon files matching <code>*_&lt;language&gt;.json</code> drive the grammar.</p>
+                    </div>
+                    <div class="settings-field">
+                        <label for="settings-voice-model-path">Model path</label>
+                        <input
+                            id="settings-voice-model-path"
+                            name="model_path"
+                            type="text"
+                            autocomplete="off"
+                            spellcheck="false"
+                            placeholder="vosk-model-small-en-us-0.15">
+                        <p>Directory name (resolved under the models folder) or absolute path. Empty clears the field.</p>
+                    </div>
+                    <div class="settings-field">
+                        <div class="settings-field__inline-actions">
+                            <button type="submit"
+                                    class="settings-section__action"
+                                    id="settings-voice-save">Save</button>
+                            <span class="settings-field__status"
+                                  id="settings-voice-save-status"
+                                  aria-live="polite"></span>
+                        </div>
+                    </div>
+                </form>
+            </details>
+
+            <details class="settings-section">
                 <summary>Lexicon</summary>
                 <p class="settings-section__desc">Symbol &rarr; spoken phrases. The grammar handed to Vosk is the union of every file below. Anything outside it collapses to <code>[unk]</code> server-side.</p>
                 <div class="table-wrap">
