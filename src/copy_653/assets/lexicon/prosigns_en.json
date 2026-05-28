@@ -1,0 +1,12 @@
+{
+    "name": "Punctuation and prosigns, English",
+    "language": "en",
+    "category": "prosigns",
+    "entries": {
+        ".": ["stop"],
+        ",": ["comma"],
+        "?": ["question mark"],
+        "/": ["slash"],
+        "=": ["equals"]
+    }
+}
