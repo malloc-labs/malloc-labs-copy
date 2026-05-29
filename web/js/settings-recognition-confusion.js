@@ -1,0 +1,83 @@
+// Settings → Recognition tab: per-symbol confusion from saved Symbol
+// Recognition sessions.
+//
+// Reads /api/recognition-confusion, which returns two streams derived
+// from the per-exercise analysis blocks (recognition_analysis):
+//
+//   committed_substitutions — truth → what the learner committed
+//   caught_substitutions     — truth → a false start they superseded
+//                              before committing (self-correction)
+//
+// The streams are rendered as two separate sections and never merged: a
+// caught confusion is evidence the discrimination is forming, not a
+// committed error. Like the Koch panel this is backend evidence, not a
+// score — no percentages, no grading (spec §9).
+
+const committedRoot = document.getElementById("settings-recognition-committed");
+const committedList = document.getElementById("settings-recognition-committed-list");
+const caughtRoot = document.getElementById("settings-recognition-caught");
+const caughtList = document.getElementById("settings-recognition-caught-list");
+const meta = document.getElementById("settings-recognition-meta");
+
+// A committed substitution must recur before it reads as a pattern
+// (mirrors the Koch panel's cutoff). A caught self-correction is rarer
+// and more interesting, so it surfaces sooner.
+const COMMITTED_MIN = 4;
+const CAUGHT_MIN = 2;
+
+function renderStream(root, listEl, pairs, minCount, connector) {
+    listEl.replaceChildren();
+    const shown = (Array.isArray(pairs) ? pairs : []).filter((p) => p.count >= minCount);
+    if (shown.length === 0) {
+        root.hidden = true;
+        return;
+    }
+    shown.forEach((pair) => {
+        const li = document.createElement("li");
+        li.className = "settings-koch-confusion__pair";
+        const target = document.createElement("span");
+        target.className = "settings-koch-confusion__symbol";
+        target.textContent = pair.target;
+        const arrow = document.createTextNode(connector);
+        const typed = document.createElement("span");
+        typed.className = "settings-koch-confusion__symbol";
+        typed.textContent = pair.typed;
+        const count = document.createElement("span");
+        count.className = "settings-koch-confusion__count";
+        count.textContent = ` — ${pair.count}×`;
+        li.append(target, arrow, typed, count);
+        listEl.appendChild(li);
+    });
+    root.hidden = false;
+}
+
+function updateMeta(exercisesUsed) {
+    if (exercisesUsed === 0) {
+        meta.textContent = "No saved recognition sessions yet.";
+        return;
+    }
+    const noun = exercisesUsed === 1 ? "exercise" : "exercises";
+    const anyShown = !committedRoot.hidden || !caughtRoot.hidden;
+    meta.textContent = anyShown
+        ? `${exercisesUsed} ${noun} with evidence`
+        : `${exercisesUsed} ${noun} analysed — no recurring confusions yet.`;
+}
+
+async function loadConfusion() {
+    try {
+        const res = await fetch("/api/recognition-confusion", { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderStream(committedRoot, committedList, data.committed_substitutions, COMMITTED_MIN,
+            " heard as ");
+        renderStream(caughtRoot, caughtList, data.caught_substitutions, CAUGHT_MIN,
+            " nearly read as ");
+        updateMeta(Number(data.exercises_used) || 0);
+    } catch {
+        committedRoot.hidden = true;
+        caughtRoot.hidden = true;
+        meta.textContent = "Could not load recognition sessions.";
+    }
+}
+
+loadConfusion();

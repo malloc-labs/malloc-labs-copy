@@ -61,6 +61,16 @@
             <button type="button"
                     class="settings-tab"
                     role="tab"
+                    id="settings-tab-recognition"
+                    aria-controls="settings-panel-recognition"
+                    aria-selected="false"
+                    data-selected="false"
+                    data-tab="recognition"
+                    aria-keyshortcuts="R"
+                    title="Symbol Recognition (R)"><u>R</u>ecognition</button>
+            <button type="button"
+                    class="settings-tab"
+                    role="tab"
                     id="settings-tab-voice"
                     aria-controls="settings-panel-voice"
                     aria-selected="false"
@@ -758,6 +768,24 @@
         </section>
 
         <section class="settings-panel"
+                 id="settings-panel-recognition"
+                 role="tabpanel"
+                 aria-labelledby="settings-tab-recognition"
+                 hidden>
+            <section class="settings-koch-confusion" id="settings-recognition-committed" hidden>
+                <h3 class="settings-koch-confusion__heading">Committed confusions</h3>
+                <ul class="settings-koch-confusion__list"
+                    id="settings-recognition-committed-list"></ul>
+            </section>
+            <section class="settings-koch-confusion" id="settings-recognition-caught" hidden>
+                <h3 class="settings-koch-confusion__heading">Caught (self-corrected)</h3>
+                <ul class="settings-koch-confusion__list"
+                    id="settings-recognition-caught-list"></ul>
+            </section>
+            <p class="settings-koch-meta" id="settings-recognition-meta">Loading recognition sessions…</p>
+        </section>
+
+        <section class="settings-panel"
                  id="settings-panel-voice"
                  role="tabpanel"
                  aria-labelledby="settings-tab-voice"
@@ -890,6 +918,7 @@
     <script type="module" src="../js/settings-copy-key-lifetime.js"></script>
     <script type="module" src="../js/settings-calendar.js"></script>
     <script type="module" src="../js/settings-backup.js"></script>
+    <script type="module" src="../js/settings-recognition-confusion.js"></script>
     <script type="module" src="../js/settings-voice.js"></script>
 </body>
 </html>
