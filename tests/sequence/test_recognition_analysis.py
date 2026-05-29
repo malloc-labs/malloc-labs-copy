@@ -7,6 +7,7 @@ from copy_653.sequence.recognition_analysis import (
     OUTCOME_CORRECT,
     OUTCOME_MISS,
     OUTCOME_SUBSTITUTION,
+    analyse_recognition_exercises,
     window_exercise,
 )
 
@@ -215,3 +216,112 @@ def test_real_exercise_2_committed_substitution():
     assert result["committed_confusions"] == [["U", "R"]]
     assert result["caught_confusions"] == []
     assert result["slots"][1]["outcome"] == OUTCOME_SUBSTITUTION
+
+
+# ─── analyse_recognition_exercises (save-time per-exercise analysis) ──────────
+
+
+def _flat_symbols(*per_exercise: list[tuple[str, float]]) -> list[dict]:
+    """Build a flat record-shaped symbols list with exercise_index set."""
+    out: list[dict] = []
+    for ex_index, syms in enumerate(per_exercise, start=1):
+        for symbol, t_on in syms:
+            out.append({"symbol": symbol, "t_on": t_on, "exercise_index": ex_index})
+    return out
+
+
+def test_analyse_attaches_block_per_exercise_with_counts_and_streams():
+    symbols = _flat_symbols(
+        [("U", 0.0), ("K", 6.0), ("U", 12.0)],  # ex1: caught correct on slot3
+        [("M", 20.0), ("U", 26.0)],  # ex2: committed substitution on slot2
+    )
+    exercises = [
+        {
+            "index": 1,
+            "target": "U K U",
+            "answer": "UKU",
+            "voice_capture": [
+                _utt("uniform", ["U"], 3.0),
+                _utt("kilo", ["K"], 9.0),
+                _utt("romeo uniform", ["R", "U"], 15.0),
+            ],
+        },
+        {
+            "index": 2,
+            "target": "M U",
+            "answer": "MR",
+            "voice_capture": [
+                _utt("mike", ["M"], 23.0),
+                _utt("romeo", ["R"], 29.0),
+            ],
+        },
+    ]
+
+    result = analyse_recognition_exercises(exercises, symbols)
+
+    a1 = result[0]["analysis"]
+    assert a1["version"] == ANALYSIS_VERSION
+    assert a1["has_evidence"] is True
+    assert a1["committed_answer"] == "UKU"
+    assert a1["counts"] == {
+        OUTCOME_CORRECT: 2,
+        OUTCOME_SUBSTITUTION: 0,
+        OUTCOME_CAUGHT_CORRECT: 1,
+        OUTCOME_CAUGHT_SUBSTITUTION: 0,
+        OUTCOME_MISS: 0,
+    }
+    assert a1["caught_confusions"] == [["U", "R"]]
+    assert a1["committed_confusions"] == []
+
+    a2 = result[1]["analysis"]
+    assert a2["committed_answer"] == "MR"
+    assert a2["committed_confusions"] == [["U", "R"]]
+    assert a2["counts"][OUTCOME_SUBSTITUTION] == 1
+
+    # Raw fields are left untouched by the rewrite.
+    assert result[0]["answer"] == "UKU"
+    assert result[0]["voice_capture"] == exercises[0]["voice_capture"]
+
+
+def test_analyse_no_evidence_for_silent_exercise():
+    symbols = _flat_symbols([("K", 0.0), ("M", 6.0)])
+    exercises = [{"index": 1, "target": "K M", "answer": "", "voice_capture": []}]
+
+    result = analyse_recognition_exercises(exercises, symbols)
+
+    analysis = result[0]["analysis"]
+    assert analysis["has_evidence"] is False
+    assert analysis["committed_answer"] == ""
+    assert analysis["counts"][OUTCOME_MISS] == 2
+    assert analysis["committed_confusions"] == []
+    assert analysis["caught_confusions"] == []
+
+
+def test_analyse_missing_voice_capture_field_is_all_miss():
+    symbols = _flat_symbols([("K", 0.0)])
+    exercises = [{"index": 1, "target": "K", "answer": "K"}]  # no voice_capture key
+
+    result = analyse_recognition_exercises(exercises, symbols)
+
+    assert result[0]["analysis"]["has_evidence"] is False
+    assert result[0]["analysis"]["counts"][OUTCOME_MISS] == 1
+
+
+def test_analyse_slots_are_lean_without_utterances():
+    symbols = _flat_symbols([("K", 0.0)])
+    exercises = [
+        {"index": 1, "target": "K", "voice_capture": [_utt("kilo", ["K"], 3.0)]},
+    ]
+
+    slots = analyse_recognition_exercises(exercises, symbols)[0]["analysis"]["slots"]
+
+    assert slots[0] == {
+        "index": 1,
+        "truth": "K",
+        "t_on": 0.0,
+        "tokens": ["K"],
+        "committed": "K",
+        "superseded": [],
+        "outcome": OUTCOME_CORRECT,
+    }
+    assert "utterances" not in slots[0]

@@ -44,6 +44,7 @@ from copy_653 import __version__
 from copy_653.audio.parameters import AudioParameters
 from copy_653.sequence.cadence_analysis import apply_cadence_analysis, apply_copy_key_analysis
 from copy_653.sequence.exercise_analysis import apply_answers_to_entries
+from copy_653.sequence.recognition_analysis import analyse_recognition_exercises
 
 SCHEMA_VERSION = "2.1"
 
@@ -298,7 +299,11 @@ def update_recognition_answers(
         if voice_capture is not None:
             merged["voice_capture"] = list(voice_capture[i])
         updated.append(merged)
-    data["exercises"] = updated
+    # Derive per-exercise analysis from the played schedule and the
+    # voice capture just merged in — windowing, outcome classification,
+    # and the two confusion streams (see recognition_analysis). Pure and
+    # additive; the raw answer/voice_capture are left untouched.
+    data["exercises"] = analyse_recognition_exercises(updated, data.get("symbols") or [])
     serialised = json.dumps(data, indent=2).encode("utf-8")
     fd, tmp_path = tempfile.mkstemp(prefix=".record-", suffix=".json", dir=path.parent)
     try:

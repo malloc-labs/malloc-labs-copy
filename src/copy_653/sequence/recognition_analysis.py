@@ -144,6 +144,96 @@ def window_exercise(
     }
 
 
+def analyse_recognition_exercises(
+    exercises: list[dict[str, Any]],
+    symbols: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Attach a derived ``analysis`` block to each recognition exercise.
+
+    Pure: returns new exercise dicts with ``analysis`` merged in and the
+    raw ``answer`` / ``voice_capture`` left untouched. ``symbols`` is the
+    record's flat played schedule (each entry carrying an
+    ``exercise_index``); it is grouped per exercise here, then each
+    exercise's own ``voice_capture`` is windowed against it.
+
+    The committed answer in the analysis is *voice-derived* — the last
+    token per cadence window — and may differ from the exercise's
+    ``answer`` field, which the learner can edit after the session. That
+    divergence is deliberate: the analysis reflects what was *heard*
+    (and is where a self-correction is visible), while ``answer`` is the
+    learner's reviewed commit. Storing both keeps "Vosk got it wrong"
+    distinguishable from "the learner said the wrong thing".
+
+    Recognition is not geared, so no weighted evidence scalar is
+    produced — only the windowed classification, outcome counts, and the
+    two confusion streams. A future gearing model derives whatever
+    fraction it needs from the counts already persisted here.
+    """
+    by_index = _symbols_by_exercise(symbols)
+    updated: list[dict[str, Any]] = []
+    for exercise in exercises:
+        merged = dict(exercise)
+        index = exercise.get("index")
+        ex_symbols = by_index.get(index, []) if isinstance(index, int) else []
+        capture = exercise.get("voice_capture")
+        windowed = window_exercise(ex_symbols, capture if isinstance(capture, list) else [])
+        merged["analysis"] = _analysis_from_windowed(windowed)
+        updated.append(merged)
+    return updated
+
+
+def _symbols_by_exercise(symbols: list[dict[str, Any]]) -> dict[int, list[dict[str, Any]]]:
+    out: dict[int, list[dict[str, Any]]] = {}
+    for entry in symbols:
+        if not isinstance(entry, dict):
+            continue
+        idx = entry.get("exercise_index")
+        if isinstance(idx, int) and not isinstance(idx, bool):
+            out.setdefault(idx, []).append(entry)
+    return out
+
+
+def _analysis_from_windowed(windowed: dict[str, Any]) -> dict[str, Any]:
+    """Build the persisted ``analysis`` block from one windowed exercise.
+
+    Slots are stored lean — without their ``utterances``, which already
+    live verbatim in ``voice_capture`` — so the record carries the
+    windowing result without duplicating the raw transcript.
+    """
+    slots = windowed["slots"]
+    counts = {
+        OUTCOME_CORRECT: 0,
+        OUTCOME_SUBSTITUTION: 0,
+        OUTCOME_CAUGHT_CORRECT: 0,
+        OUTCOME_CAUGHT_SUBSTITUTION: 0,
+        OUTCOME_MISS: 0,
+    }
+    for slot in slots:
+        counts[slot["outcome"]] += 1
+    lean_slots = [
+        {
+            "index": slot["index"],
+            "truth": slot["truth"],
+            "t_on": slot["t_on"],
+            "tokens": slot["tokens"],
+            "committed": slot["committed"],
+            "superseded": slot["superseded"],
+            "outcome": slot["outcome"],
+        }
+        for slot in slots
+    ]
+    return {
+        "version": ANALYSIS_VERSION,
+        "has_evidence": any(slot["committed"] is not None for slot in slots),
+        "committed_answer": windowed["committed_answer"],
+        "counts": counts,
+        "committed_confusions": windowed["committed_confusions"],
+        "caught_confusions": windowed["caught_confusions"],
+        "ambiguous_lag": windowed["ambiguous_lag"],
+        "slots": lean_slots,
+    }
+
+
 def _classify(truth: str, committed: str | None, superseded: list[str]) -> str:
     if committed is None:
         return OUTCOME_MISS
