@@ -856,6 +856,60 @@ async def test_api_koch_band_evidence_empty_when_no_records(tmp_path):
         await server.wait_closed()
 
 
+async def test_api_recognition_confusion_separates_committed_and_caught(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M", "U", "R"])
+    save_dir = tmp_path / "data"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    rec_dir = save_dir / "recognition"
+    rec_dir.mkdir(parents=True)
+
+    def _ex(committed: list[list[str]], caught: list[list[str]]) -> dict:
+        return {
+            "index": 1,
+            "analysis": {
+                "version": "recognition-analysis-v1",
+                "has_evidence": True,
+                "committed_confusions": committed,
+                "caught_confusions": caught,
+            },
+        }
+
+    record = {
+        "schema_version": "2.1",
+        "mode": "recognition",
+        "started_at": "2026-05-29T12:00:00.000Z",
+        "claimed_set": ["K", "M", "U", "R"],
+        "generation": {"claimed_set_key": "K M R U"},
+        "exercises": [_ex([["U", "R"]], []), _ex([], [["U", "R"]])],
+        "symbols": [],
+    }
+    (rec_dir / "recognition-20260529T120000Z.json").write_text(json.dumps(record))
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        response = await asyncio.to_thread(
+            urllib.request.urlopen,
+            f"http://127.0.0.1:{port}/api/recognition-confusion?claimed_set_key=K%20M%20R%20U",
+        )
+        payload = json.loads(response.read())
+        assert payload["claimed_set_key"] == "K M R U"
+        assert payload["exercises_used"] == 2
+        assert payload["committed_substitutions"] == [{"target": "U", "typed": "R", "count": 1}]
+        assert payload["caught_substitutions"] == [{"target": "U", "typed": "R", "count": 1}]
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
 async def test_start_action_runs_a_session(tmp_path, patched_playback):
     config_path = _write_test_config(tmp_path, ["K", "M"])
     web_root = _make_web_root(tmp_path)

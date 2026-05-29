@@ -36,10 +36,12 @@ from copy_653.sequence.cadence_analysis import (
     load_band_history as load_cadence_band_history,
     record_claimed_set_key as cadence_record_claimed_set_key,
 )
+from copy_653.sequence.recognition_analysis import load_recognition_confusion
 from copy_653.server.records import (
     _iter_cadence_records,
     _iter_copy_key_records,
     _iter_koch_records,
+    _iter_recognition_records,
 )
 from copy_653.server.voice_api import voice_lexicon_response, voice_status_response
 from copy_653.session.compat import backfill_copy_key_record, backfill_copy_key_records
@@ -201,6 +203,17 @@ def _api_koch_confusion(params: dict[str, list[str]], config_path: Path | None) 
     )
 
 
+def _api_recognition_confusion(
+    params: dict[str, list[str]], config_path: Path | None
+) -> HttpResponse:
+    return _json_response(
+        _read_recognition_confusion(
+            config_path,
+            claimed_set_key=_optional_query_value(params, "claimed_set_key"),
+        )
+    )
+
+
 def _api_cadence_sends(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
     return _json_response(_list_cadence_sends(config_path))
 
@@ -296,6 +309,7 @@ _API_ROUTES: dict[str, ApiHandler] = {
     "/api/koch-band-evidence": _api_koch_band_evidence,
     "/api/koch-band-history": _api_koch_band_history,
     "/api/koch-confusion": _api_koch_confusion,
+    "/api/recognition-confusion": _api_recognition_confusion,
     "/api/cadence-sends": _api_cadence_sends,
     "/api/cadence-send": _api_cadence_send,
     "/api/delete-cadence-send": _api_delete_cadence_send,
@@ -732,6 +746,30 @@ def _read_koch_confusion(
         }
 
     return load_confusion_pairs(records, claimed_set_key=resolved_key)
+
+
+def _read_recognition_confusion(
+    config_path: Path | None,
+    *,
+    claimed_set_key: str | None,
+) -> dict[str, Any]:
+    try:
+        _save_directory, records, resolved_key = _resolve_records_and_key(
+            config_path,
+            iter_records=_iter_recognition_records,
+            extract_key=record_claimed_set_key,
+            claimed_set_key=claimed_set_key,
+        )
+    except Exception:
+        logger.exception("could not resolve save_directory for recognition confusion read")
+        return {
+            "claimed_set_key": claimed_set_key or "",
+            "exercises_used": 0,
+            "committed_substitutions": [],
+            "caught_substitutions": [],
+        }
+
+    return load_recognition_confusion(records, claimed_set_key=resolved_key)
 
 
 # ---------------------------------------------------------------------------

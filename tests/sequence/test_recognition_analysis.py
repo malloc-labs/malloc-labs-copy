@@ -8,6 +8,7 @@ from copy_653.sequence.recognition_analysis import (
     OUTCOME_MISS,
     OUTCOME_SUBSTITUTION,
     analyse_recognition_exercises,
+    load_recognition_confusion,
     window_exercise,
 )
 
@@ -325,3 +326,68 @@ def test_analyse_slots_are_lean_without_utterances():
         "outcome": OUTCOME_CORRECT,
     }
     assert "utterances" not in slots[0]
+
+
+# ─── load_recognition_confusion (aggregation across records) ─────────────────
+
+
+def _record(claimed_set_key: str, *exercise_analyses: dict) -> dict:
+    return {
+        "mode": "recognition",
+        "generation": {"claimed_set_key": claimed_set_key},
+        "exercises": [{"index": i + 1, "analysis": a} for i, a in enumerate(exercise_analyses)],
+    }
+
+
+def _analysis(*, committed=(), caught=(), has_evidence=True) -> dict:
+    return {
+        "version": ANALYSIS_VERSION,
+        "has_evidence": has_evidence,
+        "committed_confusions": [list(p) for p in committed],
+        "caught_confusions": [list(p) for p in caught],
+    }
+
+
+def test_confusion_keeps_committed_and_caught_separate():
+    records = [
+        _record(
+            "K M R U",
+            _analysis(committed=[("U", "R")]),
+            _analysis(caught=[("U", "R")]),
+            _analysis(committed=[("U", "R"), ("K", "M")]),
+        ),
+    ]
+
+    result = load_recognition_confusion(records, claimed_set_key="K M R U")
+
+    assert result["exercises_used"] == 3
+    assert result["committed_substitutions"] == [
+        {"target": "U", "typed": "R", "count": 2},
+        {"target": "K", "typed": "M", "count": 1},
+    ]
+    assert result["caught_substitutions"] == [{"target": "U", "typed": "R", "count": 1}]
+
+
+def test_confusion_ignores_other_claimed_sets_and_no_evidence():
+    records = [
+        _record("K M R U", _analysis(committed=[("U", "R")])),
+        _record("A B", _analysis(committed=[("A", "B")])),  # different set
+        _record("K M R U", _analysis(committed=[("M", "K")], has_evidence=False)),  # silent
+    ]
+
+    result = load_recognition_confusion(records, claimed_set_key="K M R U")
+
+    assert result["exercises_used"] == 1
+    assert result["committed_substitutions"] == [{"target": "U", "typed": "R", "count": 1}]
+    assert result["caught_substitutions"] == []
+
+
+def test_confusion_empty_when_no_matching_records():
+    result = load_recognition_confusion([], claimed_set_key="K M R U")
+
+    assert result == {
+        "claimed_set_key": "K M R U",
+        "exercises_used": 0,
+        "committed_substitutions": [],
+        "caught_substitutions": [],
+    }
