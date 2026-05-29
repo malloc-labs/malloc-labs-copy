@@ -440,6 +440,69 @@ window.addEventListener("keydown", (event) => {
     startBtn.click();
 });
 
+// ─── Symbol preview (Left Alt + key) ──────────────────────────────────────────
+// Plays a claimed symbol's bare Morse three times through the engine so the
+// learner can refresh their ear between sessions. ``event.code`` is used
+// because Option+letter on macOS substitutes the character in ``event.key``;
+// LeftAlt is tracked separately because ``event.altKey`` does not
+// distinguish left from right.
+
+const PREVIEW_CODE_TO_SYMBOL = (() => {
+    const map = new Map();
+    for (let i = 0; i < 26; i++) {
+        map.set(`Key${String.fromCharCode(65 + i)}`, String.fromCharCode(65 + i));
+    }
+    for (let i = 0; i <= 9; i++) {
+        map.set(`Digit${i}`, String(i));
+    }
+    map.set("Period", ".");
+    map.set("Comma", ",");
+    map.set("Equal", "=");
+    return map;
+})();
+
+function symbolForPreviewCode(code, shiftKey) {
+    if (code === "Slash") return shiftKey ? "?" : "/";
+    return PREVIEW_CODE_TO_SYMBOL.get(code) || null;
+}
+
+let leftAltDown = false;
+
+window.addEventListener("keydown", (event) => {
+    if (event.code === "AltLeft") {
+        leftAltDown = true;
+        return;
+    }
+    if (!leftAltDown || !event.altKey) return;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    // Preview audio would collide with in-flight session playback.
+    if (sessionActive) return;
+    const target = event.target;
+    if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) return;
+    }
+    const symbol = symbolForPreviewCode(event.code, event.shiftKey);
+    if (!symbol) return;
+    // Only claimed symbols are previewable. The fixed DE listening
+    // anchor (spec §2.5) is deliberately ear-only and not available
+    // for active review here.
+    if (!claimedState.symbols.includes(symbol)) return;
+    event.preventDefault();
+    if (event.repeat) return;
+    socket.send(JSON.stringify({ action: "play-morse-repeat", symbol }));
+});
+
+window.addEventListener("keyup", (event) => {
+    if (event.code === "AltLeft") {
+        leftAltDown = false;
+    }
+});
+
+window.addEventListener("blur", () => {
+    leftAltDown = false;
+});
+
 // ─── Event handling ──────────────────────────────────────────────────────────
 
 function appendEvent(event) {
