@@ -29,6 +29,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from copy_653.sequence.exercise_analysis import record_claimed_set_key
+
 ANALYSIS_VERSION = "recognition-analysis-v1"
 
 # Per-slot outcome labels. ``caught_*`` outcomes carry one or more
@@ -142,6 +144,170 @@ def window_exercise(
         "pre_symbol": pre_symbol,
         "slots": slots,
     }
+
+
+def analyse_recognition_exercises(
+    exercises: list[dict[str, Any]],
+    symbols: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Attach a derived ``analysis`` block to each recognition exercise.
+
+    Pure: returns new exercise dicts with ``analysis`` merged in and the
+    raw ``answer`` / ``voice_capture`` left untouched. ``symbols`` is the
+    record's flat played schedule (each entry carrying an
+    ``exercise_index``); it is grouped per exercise here, then each
+    exercise's own ``voice_capture`` is windowed against it.
+
+    The committed answer in the analysis is *voice-derived* — the last
+    token per cadence window — and may differ from the exercise's
+    ``answer`` field, which the learner can edit after the session. That
+    divergence is deliberate: the analysis reflects what was *heard*
+    (and is where a self-correction is visible), while ``answer`` is the
+    learner's reviewed commit. Storing both keeps "Vosk got it wrong"
+    distinguishable from "the learner said the wrong thing".
+
+    Recognition is not geared, so no weighted evidence scalar is
+    produced — only the windowed classification, outcome counts, and the
+    two confusion streams. A future gearing model derives whatever
+    fraction it needs from the counts already persisted here.
+    """
+    by_index = _symbols_by_exercise(symbols)
+    updated: list[dict[str, Any]] = []
+    for exercise in exercises:
+        merged = dict(exercise)
+        index = exercise.get("index")
+        ex_symbols = by_index.get(index, []) if isinstance(index, int) else []
+        capture = exercise.get("voice_capture")
+        windowed = window_exercise(ex_symbols, capture if isinstance(capture, list) else [])
+        merged["analysis"] = _analysis_from_windowed(windowed)
+        updated.append(merged)
+    return updated
+
+
+def _symbols_by_exercise(symbols: list[dict[str, Any]]) -> dict[int, list[dict[str, Any]]]:
+    out: dict[int, list[dict[str, Any]]] = {}
+    for entry in symbols:
+        if not isinstance(entry, dict):
+            continue
+        idx = entry.get("exercise_index")
+        if isinstance(idx, int) and not isinstance(idx, bool):
+            out.setdefault(idx, []).append(entry)
+    return out
+
+
+def _analysis_from_windowed(windowed: dict[str, Any]) -> dict[str, Any]:
+    """Build the persisted ``analysis`` block from one windowed exercise.
+
+    Slots are stored lean — without their ``utterances``, which already
+    live verbatim in ``voice_capture`` — so the record carries the
+    windowing result without duplicating the raw transcript.
+    """
+    slots = windowed["slots"]
+    counts = {
+        OUTCOME_CORRECT: 0,
+        OUTCOME_SUBSTITUTION: 0,
+        OUTCOME_CAUGHT_CORRECT: 0,
+        OUTCOME_CAUGHT_SUBSTITUTION: 0,
+        OUTCOME_MISS: 0,
+    }
+    for slot in slots:
+        counts[slot["outcome"]] += 1
+    lean_slots = [
+        {
+            "index": slot["index"],
+            "truth": slot["truth"],
+            "t_on": slot["t_on"],
+            "tokens": slot["tokens"],
+            "committed": slot["committed"],
+            "superseded": slot["superseded"],
+            "outcome": slot["outcome"],
+        }
+        for slot in slots
+    ]
+    return {
+        "version": ANALYSIS_VERSION,
+        "has_evidence": any(slot["committed"] is not None for slot in slots),
+        "committed_answer": windowed["committed_answer"],
+        "counts": counts,
+        "committed_confusions": windowed["committed_confusions"],
+        "caught_confusions": windowed["caught_confusions"],
+        "ambiguous_lag": windowed["ambiguous_lag"],
+        "slots": lean_slots,
+    }
+
+
+def load_recognition_confusion(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+) -> dict[str, Any]:
+    """Aggregate both confusion streams across recognition sessions.
+
+    Walks every recognition record whose claimed-set identity matches
+    ``claimed_set_key`` and sums the per-exercise ``analysis`` blocks
+    written at save time (layer A1). The two streams stay separate:
+
+    * ``committed_substitutions`` — truth → what the learner committed,
+      from ``substitution`` and ``caught_substitution`` slots.
+    * ``caught_substitutions`` — truth → a false start they superseded
+      before committing (the ``caught_*`` slots).
+
+    A caught confusion is never folded into the committed count — that
+    separation is the whole point of the windowing. Only exercises with
+    ``has_evidence`` contribute; a silent exercise ("nothing heard") is
+    neither right nor wrong and adds to neither stream.
+
+    Uses all matching records (no window cap), including warm-ups —
+    confusion is a slow-moving signal and warm-up utterances are real
+    (matching the Koch confusion loader and the warm-up contract).
+    """
+    committed: dict[tuple[str, str], int] = {}
+    caught: dict[tuple[str, str], int] = {}
+    exercises_used = 0
+
+    for record in records:
+        if not isinstance(record, dict) or record.get("mode") != "recognition":
+            continue
+        if record_claimed_set_key(record) != claimed_set_key:
+            continue
+        exercises = record.get("exercises")
+        if not isinstance(exercises, list):
+            continue
+        for exercise in exercises:
+            if not isinstance(exercise, dict):
+                continue
+            analysis = exercise.get("analysis")
+            if not isinstance(analysis, dict) or analysis.get("has_evidence") is not True:
+                continue
+            exercises_used += 1
+            for pair in analysis.get("committed_confusions") or []:
+                _tally_pair(committed, pair)
+            for pair in analysis.get("caught_confusions") or []:
+                _tally_pair(caught, pair)
+
+    return {
+        "claimed_set_key": claimed_set_key,
+        "exercises_used": exercises_used,
+        "committed_substitutions": _sorted_pairs(committed),
+        "caught_substitutions": _sorted_pairs(caught),
+    }
+
+
+def _tally_pair(counter: dict[tuple[str, str], int], pair: Any) -> None:
+    """Increment ``(target, typed)`` if ``pair`` is a well-formed string pair."""
+    if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+        return
+    target, typed = pair
+    if not isinstance(target, str) or not isinstance(typed, str):
+        return
+    counter[(target, typed)] = counter.get((target, typed), 0) + 1
+
+
+def _sorted_pairs(counter: dict[tuple[str, str], int]) -> list[dict[str, Any]]:
+    return sorted(
+        [{"target": t, "typed": a, "count": c} for (t, a), c in counter.items()],
+        key=lambda p: (-p["count"], p["target"], p["typed"]),
+    )
 
 
 def _classify(truth: str, committed: str | None, superseded: list[str]) -> str:
