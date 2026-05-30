@@ -794,8 +794,23 @@ def _read_recognition_confusion(
 # ---------------------------------------------------------------------------
 
 
+def _enrich_recognition_record(data: dict[str, Any], entry: dict[str, Any]) -> None:
+    generation = data.get("generation") or {}
+    set_id = generation.get("set_id")
+    if isinstance(set_id, str) and set_id:
+        entry["set_id"] = set_id
+    set_session = generation.get("set_session")
+    if isinstance(set_session, int) and not isinstance(set_session, bool):
+        entry["set_session"] = set_session
+
+
 def _list_recognitions(config_path: Path | None) -> dict[str, Any]:
-    return _list_records(config_path, subdirectory="recognition", mode="recognition")
+    return _list_records(
+        config_path,
+        subdirectory="recognition",
+        mode="recognition",
+        enrich=_enrich_recognition_record,
+    )
 
 
 def _read_recognition(
