@@ -1,9 +1,8 @@
 // Settings page — saved Symbol Recognition sessions table.
 //
-// Fetches /api/recognitions and renders one row per saved record:
-// sequence number (1 = most recent), local date & time, the claimed
-// set the session drew from, and the exercise count. Clicking a row
-// opens a detail dialog with an exercise-level summary derived from
+// Fetches /api/recognitions and renders saved records grouped by their
+// 8-session recognition set when that metadata is available. Clicking a
+// row opens a detail dialog with an exercise-level summary derived from
 // the voice-honest `analysis` block (recognition_analysis): what was
 // played, what Vosk heard, what the learner committed after review,
 // per-exercise outcome counts, and the two confusion streams.
@@ -458,20 +457,101 @@ function appendDeleteCell(row, filename) {
     row.appendChild(cell);
 }
 
+function groupBySet(records) {
+    const groups = [];
+    let currentGroup = null;
+    // Records arrive newest-first; sets group by set_id.
+    records.forEach((rec) => {
+        const id = rec.set_id || null;
+        if (id && currentGroup && currentGroup.set_id === id) {
+            currentGroup.records.push(rec);
+        } else {
+            currentGroup = { set_id: id, records: [rec] };
+            groups.push(currentGroup);
+        }
+    });
+    return groups;
+}
+
+function renderSetHeader(group, setIndex) {
+    const row = document.createElement("tr");
+    row.className = "settings-koch-set-header";
+    row.dataset.setId = group.set_id;
+    row.dataset.expanded = "false";
+    row.setAttribute("role", "button");
+    row.setAttribute("tabindex", "0");
+    row.setAttribute("aria-expanded", "false");
+
+    const cell = document.createElement("td");
+    cell.colSpan = 5;
+    const records = group.records;
+    const total = records.length;
+    const complete = total >= 8;
+    const earliest = records[records.length - 1];
+    const dateStr = formatStartedAt(earliest?.started_at);
+
+    const arrow = document.createElement("span");
+    arrow.className = "settings-koch-set-header__arrow";
+    arrow.textContent = "▶";
+    const label = document.createTextNode(
+        ` Session ${setIndex} · ${total} of 8${complete ? " · complete" : ""} · ${dateStr}`,
+    );
+    cell.append(arrow, label);
+    row.appendChild(cell);
+
+    const toggle = () => {
+        const expanded = row.dataset.expanded === "true";
+        row.dataset.expanded = expanded ? "false" : "true";
+        row.setAttribute("aria-expanded", expanded ? "false" : "true");
+        arrow.textContent = expanded ? "▶" : "▼";
+        const rows = tbody.querySelectorAll(
+            `tr[data-set-member="${cssEscape(group.set_id)}"]`,
+        );
+        rows.forEach((memberRow) => {
+            memberRow.hidden = expanded;
+        });
+    };
+    row.addEventListener("click", toggle);
+    row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            toggle();
+        }
+    });
+    return row;
+}
+
 function renderRows(records) {
     tbody.replaceChildren();
     currentRecords = records;
     openFilename = null;
     updateNavButtons();
-    records.forEach((rec, idx) => {
-        const row = document.createElement("tr");
-        appendCell(row, idx + 1);
-        appendCell(row, formatStartedAt(rec.started_at));
-        appendCell(row, Array.isArray(rec.claimed_set) ? rec.claimed_set.join(" ") : "-");
-        appendCell(row, rec.exercise_count ?? "-");
-        appendDeleteCell(row, rec.filename);
-        attachRowHandler(row, rec.filename);
-        tbody.appendChild(row);
+
+    const groups = groupBySet(records);
+    let globalIdx = 0;
+    let setIndex = groups.filter((group) => group.set_id).length;
+
+    groups.forEach((group) => {
+        if (group.set_id) {
+            tbody.appendChild(renderSetHeader(group, setIndex));
+            setIndex -= 1;
+        }
+
+        group.records.forEach((rec) => {
+            globalIdx += 1;
+            const row = document.createElement("tr");
+            appendCell(row, globalIdx);
+            appendCell(row, formatStartedAt(rec.started_at));
+            appendCell(row, Array.isArray(rec.claimed_set) ? rec.claimed_set.join(" ") : "-");
+            appendCell(row, rec.exercise_count ?? "-");
+            appendDeleteCell(row, rec.filename);
+            attachRowHandler(row, rec.filename);
+            if (group.set_id) {
+                row.dataset.setMember = group.set_id;
+                row.hidden = true;
+            }
+            tbody.appendChild(row);
+        });
     });
 }
 
