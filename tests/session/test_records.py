@@ -14,6 +14,7 @@ from copy_653.session.records import (
     SCHEMA_VERSION,
     CadenceSendRecord,
     KochExerciseRecord,
+    RecognitionRecord,
     update_koch_answers,
     write_record,
 )
@@ -111,6 +112,25 @@ def _cadence_record() -> CadenceSendRecord:
             {"kind": "dah", "note": 2, "pressed": True, "timestamp": 1.384},
             {"kind": "dah", "note": 2, "pressed": False, "timestamp": 1.564, "duration_ms": 180.0},
         ],
+    )
+
+
+def _recognition_record() -> RecognitionRecord:
+    started = datetime(2026, 5, 15, 19, 30, 45, 123_000, tzinfo=timezone.utc)
+    ended = datetime(2026, 5, 15, 19, 31, 15, 456_000, tzinfo=timezone.utc)
+    return RecognitionRecord(
+        started_at=started,
+        ended_at=ended,
+        audio=_audio(),
+        claimed_set=("K", "M", "U"),
+        seed=12345,
+        generation={
+            "profile_version": "recognition-progression-v1",
+            "set_id": "20260515T193045Z",
+            "set_session": 4,
+        },
+        exercises=[{"index": 1, "target": "KM", "answer": "KM"}],
+        symbols=[],
     )
 
 
@@ -251,6 +271,13 @@ def test_write_record_uses_per_mode_subdirectory(tmp_path: Path):
     assert cadence_path.parent == tmp_path / "cadence-send" / "2026" / "05"
     assert koch_path.name == "koch-exercise-20260515T193045Z.json"
     assert cadence_path.name == "cadence-send-20260515T193045Z.json"
+
+
+def test_write_recognition_record_uses_set_session_directory(tmp_path: Path):
+    path = write_record(_recognition_record(), tmp_path)
+
+    assert path.parent == tmp_path / "recognition" / "2026" / "05" / "set-20260515T193045Z"
+    assert path.name == "session-04.json"
 
 
 def test_write_record_suffixes_on_collision(tmp_path: Path):

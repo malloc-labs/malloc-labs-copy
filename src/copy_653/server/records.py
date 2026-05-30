@@ -35,9 +35,10 @@ from copy_653.sequence.exercise_analysis import (
     resolve_rst_steps,
 )
 from copy_653.sequence.recognition_analysis import (
-    latest_gears_for_claimed_set as latest_recognition_gears_for_claimed_set,
-    load_band_evidence as load_recognition_band_evidence,
-    resolve_gears as resolve_recognition_gears,
+    gear_for_recognition_set,
+    latest_completed_set_gear_for_claimed_set,
+    load_set_evidence as load_recognition_set_evidence,
+    resolve_set_gear as resolve_recognition_set_gear,
 )
 from copy_653.session import (
     CadenceSendRecord,
@@ -348,7 +349,7 @@ def _iter_recognition_records(save_directory: Path) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     if not target_dir.is_dir():
         return records
-    for entry in target_dir.rglob("recognition-*.json"):
+    for entry in target_dir.rglob("*.json"):
         try:
             data = json.loads(entry.read_text())
         except (OSError, ValueError):
@@ -540,16 +541,30 @@ def _next_recognition_run_index(save_directory: Path, claimed_set_key: str) -> i
 
 
 def _resolve_recognition_session_gears(
-    save_directory: Path, claimed_set_key: str, exercise_count: int
+    save_directory: Path,
+    claimed_set_key: str,
+    exercise_count: int,
+    *,
+    set_id: str,
+    set_session: int,
 ) -> list[int]:
     records = _iter_recognition_records(save_directory)
-    evidence = load_recognition_band_evidence(records, claimed_set_key=claimed_set_key)
-    current_gears = latest_recognition_gears_for_claimed_set(
+    if set_session > 1:
+        set_gear = gear_for_recognition_set(
+            records,
+            claimed_set_key=claimed_set_key,
+            set_id=set_id,
+        )
+        if set_gear is not None:
+            return [set_gear] * exercise_count
+
+    evidence = load_recognition_set_evidence(records, claimed_set_key=claimed_set_key)
+    current_gear = latest_completed_set_gear_for_claimed_set(
         records,
         claimed_set_key=claimed_set_key,
     )
-    resolved = resolve_recognition_gears(evidence, current_gears=current_gears)
-    return [resolved.get(i + 1, 0) for i in range(exercise_count)]
+    resolved = resolve_recognition_set_gear(evidence, current_gear=current_gear)
+    return [resolved] * exercise_count
 
 
 def _resolve_cadence_session_gears(
