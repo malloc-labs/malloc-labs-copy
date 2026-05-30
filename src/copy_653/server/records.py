@@ -34,6 +34,11 @@ from copy_653.sequence.exercise_analysis import (
     resolve_gears,
     resolve_rst_steps,
 )
+from copy_653.sequence.recognition_analysis import (
+    latest_gears_for_claimed_set as latest_recognition_gears_for_claimed_set,
+    load_band_evidence as load_recognition_band_evidence,
+    resolve_gears as resolve_recognition_gears,
+)
 from copy_653.session import (
     CadenceSendRecord,
     CopyKeyRecord,
@@ -516,6 +521,37 @@ def _next_cadence_run_index(save_directory: Path, claimed_set_key: str) -> int:
     return count + 1
 
 
+def _next_recognition_run_index(save_directory: Path, claimed_set_key: str) -> int:
+    count = 0
+    for data in _iter_recognition_records(save_directory):
+        generation = data.get("generation")
+        key: str | None = None
+        if isinstance(generation, dict):
+            stored = generation.get("claimed_set_key")
+            if isinstance(stored, str):
+                key = stored
+        if key is None:
+            claimed = data.get("claimed_set")
+            if isinstance(claimed, list):
+                key = " ".join(sorted(str(s) for s in claimed))
+        if key == claimed_set_key:
+            count += 1
+    return count + 1
+
+
+def _resolve_recognition_session_gears(
+    save_directory: Path, claimed_set_key: str, exercise_count: int
+) -> list[int]:
+    records = _iter_recognition_records(save_directory)
+    evidence = load_recognition_band_evidence(records, claimed_set_key=claimed_set_key)
+    current_gears = latest_recognition_gears_for_claimed_set(
+        records,
+        claimed_set_key=claimed_set_key,
+    )
+    resolved = resolve_recognition_gears(evidence, current_gears=current_gears)
+    return [resolved.get(i + 1, 0) for i in range(exercise_count)]
+
+
 def _resolve_cadence_session_gears(
     save_directory: Path, claimed_set_key: str, exercise_count: int
 ) -> list[int]:
@@ -587,13 +623,19 @@ def _write_recognition_record(
     """Persist a Symbol Recognition session record."""
     try:
         save_directory = load_save_directory(config_path)
+        enriched = dict(generation)
+        if "run_index" not in enriched:
+            enriched["run_index"] = _next_recognition_run_index(
+                save_directory,
+                str(enriched.get("claimed_set_key", "")),
+            )
         record = RecognitionRecord(
             started_at=started_at,
             ended_at=datetime.now(timezone.utc),
             audio=audio_params,
             claimed_set=claimed,
             seed=seed,
-            generation=dict(generation),
+            generation=enriched,
             exercises=exercises,
             symbols=symbols,
         )

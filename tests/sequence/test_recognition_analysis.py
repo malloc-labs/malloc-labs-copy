@@ -2,13 +2,18 @@
 
 from copy_653.sequence.recognition_analysis import (
     ANALYSIS_VERSION,
+    MAX_GEAR,
     OUTCOME_CAUGHT_CORRECT,
     OUTCOME_CAUGHT_SUBSTITUTION,
     OUTCOME_CORRECT,
     OUTCOME_MISS,
     OUTCOME_SUBSTITUTION,
     analyse_recognition_exercises,
+    build_recognition_generation_profile,
+    latest_gears_for_claimed_set,
+    load_band_evidence,
     load_recognition_confusion,
+    resolve_gears,
     window_exercise,
 )
 
@@ -271,6 +276,10 @@ def test_analyse_attaches_block_per_exercise_with_counts_and_streams():
         OUTCOME_CAUGHT_SUBSTITUTION: 0,
         OUTCOME_MISS: 0,
     }
+    assert a1["combined_fraction"] == 1.0
+    assert a1["recognition_state"] == "exact"
+    assert a1["band_state"] == "exact"
+    assert a1["saved"] is True
     assert a1["caught_confusions"] == [["U", "R"]]
     assert a1["committed_confusions"] == []
 
@@ -278,6 +287,8 @@ def test_analyse_attaches_block_per_exercise_with_counts_and_streams():
     assert a2["committed_answer"] == "MR"
     assert a2["committed_confusions"] == [["U", "R"]]
     assert a2["counts"][OUTCOME_SUBSTITUTION] == 1
+    assert a2["combined_fraction"] == 0.5
+    assert a2["recognition_state"] == "low"
 
     # Raw fields are left untouched by the rewrite.
     assert result[0]["answer"] == "UKU"
@@ -292,6 +303,7 @@ def test_analyse_no_evidence_for_silent_exercise():
 
     analysis = result[0]["analysis"]
     assert analysis["has_evidence"] is False
+    assert analysis["recognition_state"] == "silent"
     assert analysis["committed_answer"] == ""
     assert analysis["counts"][OUTCOME_MISS] == 2
     assert analysis["committed_confusions"] == []
@@ -326,6 +338,27 @@ def test_analyse_slots_are_lean_without_utterances():
         "outcome": OUTCOME_CORRECT,
     }
     assert "utterances" not in slots[0]
+
+
+def test_analyse_distributes_word_response_across_grouped_symbols():
+    symbols = [
+        {"symbol": "K", "t_on": 0.0, "exercise_index": 1, "word_index": 1, "word": "KM"},
+        {"symbol": "M", "t_on": 1.5, "exercise_index": 1, "word_index": 1, "word": "KM"},
+    ]
+    exercises = [
+        {
+            "index": 1,
+            "target": "KM",
+            "voice_capture": [_utt("kilo mike", ["K", "M"], 4.0)],
+        },
+    ]
+
+    analysis = analyse_recognition_exercises(exercises, symbols)[0]["analysis"]
+
+    assert analysis["committed_answer"] == "KM"
+    assert analysis["counts"][OUTCOME_CORRECT] == 2
+    assert analysis["counts"][OUTCOME_MISS] == 0
+    assert [slot["tokens"] for slot in analysis["slots"]] == [["K"], ["M"]]
 
 
 # ─── load_recognition_confusion (aggregation across records) ─────────────────
@@ -391,3 +424,72 @@ def test_confusion_empty_when_no_matching_records():
         "committed_substitutions": [],
         "caught_substitutions": [],
     }
+
+
+# ─── Recognition progression evidence ────────────────────────────────────────
+
+
+def _progression_record(started_at: str, gear: int, fraction: float) -> dict:
+    return {
+        "mode": "recognition",
+        "started_at": started_at,
+        "generation": {
+            "claimed_set_key": "K M",
+            "bands": [{"index": 1, "gear": gear}],
+        },
+        "exercises": [
+            {
+                "index": 1,
+                "burden_band": 1,
+                "gear": gear,
+                "analysis": {
+                    "has_evidence": True,
+                    "combined_fraction": fraction,
+                    "recognition_state": "exact" if fraction >= 1.0 else "low",
+                },
+            }
+        ],
+    }
+
+
+def test_generation_profile_records_per_slot_gears():
+    profile = build_recognition_generation_profile(
+        claimed_set=("K", "M"),
+        exercise_count=3,
+        gears=[0, 1, 2],
+    )
+
+    assert profile["profile_version"] == "recognition-progression-v1"
+    assert profile["claimed_set_key"] == "K M"
+    assert profile["bands"] == [
+        {"index": 1, "gear": 0},
+        {"index": 2, "gear": 1},
+        {"index": 3, "gear": 2},
+    ]
+
+
+def test_load_band_evidence_and_resolve_gears_for_recognition():
+    records = [
+        _progression_record("2026-05-18T13:00:00Z", 0, 1.0),
+        _progression_record("2026-05-18T13:10:00Z", 0, 1.0),
+        _progression_record("2026-05-18T13:20:00Z", 0, 1.0),
+    ]
+
+    evidence = load_band_evidence(records, claimed_set_key="K M")
+
+    assert evidence["bands"][0]["burden_band"] == 1
+    assert evidence["bands"][0]["strong_streak"] == 3
+    assert latest_gears_for_claimed_set(records, claimed_set_key="K M") == {1: 0}
+    assert resolve_gears(evidence, current_gears={1: 0}) == {1: 1}
+
+
+def test_recognition_gear_shift_is_single_step_and_capped():
+    records = [
+        _progression_record("2026-05-18T13:00:00Z", MAX_GEAR, 1.0),
+        _progression_record("2026-05-18T13:10:00Z", MAX_GEAR, 1.0),
+        _progression_record("2026-05-18T13:20:00Z", MAX_GEAR, 1.0),
+    ]
+
+    evidence = load_band_evidence(records, claimed_set_key="K M")
+
+    assert resolve_gears(evidence, current_gears={1: MAX_GEAR}) == {1: MAX_GEAR}

@@ -8,10 +8,9 @@
 // played, what Vosk heard, what the learner committed after review,
 // per-exercise outcome counts, and the two confusion streams.
 //
-// Recognition has no state or gear model yet. Those columns are shown
-// as reserved placeholders so the table shape can match the other
-// Settings record dialogs without inventing backend semantics. A silent
-// exercise is neutral ("nothing heard"), neither evidence nor error.
+// Recognition state and gear are backend evidence, not learner-facing
+// grades. A silent exercise is neutral ("nothing heard"), neither
+// evidence nor error.
 // The Heard column is voice-derived and may differ from the learner's
 // editable Answer by design. Backend evidence, not a score (spec §9).
 
@@ -120,14 +119,14 @@ const EXERCISES_COLUMNS = [
     {
         label: "State",
         tooltip:
-            "Reserved for a future Recognition state model. Recognition does not define " +
-            "state yet, so current records show a dash.",
+            "Recognition evidence state from committed voice windows: silent, low, " +
+            "building, steady, strong, or exact.",
     },
     {
         label: "Gear",
         tooltip:
-            "Reserved for a future Recognition gear model. Recognition does not define " +
-            "gears yet, so current records show a dash.",
+            "Hidden Recognition progression gear for this exercise slot. Strong runs nudge " +
+            "it up; repeated low runs nudge it down.",
     },
 ];
 
@@ -206,11 +205,15 @@ function summariseConfusions(analysis) {
 }
 
 function recognitionState(exercise) {
-    return exercise?.analysis?.recognition_state || "-";
+    return exercise?.analysis?.recognition_state || exercise?.analysis?.band_state || "-";
 }
 
 function recognitionGear(exercise) {
-    const gear = exercise?.analysis?.recognition_gear ?? exercise?.recognition_gear;
+    const gear =
+        exercise?.analysis?.recognition_gear
+        ?? exercise?.analysis?.gear
+        ?? exercise?.recognition_gear
+        ?? exercise?.gear;
     return Number.isFinite(gear) ? gear : "-";
 }
 
