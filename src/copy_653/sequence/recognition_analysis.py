@@ -42,6 +42,7 @@ from copy_653.sequence.exercise_analysis import (
 
 ANALYSIS_VERSION = "recognition-analysis-v1"
 GENERATION_PROFILE_VERSION = "recognition-progression-v1"
+RECOGNITION_SET_SIZE = 8
 
 # Per-slot outcome labels. ``caught_*`` outcomes carry one or more
 # superseded tokens — a false start the learner spoke before committing.
@@ -176,7 +177,7 @@ def analyse_recognition_exercises(
     exercises: list[dict[str, Any]],
     symbols: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Attach a derived ``analysis`` block to each recognition exercise.
+    """Attach derived answer and timing analysis blocks to each exercise.
 
     Pure: returns new exercise dicts with ``analysis`` merged in and the
     raw ``answer`` / ``voice_capture`` left untouched. ``symbols`` is the
@@ -184,18 +185,9 @@ def analyse_recognition_exercises(
     ``exercise_index``); it is grouped per exercise here, then each
     exercise's own ``voice_capture`` is windowed against it.
 
-    The committed answer in the analysis is *voice-derived* — the last
-    token per cadence window — and may differ from the exercise's
-    ``answer`` field, which the learner can edit after the session. That
-    divergence is deliberate: the analysis reflects what was *heard*
-    (and is where a self-correction is visible), while ``answer`` is the
-    learner's reviewed commit. Storing both keeps "Vosk got it wrong"
-    distinguishable from "the learner said the wrong thing".
-
-    Recognition is not geared, so no weighted evidence scalar is
-    produced — only the windowed classification, outcome counts, and the
-    two confusion streams. A future gearing model derives whatever
-    fraction it needs from the counts already persisted here.
+    ``analysis`` is answer-aligned and is the user-facing/progression
+    signal. ``timing_analysis`` is the older onset-window reconstruction,
+    retained as debugging evidence for speech lag and recogniser timing.
     """
     by_index = _symbols_by_exercise(symbols)
     updated: list[dict[str, Any]] = []
@@ -205,7 +197,8 @@ def analyse_recognition_exercises(
         ex_symbols = by_index.get(index, []) if isinstance(index, int) else []
         capture = exercise.get("voice_capture")
         windowed = window_exercise(ex_symbols, capture if isinstance(capture, list) else [])
-        merged["analysis"] = _analysis_from_windowed(windowed, exercise)
+        merged["analysis"] = _analysis_from_answer(ex_symbols, exercise)
+        merged["timing_analysis"] = _analysis_from_windowed(windowed, exercise)
         updated.append(merged)
     return updated
 
@@ -258,6 +251,7 @@ def _analysis_from_windowed(windowed: dict[str, Any], exercise: dict[str, Any]) 
     ]
     return {
         "version": ANALYSIS_VERSION,
+        "method": "onset-window",
         "saved": True,
         "has_evidence": has_evidence,
         "committed_answer": windowed["committed_answer"],
@@ -274,18 +268,101 @@ def _analysis_from_windowed(windowed: dict[str, Any], exercise: dict[str, Any]) 
     }
 
 
+def _analysis_from_answer(
+    symbols: list[dict[str, Any]],
+    exercise: dict[str, Any],
+) -> dict[str, Any]:
+    target = _target_symbols(exercise, symbols)
+    answer = _answer_symbols(exercise.get("answer"))
+    counts = {
+        OUTCOME_CORRECT: 0,
+        OUTCOME_SUBSTITUTION: 0,
+        OUTCOME_CAUGHT_CORRECT: 0,
+        OUTCOME_CAUGHT_SUBSTITUTION: 0,
+        OUTCOME_MISS: 0,
+    }
+    slots: list[dict[str, Any]] = []
+    committed_confusions: list[list[str]] = []
+
+    for index, truth in enumerate(target):
+        committed = answer[index] if index < len(answer) else None
+        if committed is None:
+            outcome = OUTCOME_MISS
+        elif committed == truth:
+            outcome = OUTCOME_CORRECT
+        else:
+            outcome = OUTCOME_SUBSTITUTION
+            committed_confusions.append([truth, committed])
+        counts[outcome] += 1
+        slots.append(
+            {
+                "index": index + 1,
+                "truth": truth,
+                "tokens": [committed] if committed is not None else [],
+                "committed": committed,
+                "superseded": [],
+                "outcome": outcome,
+            }
+        )
+
+    total = sum(counts.values())
+    combined_fraction = _fraction(counts[OUTCOME_CORRECT], total)
+    has_evidence = bool(answer)
+    gear = _coerce_int(exercise.get("gear"), 0)
+    burden_band = _coerce_int(exercise.get("burden_band"), _coerce_int(exercise.get("index"), 0))
+    return {
+        "version": ANALYSIS_VERSION,
+        "method": "answer-alignment",
+        "saved": True,
+        "has_evidence": has_evidence,
+        "committed_answer": "".join(answer),
+        "counts": counts,
+        "combined_fraction": round(combined_fraction, 6),
+        "recognition_state": _recognition_state(combined_fraction, has_evidence=has_evidence),
+        "band_state": _recognition_state(combined_fraction, has_evidence=has_evidence),
+        "burden_band": burden_band,
+        "gear": gear,
+        "committed_confusions": committed_confusions,
+        "caught_confusions": [],
+        "ambiguous_lag": False,
+        "slots": slots,
+    }
+
+
+def _target_symbols(exercise: dict[str, Any], symbols: list[dict[str, Any]]) -> list[str]:
+    ordered = _ordered_symbols(symbols)
+    if ordered:
+        return [str(entry["symbol"]).upper() for entry in ordered]
+    target = exercise.get("target")
+    if not isinstance(target, str):
+        return []
+    return _compact_symbol_string(target)
+
+
+def _answer_symbols(answer: Any) -> list[str]:
+    if not isinstance(answer, str):
+        return []
+    return _compact_symbol_string(answer)
+
+
+def _compact_symbol_string(value: str) -> list[str]:
+    return [ch.upper() for ch in value if not ch.isspace()]
+
+
 def build_recognition_generation_profile(
     *,
     claimed_set: tuple[str, ...],
     exercise_count: int,
     gears: list[int] | None = None,
 ) -> dict[str, Any]:
-    """Build Recognition generation metadata with per-slot gears."""
+    """Build Recognition generation metadata with one set-level gear."""
     resolved_gears = gears if gears is not None else [0] * exercise_count
+    set_gear = resolved_gears[0] if resolved_gears else 0
     return {
         "profile_version": GENERATION_PROFILE_VERSION,
         "claimed_set_key": " ".join(sorted(claimed_set)),
         "exercise_count": exercise_count,
+        "gear": set_gear,
         "bands": [
             {
                 "index": idx + 1,
@@ -294,6 +371,84 @@ def build_recognition_generation_profile(
             for idx in range(exercise_count)
         ],
     }
+
+
+def load_set_evidence(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+    set_size: int = RECOGNITION_SET_SIZE,
+    window_size: int = DEFAULT_EVIDENCE_WINDOW_SIZE,
+) -> dict[str, Any]:
+    """Aggregate completed Recognition sets as progression evidence."""
+    completed = _completed_sets(records, claimed_set_key=claimed_set_key, set_size=set_size)
+    window = completed[: max(0, window_size)]
+    entries = [(item["fraction"], item["state"], item["gear"]) for item in window]
+
+    return {
+        "claimed_set_key": claimed_set_key,
+        "set_count": len(completed),
+        "window_size": window_size,
+        "sets_used": len(window),
+        "recent_fractions": [round(fraction, 6) for fraction, _state, _gear in entries],
+        "recent_states": [state for _fraction, state, _gear in entries],
+        "recent_gears": [gear for _fraction, _state, gear in entries],
+        "strong_streak": _streak_at_current_gear(entries, lambda v: v >= STRONG_FRACTION),
+        "low_streak": _streak_at_current_gear(entries, lambda v: v < LOW_FRACTION),
+    }
+
+
+def latest_completed_set_gear_for_claimed_set(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+    set_size: int = RECOGNITION_SET_SIZE,
+) -> int:
+    completed = _completed_sets(records, claimed_set_key=claimed_set_key, set_size=set_size)
+    return completed[0]["gear"] if completed else 0
+
+
+def gear_for_recognition_set(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+    set_id: str,
+) -> int | None:
+    matching = [
+        record
+        for record in records
+        if isinstance(record, dict)
+        and record.get("mode") == "recognition"
+        and record_claimed_set_key(record) == claimed_set_key
+        and _record_set_id(record) == set_id
+    ]
+    matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
+    for record in matching:
+        gear = _gear_from_generation(record.get("generation"))
+        if gear is not None:
+            return gear
+    return None
+
+
+def resolve_set_gear(
+    evidence: dict[str, Any],
+    *,
+    current_gear: int,
+    max_gear: int = MAX_GEAR,
+    n_clean_sets_for_shift: int = 1,
+    n_low_sets_for_shift_down: int = 1,
+) -> int:
+    strong_streak = evidence.get("strong_streak", 0)
+    low_streak = evidence.get("low_streak", 0)
+    if (
+        isinstance(strong_streak, int)
+        and strong_streak >= n_clean_sets_for_shift
+        and current_gear < max_gear
+    ):
+        return current_gear + 1
+    if isinstance(low_streak, int) and low_streak >= n_low_sets_for_shift_down and current_gear > 0:
+        return current_gear - 1
+    return current_gear
 
 
 def load_band_evidence(
@@ -323,7 +478,7 @@ def load_band_evidence(
             if not isinstance(exercise, dict):
                 continue
             analysis = exercise.get("analysis")
-            if not isinstance(analysis, dict) or analysis.get("has_evidence") is not True:
+            if not isinstance(analysis, dict):
                 continue
             band = exercise.get("burden_band")
             if not isinstance(band, int) or isinstance(band, bool):
@@ -482,6 +637,111 @@ def _recognition_state(value: float, *, has_evidence: bool) -> str:
     if value < 1.0:
         return "strong"
     return "exact"
+
+
+def _completed_sets(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+    set_size: int,
+) -> list[dict[str, Any]]:
+    by_set: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        if (
+            not isinstance(record, dict)
+            or record.get("mode") != "recognition"
+            or record_claimed_set_key(record) != claimed_set_key
+        ):
+            continue
+        set_id = _record_set_id(record)
+        if set_id is None:
+            continue
+        by_set.setdefault(set_id, []).append(record)
+
+    completed: list[dict[str, Any]] = []
+    for set_id, group in by_set.items():
+        sessions = {
+            session for record in group if (session := _record_set_session(record)) is not None
+        }
+        if len(sessions) < set_size:
+            continue
+        fraction = _set_fraction(group, set_size=set_size)
+        if fraction is None:
+            continue
+        group.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
+        gear = _gear_from_generation(group[0].get("generation"))
+        if gear is None:
+            gear = 0
+        completed.append(
+            {
+                "set_id": set_id,
+                "started_at": max(str(record.get("started_at") or "") for record in group),
+                "fraction": fraction,
+                "state": _recognition_state(fraction, has_evidence=True),
+                "gear": gear,
+            }
+        )
+
+    completed.sort(key=lambda item: item["started_at"], reverse=True)
+    return completed
+
+
+def _set_fraction(records: list[dict[str, Any]], *, set_size: int) -> float | None:
+    fractions: list[float] = []
+    analyzed_sessions: set[int] = set()
+    for record in records:
+        session = _record_set_session(record)
+        exercises = record.get("exercises")
+        if not isinstance(exercises, list):
+            continue
+        record_has_analysis = False
+        for exercise in exercises:
+            if not isinstance(exercise, dict):
+                continue
+            analysis = exercise.get("analysis")
+            if not isinstance(analysis, dict):
+                continue
+            fraction = analysis.get("combined_fraction")
+            if isinstance(fraction, (int, float)) and not isinstance(fraction, bool):
+                fractions.append(float(fraction))
+                record_has_analysis = True
+        if record_has_analysis and session is not None:
+            analyzed_sessions.add(session)
+    if len(analyzed_sessions) < set_size:
+        return None
+    if not fractions:
+        return None
+    return _fraction(sum(fractions), len(fractions))
+
+
+def _record_set_id(record: dict[str, Any]) -> str | None:
+    generation = record.get("generation")
+    if not isinstance(generation, dict):
+        return None
+    set_id = generation.get("set_id")
+    return set_id if isinstance(set_id, str) and set_id else None
+
+
+def _record_set_session(record: dict[str, Any]) -> int | None:
+    generation = record.get("generation")
+    if not isinstance(generation, dict):
+        return None
+    set_session = generation.get("set_session")
+    if isinstance(set_session, int) and not isinstance(set_session, bool):
+        return set_session
+    return None
+
+
+def _gear_from_generation(generation: Any) -> int | None:
+    if not isinstance(generation, dict):
+        return None
+    gear = generation.get("gear")
+    if isinstance(gear, int) and not isinstance(gear, bool):
+        return gear
+    gears = _gears_from_generation(generation)
+    if not gears:
+        return None
+    return gears[min(gears)]
 
 
 def _gears_from_generation(generation: Any) -> dict[int, int]:

@@ -38,6 +38,8 @@ let currentExerciseIndex = 0;
 let currentSetSession = 0;
 let voiceReady = false;
 let voiceStatusMessage = "Checking voice configuration…";
+let pendingSaveResolve = null;
+let voiceStartPromise = null;
 
 // Per-exercise buffer of Vosk final events captured during the session.
 // Each entry: { t: seconds since session-start, text: raw transcript,
@@ -154,6 +156,7 @@ function renderVoiceNotice() {
 // ─── Voice capture lifecycle ─────────────────────────────────────────────────
 
 async function startVoiceCapture() {
+    if (voice.running) return;
     const session = Symbol("voice-session");
     voice.session = session;
 
@@ -182,6 +185,7 @@ async function startVoiceCapture() {
         try { msg = JSON.parse(ev.data); } catch { return; }
         if (voice.session !== session) return;
         if (msg.type === "final") {
+            if (!sessionActive || !currentExercises.length) return;
             const symbols = Array.isArray(msg.symbols) ? msg.symbols : [];
             recordVoiceFinal(msg.text || "", symbols);
             if (symbols.length) appendSymbolsToActiveRow(symbols);
@@ -229,6 +233,16 @@ async function startVoiceCapture() {
     // Intentionally not connecting to ctx.destination.
 
     voice.running = true;
+}
+
+async function ensureVoiceCaptureReady() {
+    if (voice.running) return;
+    if (!voiceStartPromise) {
+        voiceStartPromise = startVoiceCapture().finally(() => {
+            voiceStartPromise = null;
+        });
+    }
+    await voiceStartPromise;
 }
 
 function stopVoiceCapture() {
@@ -357,6 +371,19 @@ function collectAnswers() {
     );
 }
 
+function completeRecognitionExercise(exerciseIndex) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    const input = answersEl.querySelector(
+        `.answer-row__input[data-exercise-index="${exerciseIndex}"]`,
+    );
+    socket.send(JSON.stringify({
+        action: "complete-recognition-exercise",
+        exercise_index: exerciseIndex,
+        answer: input ? input.value : "",
+        voice_capture: voiceCapture[exerciseIndex - 1] || [],
+    }));
+}
+
 // ─── Controls ────────────────────────────────────────────────────────────────
 
 function clearCountdown() {
@@ -385,7 +412,18 @@ function setStartButtonMode(mode) {
     }
 }
 
-function beginCountdownThenStart() {
+async function beginCountdownThenStart() {
+    try {
+        await ensureVoiceCaptureReady();
+    } catch (err) {
+        const li = document.createElement("li");
+        li.textContent = `! voice: ${err.message || err}`;
+        li.dataset.kind = "error";
+        eventsEl.appendChild(li);
+        setStartButtonMode("idle");
+        return;
+    }
+
     eventsEl.replaceChildren();
     const meta = toggleBtn.querySelector(".timeline-meta");
     meta.textContent = "—";
@@ -403,7 +441,37 @@ function beginCountdownThenStart() {
     });
 }
 
-startBtn.addEventListener("click", () => {
+function hasUnsavedRecognitionAnswers() {
+    return currentExercises.length > 0
+        && saveBtn.dataset.state === "ready"
+        && !saveBtn.disabled;
+}
+
+function sendRecognitionAnswers() {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Saving";
+    socket.send(JSON.stringify({
+        action: "save-recognition-answers",
+        answers: collectAnswers(),
+        voice_capture: voiceCapture,
+    }));
+    return true;
+}
+
+function saveRecognitionAnswers() {
+    if (!sendRecognitionAnswers()) return Promise.resolve(false);
+    return new Promise((resolve) => {
+        pendingSaveResolve = resolve;
+    });
+}
+
+async function autosaveBeforeStart() {
+    if (!hasUnsavedRecognitionAnswers()) return true;
+    return saveRecognitionAnswers();
+}
+
+startBtn.addEventListener("click", async () => {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
     const mode = startBtn.dataset.mode;
     if (mode === "active") {
@@ -422,7 +490,13 @@ startBtn.addEventListener("click", () => {
         renderPrimed();
         return;
     }
-    beginCountdownThenStart();
+    startBtn.disabled = true;
+    const saved = await autosaveBeforeStart();
+    if (!saved) {
+        setStartButtonMode("idle");
+        return;
+    }
+    await beginCountdownThenStart();
 });
 
 // ─── Start keybind (S) ──────────────────────────────────────────────────────
@@ -522,7 +596,8 @@ function appendEvent(event) {
     }
 
     if (event.type === "session-start") {
-        currentExercises = Array.isArray(event.exercises) ? event.exercises : [];
+        const exerciseCount = Number.isInteger(event.exercise_count) ? event.exercise_count : 0;
+        currentExercises = Array.from({ length: exerciseCount }, () => "");
         currentExerciseIndex = 0;
         currentSetSession = event.set_session || 0;
         sessionActive = true;
@@ -541,19 +616,39 @@ function appendEvent(event) {
         eventsEl.replaceChildren();
         renderAnswerRows(currentExercises.length);
         saveBtn.disabled = true;
+        saveBtn.dataset.state = "idle";
+        saveBtn.textContent = "Save";
         primedTextEl.textContent = `Exercise — of ${currentExercises.length}`;
         primedSetEl.textContent = currentSetSession > 0
             ? `Set ${currentSetSession} of ${SET_SIZE}`
             : "";
-        // Open voice capture in the background. If it fails the
-        // session continues (the page is degraded but not broken);
-        // the failure surfaces in the timeline events log.
-        startVoiceCapture().catch((err) => {
+        // Voice capture is normally pre-warmed before the start request
+        // so Exercise 1 is captured. This fallback keeps a direct server
+        // start or reconnect from leaving the page silent.
+        ensureVoiceCaptureReady().catch((err) => {
             const li = document.createElement("li");
             li.textContent = `! voice: ${err.message || err}`;
             li.dataset.kind = "error";
             eventsEl.appendChild(li);
         });
+        return;
+    }
+
+    if (event.type === "recognition-exercise-start") {
+        if (currentExerciseIndex !== 0) {
+            const divider = document.createElement("li");
+            divider.dataset.kind = "exercise-divider";
+            divider.appendChild(document.createElement("hr"));
+            eventsEl.appendChild(divider);
+        }
+        currentExerciseIndex = event.exercise_index;
+        setActiveRow(currentExerciseIndex);
+        const header = document.createElement("li");
+        header.dataset.kind = "exercise-header";
+        header.textContent = `Exercise ${event.exercise_index}`;
+        eventsEl.appendChild(header);
+        primedTextEl.textContent =
+            `Exercise ${currentExerciseIndex} of ${currentExercises.length}`;
         return;
     }
 
@@ -593,12 +688,20 @@ function appendEvent(event) {
         return;
     }
 
+    if (event.type === "recognition-exercise-end") {
+        window.setTimeout(() => {
+            completeRecognitionExercise(event.exercise_index);
+        }, 1000);
+        return;
+    }
+
     if (event.type === "session-end") {
         sessionActive = false;
         stopVoiceCapture();
         unlockAnswerInputs();
-        saveBtn.disabled = false;
-        saveBtn.dataset.state = "ready";
+        saveBtn.disabled = true;
+        saveBtn.dataset.state = "saved";
+        saveBtn.textContent = "Saved";
         const li = document.createElement("li");
         li.textContent = "■ end";
         li.dataset.kind = "end";
@@ -613,6 +716,10 @@ function appendEvent(event) {
         saveBtn.disabled = true;
         saveBtn.dataset.state = "saved";
         saveBtn.textContent = "Saved";
+        if (pendingSaveResolve) {
+            pendingSaveResolve(true);
+            pendingSaveResolve = null;
+        }
         return;
     }
 
@@ -626,6 +733,14 @@ function appendEvent(event) {
         sessionActive = false;
         stopVoiceCapture();
         setTimelineLocked(false);
+        if (pendingSaveResolve) {
+            pendingSaveResolve(false);
+            pendingSaveResolve = null;
+        }
+        if (saveBtn.textContent === "Saving") {
+            saveBtn.disabled = false;
+            saveBtn.textContent = "Save";
+        }
         return;
     }
 }
@@ -653,13 +768,7 @@ tabButtons.forEach((btn) => {
 
 saveBtn.addEventListener("click", () => {
     if (saveBtn.disabled) return;
-    if (!socket || socket.readyState !== WebSocket.OPEN) return;
-    saveBtn.disabled = true;
-    socket.send(JSON.stringify({
-        action: "save-recognition-answers",
-        answers: collectAnswers(),
-        voice_capture: voiceCapture,
-    }));
+    sendRecognitionAnswers();
 });
 
 // Allow re-saving after edits.

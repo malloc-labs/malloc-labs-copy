@@ -15,7 +15,7 @@ import re
 import zipfile
 from datetime import datetime, timezone
 from http import HTTPStatus
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlsplit
 
@@ -379,7 +379,8 @@ def _json_response(payload: dict[str, Any]) -> tuple[HTTPStatus, list[tuple[str,
 _KOCH_FILENAME_RE = re.compile(r"^koch-exercise-[0-9A-Za-z-]+\.json$")
 _CADENCE_FILENAME_RE = re.compile(r"^cadence-send-[0-9A-Za-z-]+\.json$")
 _COPY_KEY_FILENAME_RE = re.compile(r"^copy-key-[0-9A-Za-z-]+\.json$")
-_RECOGNITION_FILENAME_RE = re.compile(r"^recognition-[0-9A-Za-z-]+\.json$")
+_RECOGNITION_FILENAME_RE = re.compile(r"^[0-9A-Za-z._/-]+\.json$")
+_RECORD_PATH_PART_RE = re.compile(r"^[0-9A-Za-z._-]+$")
 
 
 # ---------------------------------------------------------------------------
@@ -393,6 +394,8 @@ def _list_records(
     subdirectory: str,
     mode: str,
     enrich: Callable[[dict[str, Any], dict[str, Any]], None] | None = None,
+    glob_pattern: str | None = None,
+    relative_filenames: bool = False,
 ) -> dict[str, Any]:
     """List saved records of one type for the settings UI.
 
@@ -410,7 +413,7 @@ def _list_records(
     target_dir = save_directory / subdirectory
     records: list[dict[str, Any]] = []
     if target_dir.is_dir():
-        for entry in sorted(target_dir.rglob(f"{mode}-*.json")):
+        for entry in sorted(target_dir.rglob(glob_pattern or f"{mode}-*.json")):
             try:
                 data = json.loads(entry.read_text())
             except (OSError, ValueError):
@@ -424,8 +427,11 @@ def _list_records(
                 continue
             exercises = data.get("exercises")
             ended_at = data.get("ended_at")
+            filename = (
+                entry.relative_to(target_dir).as_posix() if relative_filenames else entry.name
+            )
             record_entry: dict[str, Any] = {
-                "filename": entry.name,
+                "filename": filename,
                 "started_at": started_at,
                 "ended_at": ended_at if isinstance(ended_at, str) else None,
                 "claimed_set": [str(s) for s in claimed_set],
@@ -439,6 +445,17 @@ def _list_records(
     return {"save_directory": str(save_directory), "records": records}
 
 
+def _safe_relative_record_path(filename: str) -> Path | None:
+    path = PurePosixPath(filename)
+    if path.is_absolute() or not path.parts:
+        return None
+    if any(part in ("", ".", "..") for part in path.parts):
+        return None
+    if not all(_RECORD_PATH_PART_RE.fullmatch(part) for part in path.parts):
+        return None
+    return Path(*path.parts)
+
+
 def _read_record_file(
     *,
     config_path: Path | None,
@@ -447,6 +464,7 @@ def _read_record_file(
     subdirectory: str,
     mode: str,
     transform: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    allow_relative_filename: bool = False,
 ) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
     """Return the full JSON for one record file.
 
@@ -466,10 +484,18 @@ def _read_record_file(
         return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"save directory unavailable")
 
     target_dir = (save_directory / subdirectory).resolve()
-    matches = sorted(target_dir.rglob(filename))
-    if not matches:
-        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
-    resolved = matches[0].resolve()
+    if allow_relative_filename:
+        relative_path = _safe_relative_record_path(filename)
+        if relative_path is None:
+            return _http_response(HTTPStatus.BAD_REQUEST, b"invalid filename")
+        resolved = (target_dir / relative_path).resolve()
+        if not resolved.is_file():
+            return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+    else:
+        matches = sorted(target_dir.rglob(filename))
+        if not matches:
+            return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+        resolved = matches[0].resolve()
     try:
         resolved.relative_to(target_dir)
     except ValueError:
@@ -495,6 +521,7 @@ def _delete_record_file(
     filename_re: re.Pattern[str],
     subdirectory: str,
     mode: str,
+    allow_relative_filename: bool = False,
 ) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
     if not filename or not filename_re.fullmatch(filename):
         return _http_response(HTTPStatus.BAD_REQUEST, b"invalid filename")
@@ -506,10 +533,18 @@ def _delete_record_file(
         return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"save directory unavailable")
 
     target_dir = (save_directory / subdirectory).resolve()
-    matches = sorted(target_dir.rglob(filename))
-    if not matches:
-        return _http_response(HTTPStatus.NOT_FOUND, b"not found")
-    resolved = matches[0].resolve()
+    if allow_relative_filename:
+        relative_path = _safe_relative_record_path(filename)
+        if relative_path is None:
+            return _http_response(HTTPStatus.BAD_REQUEST, b"invalid filename")
+        resolved = (target_dir / relative_path).resolve()
+        if not resolved.is_file():
+            return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+    else:
+        matches = sorted(target_dir.rglob(filename))
+        if not matches:
+            return _http_response(HTTPStatus.NOT_FOUND, b"not found")
+        resolved = matches[0].resolve()
     try:
         resolved.relative_to(target_dir)
     except ValueError:
@@ -602,7 +637,7 @@ def _build_records_backup(
         return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"could not resolve save directory")
 
     target_dir = save_directory / subdir
-    pattern = f"{subdir}-*.json"
+    pattern = "*.json" if kind == "recognition" else f"{subdir}-*.json"
 
     buffer = io.BytesIO()
     file_count = 0
@@ -810,6 +845,8 @@ def _list_recognitions(config_path: Path | None) -> dict[str, Any]:
         subdirectory="recognition",
         mode="recognition",
         enrich=_enrich_recognition_record,
+        glob_pattern="*.json",
+        relative_filenames=True,
     )
 
 
@@ -822,6 +859,7 @@ def _read_recognition(
         filename_re=_RECOGNITION_FILENAME_RE,
         subdirectory="recognition",
         mode="recognition",
+        allow_relative_filename=True,
     )
 
 
@@ -834,6 +872,7 @@ def _delete_recognition(
         filename_re=_RECOGNITION_FILENAME_RE,
         subdirectory="recognition",
         mode="recognition",
+        allow_relative_filename=True,
     )
 
 

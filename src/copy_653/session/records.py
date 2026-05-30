@@ -23,8 +23,9 @@ them uniformly.
 Files live in per-mode subdirectories under the configured save
 directory::
 
-    <save_directory>/koch-exercise/koch-exercise-20260515T193045Z.json
-    <save_directory>/cadence-send/cadence-send-20260515T193045Z.json
+    <save_directory>/koch-exercise/2026/05/koch-exercise-20260515T193045Z.json
+    <save_directory>/cadence-send/2026/05/cadence-send-20260515T193045Z.json
+    <save_directory>/recognition/2026/05/set-20260515T193045Z/session-01.json
 
 Writes are atomic — a same-directory temp file is filled and renamed
 into place — so a crash mid-write cannot leave a half-written record.
@@ -34,6 +35,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -47,6 +49,7 @@ from copy_653.sequence.exercise_analysis import apply_answers_to_entries
 from copy_653.sequence.recognition_analysis import analyse_recognition_exercises
 
 SCHEMA_VERSION = "2.1"
+_SAFE_FILENAME_COMPONENT_RE = re.compile(r"[^0-9A-Za-z_-]+")
 
 
 def _audio_snapshot(params: AudioParameters) -> dict[str, Any]:
@@ -79,6 +82,28 @@ def _format_filename_stamp(when: datetime) -> str:
     else:
         when = when.astimezone(timezone.utc)
     return when.strftime("%Y%m%dT%H%M%SZ")
+
+
+def _safe_filename_component(value: object, fallback: str) -> str:
+    text = str(value or "").strip()
+    cleaned = _SAFE_FILENAME_COMPONENT_RE.sub("-", text).strip("-_")
+    return cleaned or fallback
+
+
+def _recognition_filename_parts(record: RecognitionRecord, stamp: str) -> tuple[str, str]:
+    generation = record.generation or {}
+    set_id = _safe_filename_component(generation.get("set_id"), stamp)
+    set_session = generation.get("set_session")
+    if isinstance(set_session, bool):
+        session_number = 0
+    elif isinstance(set_session, int):
+        session_number = set_session
+    else:
+        try:
+            session_number = int(str(set_session))
+        except (TypeError, ValueError):
+            session_number = 0
+    return f"set-{set_id}", f"session-{max(0, session_number):02d}"
 
 
 @dataclass(slots=True)
@@ -365,7 +390,7 @@ def write_record(
     record: KochExerciseRecord | RecognitionRecord | CadenceSendRecord | CopyKeyRecord,
     save_directory: Path,
 ) -> Path:
-    """Write a session record to ``<save_directory>/<mode>/<stamp>.json``.
+    """Write a session record under its mode-specific save path.
 
     Returns the resolved path written. Creates the per-mode
     subdirectory on first use. Collisions at second resolution are
@@ -381,11 +406,14 @@ def write_record(
         when = when.replace(tzinfo=timezone.utc)
     else:
         when = when.astimezone(timezone.utc)
+    stamp = _format_filename_stamp(record.started_at)
     target_dir = save_directory / record.mode / when.strftime("%Y") / when.strftime("%m")
+    base = f"{record.mode}-{stamp}"
+    if isinstance(record, RecognitionRecord):
+        set_dir, base = _recognition_filename_parts(record, stamp)
+        target_dir = target_dir / set_dir
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    stamp = _format_filename_stamp(record.started_at)
-    base = f"{record.mode}-{stamp}"
     candidate = target_dir / f"{base}.json"
     suffix = 1
     while candidate.exists():

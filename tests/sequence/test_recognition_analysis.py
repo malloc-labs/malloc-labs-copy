@@ -10,10 +10,14 @@ from copy_653.sequence.recognition_analysis import (
     OUTCOME_SUBSTITUTION,
     analyse_recognition_exercises,
     build_recognition_generation_profile,
+    gear_for_recognition_set,
+    latest_completed_set_gear_for_claimed_set,
     latest_gears_for_claimed_set,
     load_band_evidence,
     load_recognition_confusion,
+    load_set_evidence,
     resolve_gears,
+    resolve_set_gear,
     window_exercise,
 )
 
@@ -269,10 +273,11 @@ def test_analyse_attaches_block_per_exercise_with_counts_and_streams():
     assert a1["version"] == ANALYSIS_VERSION
     assert a1["has_evidence"] is True
     assert a1["committed_answer"] == "UKU"
+    assert a1["method"] == "answer-alignment"
     assert a1["counts"] == {
-        OUTCOME_CORRECT: 2,
+        OUTCOME_CORRECT: 3,
         OUTCOME_SUBSTITUTION: 0,
-        OUTCOME_CAUGHT_CORRECT: 1,
+        OUTCOME_CAUGHT_CORRECT: 0,
         OUTCOME_CAUGHT_SUBSTITUTION: 0,
         OUTCOME_MISS: 0,
     }
@@ -280,8 +285,12 @@ def test_analyse_attaches_block_per_exercise_with_counts_and_streams():
     assert a1["recognition_state"] == "exact"
     assert a1["band_state"] == "exact"
     assert a1["saved"] is True
-    assert a1["caught_confusions"] == [["U", "R"]]
+    assert a1["caught_confusions"] == []
     assert a1["committed_confusions"] == []
+    timing1 = result[0]["timing_analysis"]
+    assert timing1["method"] == "onset-window"
+    assert timing1["counts"][OUTCOME_CAUGHT_CORRECT] == 1
+    assert timing1["caught_confusions"] == [["U", "R"]]
 
     a2 = result[1]["analysis"]
     assert a2["committed_answer"] == "MR"
@@ -316,8 +325,10 @@ def test_analyse_missing_voice_capture_field_is_all_miss():
 
     result = analyse_recognition_exercises(exercises, symbols)
 
-    assert result[0]["analysis"]["has_evidence"] is False
-    assert result[0]["analysis"]["counts"][OUTCOME_MISS] == 1
+    assert result[0]["analysis"]["has_evidence"] is True
+    assert result[0]["analysis"]["counts"][OUTCOME_CORRECT] == 1
+    assert result[0]["timing_analysis"]["has_evidence"] is False
+    assert result[0]["timing_analysis"]["counts"][OUTCOME_MISS] == 1
 
 
 def test_analyse_slots_are_lean_without_utterances():
@@ -326,7 +337,7 @@ def test_analyse_slots_are_lean_without_utterances():
         {"index": 1, "target": "K", "voice_capture": [_utt("kilo", ["K"], 3.0)]},
     ]
 
-    slots = analyse_recognition_exercises(exercises, symbols)[0]["analysis"]["slots"]
+    slots = analyse_recognition_exercises(exercises, symbols)[0]["timing_analysis"]["slots"]
 
     assert slots[0] == {
         "index": 1,
@@ -353,12 +364,25 @@ def test_analyse_distributes_word_response_across_grouped_symbols():
         },
     ]
 
-    analysis = analyse_recognition_exercises(exercises, symbols)[0]["analysis"]
+    result = analyse_recognition_exercises(exercises, symbols)[0]
+    analysis = result["analysis"]
+    timing = result["timing_analysis"]
 
-    assert analysis["committed_answer"] == "KM"
-    assert analysis["counts"][OUTCOME_CORRECT] == 2
-    assert analysis["counts"][OUTCOME_MISS] == 0
-    assert [slot["tokens"] for slot in analysis["slots"]] == [["K"], ["M"]]
+    assert analysis["committed_answer"] == ""
+    assert analysis["counts"][OUTCOME_MISS] == 2
+    assert timing["committed_answer"] == "KM"
+    assert timing["counts"][OUTCOME_CORRECT] == 2
+    assert timing["counts"][OUTCOME_MISS] == 0
+    assert [slot["tokens"] for slot in timing["slots"]] == [["K"], ["M"]]
+    assert (
+        analyse_recognition_exercises(
+            [{**exercises[0], "answer": "KM"}],
+            symbols,
+        )[0][
+            "analysis"
+        ]["committed_answer"]
+        == "KM"
+    )
 
 
 # ─── load_recognition_confusion (aggregation across records) ─────────────────
@@ -461,11 +485,95 @@ def test_generation_profile_records_per_slot_gears():
 
     assert profile["profile_version"] == "recognition-progression-v1"
     assert profile["claimed_set_key"] == "K M"
+    assert profile["gear"] == 0
     assert profile["bands"] == [
         {"index": 1, "gear": 0},
         {"index": 2, "gear": 1},
         {"index": 3, "gear": 2},
     ]
+
+
+def _recognition_set_record(
+    *,
+    set_id: str,
+    set_session: int,
+    gear: int,
+    fraction: float,
+) -> dict:
+    return {
+        "mode": "recognition",
+        "started_at": f"2026-05-18T13:{set_session:02d}:00Z",
+        "generation": {
+            "claimed_set_key": "K M",
+            "set_id": set_id,
+            "set_session": set_session,
+            "gear": gear,
+            "bands": [{"index": index, "gear": gear} for index in range(1, 6)],
+        },
+        "exercises": [
+            {
+                "index": index,
+                "burden_band": index,
+                "gear": gear,
+                "analysis": {
+                    "has_evidence": fraction > 0,
+                    "combined_fraction": fraction,
+                    "recognition_state": "exact" if fraction >= 1.0 else "silent",
+                },
+            }
+            for index in range(1, 6)
+        ],
+    }
+
+
+def test_recognition_set_evidence_advances_after_completed_strong_set():
+    records = [
+        _recognition_set_record(set_id="set-a", set_session=session, gear=0, fraction=1.0)
+        for session in range(1, 9)
+    ]
+
+    evidence = load_set_evidence(records, claimed_set_key="K M")
+
+    assert evidence["set_count"] == 1
+    assert evidence["strong_streak"] == 1
+    assert latest_completed_set_gear_for_claimed_set(records, claimed_set_key="K M") == 0
+    assert resolve_set_gear(evidence, current_gear=0) == 1
+
+
+def test_recognition_set_evidence_ignores_incomplete_set_for_progression():
+    records = [
+        _recognition_set_record(set_id="set-a", set_session=session, gear=0, fraction=1.0)
+        for session in range(1, 8)
+    ]
+
+    evidence = load_set_evidence(records, claimed_set_key="K M")
+
+    assert evidence["set_count"] == 0
+    assert evidence["strong_streak"] == 0
+    assert resolve_set_gear(evidence, current_gear=0) == 0
+
+
+def test_recognition_set_evidence_counts_silent_sessions_against_progression():
+    records = [
+        _recognition_set_record(set_id="set-a", set_session=session, gear=1, fraction=1.0)
+        for session in range(1, 8)
+    ]
+    records.append(_recognition_set_record(set_id="set-a", set_session=8, gear=1, fraction=0.0))
+
+    evidence = load_set_evidence(records, claimed_set_key="K M")
+
+    assert evidence["recent_fractions"] == [0.875]
+    assert evidence["strong_streak"] == 0
+    assert resolve_set_gear(evidence, current_gear=1) == 1
+
+
+def test_recognition_set_gear_can_be_reused_inside_active_set():
+    records = [
+        _recognition_set_record(set_id="set-a", set_session=session, gear=2, fraction=0.5)
+        for session in range(1, 3)
+    ]
+
+    assert gear_for_recognition_set(records, claimed_set_key="K M", set_id="set-a") == 2
 
 
 def test_load_band_evidence_and_resolve_gears_for_recognition():

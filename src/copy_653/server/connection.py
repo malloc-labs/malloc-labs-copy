@@ -71,7 +71,12 @@ from copy_653.server.letter_playback_actions import (
     _run_letter_sequence,
     _run_morse_repeat,
 )
-from copy_653.server.recognition_actions import _start_recognition_action
+from copy_653.server.recognition_actions import (
+    ActiveRecognitionSession,
+    _coerce_recognition_exercise_completion,
+    _run_recognition_session,
+    _start_recognition_action,
+)
 from copy_653.server.records import (
     _ActiveCadenceSession,
     _ActiveCopyKeySession,
@@ -152,6 +157,7 @@ class ConnectionState:
     recognition_set_id: str = ""
     recognition_last_session_ended_at: float | None = None
     pending_recognition_record_path: Path | None = None
+    recognition: ActiveRecognitionSession | None = None
 
     @property
     def is_fresh_set(self) -> bool:
@@ -358,25 +364,30 @@ async def _run_start_recognition_session(state: ConnectionState) -> None:
             state.recognition_set_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
         set_session = state.recognition_session_next
-        record_path = await _start_recognition_action(
+        recognition = await _start_recognition_action(
             state.ws,
             state.config_path,
             set_session=set_session,
             set_id=state.recognition_set_id,
             anchors_dir=state.anchors_dir,
         )
+        if recognition is None:
+            return
+        state.recognition = recognition
+        await _run_recognition_session(recognition)
         state.recognition_session_next += 1
         if state.recognition_session_next > 8:
             state.recognition_session_next = 1
 
-        state.pending_recognition_record_path = record_path
         state.recognition_last_session_ended_at = time.monotonic()
+        state.recognition = None
     except ValueError as exc:
         await _send_event(
             state.ws,
             {"type": "error", "reason": "invalid-config", "detail": str(exc)},
         )
     except asyncio.CancelledError:
+        state.recognition = None
         await _send_event(state.ws, {"type": "session-end"})
 
 
@@ -483,6 +494,18 @@ async def handler(
                 )
                 if saved:
                     state.pending_recognition_record_path = None
+            elif action == "complete-recognition-exercise":
+                if state.recognition is None:
+                    await _send_event(ws, {"type": "error", "reason": "no-active-recognition"})
+                else:
+                    completion = _coerce_recognition_exercise_completion(message)
+                    if completion is None:
+                        await _send_event(
+                            ws,
+                            {"type": "error", "reason": "invalid-recognition-exercise"},
+                        )
+                    else:
+                        await state.recognition.push_completion(completion)
             elif action == "request-copy-exercises":
                 # A fresh request closes any in-flight Cadence session
                 # before opening a new one — we never silently merge

@@ -389,6 +389,27 @@ function updateNavButtons() {
     }
 }
 
+function detailTitle(record) {
+    const parts = [formatStartedAt(record.started_at)];
+    const groupSession = groupedSessionIndex(record);
+    if (Number.isInteger(groupSession)) {
+        parts.push(`Session ${groupSession}`);
+    }
+    return parts.join(" · ");
+}
+
+function groupedSessionIndex(record) {
+    const setId = record?.generation?.set_id ?? record?.set_id;
+    if (!setId) return null;
+    const groups = groupBySet(currentRecords).filter((group) => group.set_id);
+    let sessionIndex = groups.length;
+    for (const group of groups) {
+        if (group.set_id === setId) return sessionIndex;
+        sessionIndex -= 1;
+    }
+    return null;
+}
+
 async function openDetail(filename, row) {
     clearOpenDetail();
     openFilename = filename;
@@ -401,7 +422,7 @@ async function openDetail(filename, row) {
     try {
         const record = await loadRecord(filename);
         if (openFilename !== filename) return;
-        detailDialogTitle.textContent = formatStartedAt(record.started_at);
+        detailDialogTitle.textContent = detailTitle(record);
         renderDetail(record);
         updateNavButtons();
     } catch (err) {
