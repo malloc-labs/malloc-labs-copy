@@ -29,9 +29,19 @@ from __future__ import annotations
 
 from typing import Any
 
-from copy_653.sequence.exercise_analysis import record_claimed_set_key
+from copy_653.sequence.exercise_analysis import (
+    DEFAULT_EVIDENCE_WINDOW_SIZE,
+    LOW_FRACTION,
+    MAX_GEAR,
+    N_CLEAN_RUNS_FOR_SHIFT,
+    N_LOW_RUNS_FOR_SHIFT_DOWN,
+    STRONG_FRACTION,
+    _streak_at_current_gear,
+    record_claimed_set_key,
+)
 
 ANALYSIS_VERSION = "recognition-analysis-v1"
+GENERATION_PROFILE_VERSION = "recognition-progression-v1"
 
 # Per-slot outcome labels. ``caught_*`` outcomes carry one or more
 # superseded tokens — a false start the learner spoke before committing.
@@ -40,6 +50,8 @@ OUTCOME_SUBSTITUTION = "substitution"
 OUTCOME_CAUGHT_CORRECT = "caught_correct"
 OUTCOME_CAUGHT_SUBSTITUTION = "caught_substitution"
 OUTCOME_MISS = "miss"
+
+N_LOW_RUNS_FOR_RECOGNITION_SHIFT_DOWN = N_LOW_RUNS_FOR_SHIFT_DOWN
 
 
 def window_exercise(
@@ -78,10 +90,14 @@ def window_exercise(
     ``slots``.
     """
     ordered = _ordered_symbols(symbols)
-    onsets = [t_on for _, t_on in ordered]
+    onsets = [float(entry["t_on"]) for entry in ordered]
 
     # Bucket utterances by the latest symbol whose t_on <= t. Index -1
-    # is the pre-symbol bucket (arrived before anything played).
+    # is the pre-symbol bucket (arrived before anything played). Gear 2+
+    # records may play a whole word/pair before the recognition window;
+    # when a multi-token utterance lands after the final symbol in that
+    # word, distribute those tokens across the word slots instead of
+    # forcing them all onto the final symbol.
     buckets: dict[int, list[dict[str, Any]]] = {}
     pre_symbol: list[dict[str, Any]] = []
     for utterance in voice_capture:
@@ -90,7 +106,15 @@ def window_exercise(
         if slot < 0:
             pre_symbol.append(utterance)
         else:
-            buckets.setdefault(slot, []).append(utterance)
+            tokens = _utterance_symbols(utterance)
+            distributed = _distribute_word_utterance(ordered, slot, utterance, tokens)
+            if distributed:
+                for target_slot, token in distributed:
+                    split = dict(utterance)
+                    split["symbols"] = [token]
+                    buckets.setdefault(target_slot, []).append(split)
+            else:
+                buckets.setdefault(slot, []).append(utterance)
 
     slots: list[dict[str, Any]] = []
     committed_tokens: list[str] = []
@@ -99,7 +123,9 @@ def window_exercise(
     saw_miss = False
     saw_multi_token = False
 
-    for index, (truth, t_on) in enumerate(ordered):
+    for index, entry in enumerate(ordered):
+        truth = str(entry["symbol"])
+        t_on = float(entry["t_on"])
         utterances = buckets.get(index, [])
         utterances.sort(key=_utterance_time)
         tokens = [tok for utterance in utterances for tok in _utterance_symbols(utterance)]
@@ -179,7 +205,7 @@ def analyse_recognition_exercises(
         ex_symbols = by_index.get(index, []) if isinstance(index, int) else []
         capture = exercise.get("voice_capture")
         windowed = window_exercise(ex_symbols, capture if isinstance(capture, list) else [])
-        merged["analysis"] = _analysis_from_windowed(windowed)
+        merged["analysis"] = _analysis_from_windowed(windowed, exercise)
         updated.append(merged)
     return updated
 
@@ -195,7 +221,7 @@ def _symbols_by_exercise(symbols: list[dict[str, Any]]) -> dict[int, list[dict[s
     return out
 
 
-def _analysis_from_windowed(windowed: dict[str, Any]) -> dict[str, Any]:
+def _analysis_from_windowed(windowed: dict[str, Any], exercise: dict[str, Any]) -> dict[str, Any]:
     """Build the persisted ``analysis`` block from one windowed exercise.
 
     Slots are stored lean — without their ``utterances``, which already
@@ -212,6 +238,12 @@ def _analysis_from_windowed(windowed: dict[str, Any]) -> dict[str, Any]:
     }
     for slot in slots:
         counts[slot["outcome"]] += 1
+    correctish = counts[OUTCOME_CORRECT] + counts[OUTCOME_CAUGHT_CORRECT]
+    total = sum(counts.values())
+    combined_fraction = _fraction(correctish, total)
+    has_evidence = any(slot["committed"] is not None for slot in slots)
+    gear = _coerce_int(exercise.get("gear"), 0)
+    burden_band = _coerce_int(exercise.get("burden_band"), _coerce_int(exercise.get("index"), 0))
     lean_slots = [
         {
             "index": slot["index"],
@@ -226,14 +258,159 @@ def _analysis_from_windowed(windowed: dict[str, Any]) -> dict[str, Any]:
     ]
     return {
         "version": ANALYSIS_VERSION,
-        "has_evidence": any(slot["committed"] is not None for slot in slots),
+        "saved": True,
+        "has_evidence": has_evidence,
         "committed_answer": windowed["committed_answer"],
         "counts": counts,
+        "combined_fraction": round(combined_fraction, 6),
+        "recognition_state": _recognition_state(combined_fraction, has_evidence=has_evidence),
+        "band_state": _recognition_state(combined_fraction, has_evidence=has_evidence),
+        "burden_band": burden_band,
+        "gear": gear,
         "committed_confusions": windowed["committed_confusions"],
         "caught_confusions": windowed["caught_confusions"],
         "ambiguous_lag": windowed["ambiguous_lag"],
         "slots": lean_slots,
     }
+
+
+def build_recognition_generation_profile(
+    *,
+    claimed_set: tuple[str, ...],
+    exercise_count: int,
+    gears: list[int] | None = None,
+) -> dict[str, Any]:
+    """Build Recognition generation metadata with per-slot gears."""
+    resolved_gears = gears if gears is not None else [0] * exercise_count
+    return {
+        "profile_version": GENERATION_PROFILE_VERSION,
+        "claimed_set_key": " ".join(sorted(claimed_set)),
+        "exercise_count": exercise_count,
+        "bands": [
+            {
+                "index": idx + 1,
+                "gear": resolved_gears[idx] if idx < len(resolved_gears) else 0,
+            }
+            for idx in range(exercise_count)
+        ],
+    }
+
+
+def load_band_evidence(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+    window_size: int = DEFAULT_EVIDENCE_WINDOW_SIZE,
+) -> dict[str, Any]:
+    """Aggregate recent Recognition evidence by exercise slot."""
+    matching = [
+        record
+        for record in records
+        if isinstance(record, dict)
+        and record.get("mode") == "recognition"
+        and record_claimed_set_key(record) == claimed_set_key
+    ]
+    matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
+    window = matching[: max(0, window_size)]
+
+    band_entries: dict[int, list[tuple[float, str, int]]] = {}
+    for session in window:
+        session_gears = _gears_from_generation(session.get("generation"))
+        exercises = session.get("exercises")
+        if not isinstance(exercises, list):
+            continue
+        for exercise in exercises:
+            if not isinstance(exercise, dict):
+                continue
+            analysis = exercise.get("analysis")
+            if not isinstance(analysis, dict) or analysis.get("has_evidence") is not True:
+                continue
+            band = exercise.get("burden_band")
+            if not isinstance(band, int) or isinstance(band, bool):
+                band = exercise.get("index")
+            if not isinstance(band, int) or isinstance(band, bool):
+                continue
+            fraction = analysis.get("combined_fraction")
+            if not isinstance(fraction, (int, float)) or isinstance(fraction, bool):
+                continue
+            state = analysis.get("recognition_state") or analysis.get("band_state") or ""
+            gear = session_gears.get(band, _coerce_int(exercise.get("gear"), 0))
+            band_entries.setdefault(band, []).append((float(fraction), str(state), gear))
+
+    bands: list[dict[str, Any]] = []
+    for band_index in sorted(band_entries):
+        entries = band_entries[band_index]
+        bands.append(
+            {
+                "burden_band": band_index,
+                "recent_fractions": [round(f, 6) for f, _, _ in entries],
+                "recent_band_states": [s for _, s, _ in entries],
+                "strong_streak": _streak_at_current_gear(
+                    entries,
+                    lambda v: v >= STRONG_FRACTION,
+                ),
+                "low_streak": _streak_at_current_gear(entries, lambda v: v < LOW_FRACTION),
+            }
+        )
+
+    return {
+        "claimed_set_key": claimed_set_key,
+        "session_count": len(matching),
+        "window_size": window_size,
+        "sessions_used": len(window),
+        "bands": bands,
+    }
+
+
+def latest_gears_for_claimed_set(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+) -> dict[int, int]:
+    matching = [
+        record
+        for record in records
+        if isinstance(record, dict)
+        and record.get("mode") == "recognition"
+        and record_claimed_set_key(record) == claimed_set_key
+    ]
+    if not matching:
+        return {}
+    matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
+    return _gears_from_generation(matching[0].get("generation"))
+
+
+def resolve_gears(
+    evidence: dict[str, Any],
+    *,
+    current_gears: dict[int, int],
+    max_gear: int = MAX_GEAR,
+    n_clean_runs_for_shift: int = N_CLEAN_RUNS_FOR_SHIFT,
+    n_low_runs_for_shift_down: int = N_LOW_RUNS_FOR_RECOGNITION_SHIFT_DOWN,
+) -> dict[int, int]:
+    resolved: dict[int, int] = dict(current_gears)
+    for band in evidence.get("bands") or []:
+        if not isinstance(band, dict):
+            continue
+        burden_band = band.get("burden_band")
+        if not isinstance(burden_band, int) or isinstance(burden_band, bool):
+            continue
+        current = resolved.get(burden_band, 0)
+        strong_streak = band.get("strong_streak", 0)
+        low_streak = band.get("low_streak", 0)
+        if (
+            isinstance(strong_streak, int)
+            and strong_streak >= n_clean_runs_for_shift
+            and current < max_gear
+        ):
+            resolved[burden_band] = current + 1
+        elif (
+            isinstance(low_streak, int) and low_streak >= n_low_runs_for_shift_down and current > 0
+        ):
+            resolved[burden_band] = current - 1
+        else:
+            resolved[burden_band] = current
+    return resolved
 
 
 def load_recognition_confusion(
@@ -293,6 +470,42 @@ def load_recognition_confusion(
     }
 
 
+def _recognition_state(value: float, *, has_evidence: bool) -> str:
+    if not has_evidence:
+        return "silent"
+    if value < 0.70:
+        return "low"
+    if value < 0.85:
+        return "building"
+    if value < 0.95:
+        return "steady"
+    if value < 1.0:
+        return "strong"
+    return "exact"
+
+
+def _gears_from_generation(generation: Any) -> dict[int, int]:
+    if not isinstance(generation, dict):
+        return {}
+    bands = generation.get("bands")
+    if not isinstance(bands, list):
+        return {}
+    out: dict[int, int] = {}
+    for entry in bands:
+        if not isinstance(entry, dict):
+            continue
+        idx = entry.get("index")
+        gear = entry.get("gear", 0)
+        if (
+            isinstance(idx, int)
+            and not isinstance(idx, bool)
+            and isinstance(gear, int)
+            and not isinstance(gear, bool)
+        ):
+            out[idx] = gear
+    return out
+
+
 def _tally_pair(counter: dict[tuple[str, str], int], pair: Any) -> None:
     """Increment ``(target, typed)`` if ``pair`` is a well-formed string pair."""
     if not isinstance(pair, (list, tuple)) or len(pair) != 2:
@@ -318,14 +531,58 @@ def _classify(truth: str, committed: str | None, superseded: list[str]) -> str:
     return OUTCOME_CORRECT if committed == truth else OUTCOME_SUBSTITUTION
 
 
-def _ordered_symbols(symbols: list[dict[str, Any]]) -> list[tuple[str, float]]:
+def _fraction(correct: int, available: int, *, default: float = 0.0) -> float:
+    if available <= 0:
+        return default
+    return max(0.0, min(1.0, correct / available))
+
+
+def _coerce_int(value: Any, default: int) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return default
+
+
+def _distribute_word_utterance(
+    ordered: list[dict[str, Any]],
+    latest_slot: int,
+    utterance: dict[str, Any],
+    tokens: list[str],
+) -> list[tuple[int, str]]:
+    if len(tokens) <= 1:
+        return []
+    if latest_slot < 0 or latest_slot >= len(ordered):
+        return []
+    latest = ordered[latest_slot]
+    word = latest.get("word")
+    word_index = latest.get("word_index")
+    if not isinstance(word, str) or len(word) <= 1:
+        return []
+    if not isinstance(word_index, int) or isinstance(word_index, bool):
+        return []
+    exercise_index = latest.get("exercise_index")
+    word_slots = [
+        idx
+        for idx, entry in enumerate(ordered)
+        if entry.get("exercise_index") == exercise_index
+        and entry.get("word_index") == word_index
+        and entry.get("word") == word
+    ]
+    if not word_slots or latest_slot != word_slots[-1]:
+        return []
+    if len(tokens) > len(word_slots):
+        return []
+    return list(zip(word_slots[: len(tokens)], tokens, strict=False))
+
+
+def _ordered_symbols(symbols: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Return ``[(symbol, t_on), ...]`` sorted by onset.
 
     Entries without a usable symbol or numeric ``t_on`` are skipped — a
     malformed schedule should not crash the loader (spec §1.5 is about
     config; here a defensive skip keeps derived evidence honest).
     """
-    out: list[tuple[str, float]] = []
+    out: list[dict[str, Any]] = []
     for entry in symbols:
         if not isinstance(entry, dict):
             continue
@@ -335,8 +592,11 @@ def _ordered_symbols(symbols: list[dict[str, Any]]) -> list[tuple[str, float]]:
             continue
         if not _is_number(t_on):
             continue
-        out.append((symbol, float(t_on)))
-    out.sort(key=lambda pair: pair[1])
+        clean = dict(entry)
+        clean["symbol"] = symbol
+        clean["t_on"] = float(t_on)
+        out.append(clean)
+    out.sort(key=lambda item: float(item["t_on"]))
     return out
 
 
