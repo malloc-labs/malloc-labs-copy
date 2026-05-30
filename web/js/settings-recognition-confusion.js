@@ -81,3 +81,9 @@ async function loadConfusion() {
 }
 
 loadConfusion();
+
+window.addEventListener("copy-settings-records-changed", (event) => {
+    if (event.detail?.kind === "recognition") {
+        loadConfusion();
+    }
+});
