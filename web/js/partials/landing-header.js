@@ -11,7 +11,7 @@
 //                   the title; used by the root /index.html where
 //                   there is no parent to link back to
 //   eyebrow       — text for the back-link eyebrow (e.g. "Copy 653",
-//                   "Guided Listening")
+//                   "Koch Method")
 //   eyebrow-href  — href for the back-link; defaults to "index.html"
 //                   (the sibling-landing convention). Subdirectory
 //                   index pages override to "../index.html".

@@ -22,7 +22,7 @@ The project supports the development of:
 - uncertainty tolerance
 - confidence formation
 - reflective listening
-- operationally realistic copy
+- realistic copy
 
 The intended learner is one who wants to develop the actual skill rather than proficiency at interacting with training software.
 
@@ -38,7 +38,7 @@ It is not primarily:
 - a reaction-time test
 - a visual recognition problem
 
-Operational CW listening involves:
+CW listening involves:
 
 - partial copy
 - environmental noise
@@ -68,7 +68,7 @@ rather than:
 
 sound → visual symbol → meaning pathways.
 
-The foundational premise: humans learn auditory systems most effectively when immersion, uncertainty, reflection, and operational realism are preserved. Copy is the structure that preserves them.
+The foundational premise: humans learn auditory systems most effectively when immersion, uncertainty, reflection, and realism are preserved. Copy is the structure that preserves them.
 
 ---
 
@@ -80,13 +80,13 @@ The following contracts are load-bearing. They are stated once, here, and every 
 
 The learner's attention belongs to the audio. The screen exists to deliver and to expose; it does not narrate, score, or interrupt. The paper notebook is part of the interface. The software's success is measured by how little of the listening session passes through it.
 
-### 3.2 The meaning anchor comes from the operational vocabulary, not the literacy vocabulary
+### 3.2 The meaning anchor comes from the radio vocabulary, not the literacy vocabulary
 
-A new symbol is introduced by pairing its CW pattern with a spoken anchor. That anchor must come from the working vocabulary of the operational domain, not from the letter names of written language.
+A new symbol is introduced by pairing its CW pattern with a spoken anchor. That anchor must come from the working vocabulary of radio communication, not from the letter names of written language.
 
-In practice, this means NATO phonetic — "Kilo" rather than "kay", "Mike" rather than "em", "Whiskey" rather than "double-you". This choice is not aesthetic. Operational vocabularies were built to be unambiguous over voice radio under degraded conditions; they are the right anchors for an auditory skill that will be exercised in similar conditions.
+In practice, this means NATO phonetic — "Kilo" rather than "kay", "Mike" rather than "em", "Whiskey" rather than "double-you". This choice is not aesthetic. Radio vocabularies were built to be unambiguous over voice under degraded conditions; they are the right anchors for an auditory skill that will be exercised in similar conditions.
 
-The principle generalises beyond letters. Anchors for callsigns, prosigns, or whole transmissions ("CQ CQ CQ") follow the same rule: the spoken form is the operational form.
+The principle generalises beyond letters. Anchors for callsigns, prosigns, or whole transmissions ("CQ CQ CQ") follow the same rule: the spoken form is the radio form.
 
 ### 3.3 Verification is deferred, and the form of verification matches the form of the claim
 
@@ -95,7 +95,7 @@ The system does not interrupt listening to ask whether the learner heard correct
 Different exercises produce different kinds of claim, and the verification mechanism must match:
 
 - A reconstruction claim — partial copy in personal shorthand, captured in the paper notebook — is reflected against the truth, not graded by it.
-- An active-acknowledgement claim — a keypress or an operational gesture (e.g. keying "R") made in real time — is reconciled against the truth on a timeline.
+- An active-acknowledgement claim — a keypress or radio gesture (e.g. keying "R") made in real time — is reconciled against the truth on a timeline.
 
 Verification is never softer than the claim it answers, and never harder. Where both kinds of claim are made within one session, both are answered in their respective forms.
 
@@ -110,7 +110,7 @@ Two axes of difficulty exist independently:
 - **Symbol complexity** — the number of symbols the learner has claimed competence in.
 - **Signal complexity** — the realism and imperfection of the listening environment (fading, static, fist variation, tone variation, weak-signal emergence, imperfect rhythm).
 
-Many training systems grow both at once. Copy holds the symbol set small (only known symbols appear in any stream) and grows signal complexity as the working axis. This reflects how operational competence is actually developed: the vocabulary stays bounded; the conditions get harder.
+Many training systems grow both at once. Copy holds the symbol set small (only known symbols appear in any stream) and grows signal complexity as the working axis. This reflects how listening competence is actually developed: the vocabulary stays bounded; the conditions get harder.
 
 ### 3.6 The mentor is structurally absent and that absence is acknowledged
 
@@ -191,11 +191,11 @@ Each learner develops their own notebook practice. Copy supports that emergence 
 
 ---
 
-## 7 Operational Realism
+## 7 Realistic Listening
 
 The skills Copy trains are not specific to amateur radio.
 
-Sustained attention under partial information, confidence under ambiguity, recovery from gaps, gradual reconciliation, and continued operation despite incomplete understanding are competencies shared across operational disciplines:
+Sustained attention under partial information, confidence under ambiguity, recovery from gaps, gradual reconciliation, and continued use despite incomplete understanding are competencies shared across demanding disciplines:
 
 - emergency and crisis management
 - aviation communications
