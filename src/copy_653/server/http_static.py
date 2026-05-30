@@ -214,6 +214,18 @@ def _api_recognition_confusion(
     )
 
 
+def _api_recognitions(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
+    return _json_response(_list_recognitions(config_path))
+
+
+def _api_recognition(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
+    return _read_recognition(config_path, _first_query_value(params, "file", "filename"))
+
+
+def _api_delete_recognition(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
+    return _delete_recognition(config_path, _first_query_value(params, "file", "filename"))
+
+
 def _api_cadence_sends(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
     return _json_response(_list_cadence_sends(config_path))
 
@@ -310,6 +322,9 @@ _API_ROUTES: dict[str, ApiHandler] = {
     "/api/koch-band-history": _api_koch_band_history,
     "/api/koch-confusion": _api_koch_confusion,
     "/api/recognition-confusion": _api_recognition_confusion,
+    "/api/recognitions": _api_recognitions,
+    "/api/recognition": _api_recognition,
+    "/api/delete-recognition": _api_delete_recognition,
     "/api/cadence-sends": _api_cadence_sends,
     "/api/cadence-send": _api_cadence_send,
     "/api/delete-cadence-send": _api_delete_cadence_send,
@@ -364,6 +379,7 @@ def _json_response(payload: dict[str, Any]) -> tuple[HTTPStatus, list[tuple[str,
 _KOCH_FILENAME_RE = re.compile(r"^koch-exercise-[0-9A-Za-z-]+\.json$")
 _CADENCE_FILENAME_RE = re.compile(r"^cadence-send-[0-9A-Za-z-]+\.json$")
 _COPY_KEY_FILENAME_RE = re.compile(r"^copy-key-[0-9A-Za-z-]+\.json$")
+_RECOGNITION_FILENAME_RE = re.compile(r"^recognition-[0-9A-Za-z-]+\.json$")
 
 
 # ---------------------------------------------------------------------------
@@ -566,6 +582,7 @@ _BACKUP_KINDS: dict[str, str] = {
     "koch-exercise": "koch-exercise",
     "cadence-send": "cadence-send",
     "copy-key": "copy-key",
+    "recognition": "recognition",
 }
 
 
@@ -770,6 +787,39 @@ def _read_recognition_confusion(
         }
 
     return load_recognition_confusion(records, claimed_set_key=resolved_key)
+
+
+# ---------------------------------------------------------------------------
+# Recognition record endpoints (records table / calendar / backup)
+# ---------------------------------------------------------------------------
+
+
+def _list_recognitions(config_path: Path | None) -> dict[str, Any]:
+    return _list_records(config_path, subdirectory="recognition", mode="recognition")
+
+
+def _read_recognition(
+    config_path: Path | None, filename: str
+) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
+    return _read_record_file(
+        config_path=config_path,
+        filename=filename,
+        filename_re=_RECOGNITION_FILENAME_RE,
+        subdirectory="recognition",
+        mode="recognition",
+    )
+
+
+def _delete_recognition(
+    config_path: Path | None, filename: str
+) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
+    return _delete_record_file(
+        config_path=config_path,
+        filename=filename,
+        filename_re=_RECOGNITION_FILENAME_RE,
+        subdirectory="recognition",
+        mode="recognition",
+    )
 
 
 # ---------------------------------------------------------------------------

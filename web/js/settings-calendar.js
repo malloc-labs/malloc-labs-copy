@@ -265,6 +265,12 @@ mountCalendar({
     emptyLabel: "saved copy > key sessions",
 });
 
+mountCalendar({
+    root: document.getElementById("settings-recognition-calendar"),
+    endpoint: "/api/recognitions",
+    emptyLabel: "saved recognition sessions",
+});
+
 // Wire each [data-calendar-open="<dialog-id>"] trigger to showModal()
 // the matching <dialog>. Clicking the backdrop closes the dialog —
 // matches the existing settings-koch-lifetime dialog behaviour.
