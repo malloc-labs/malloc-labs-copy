@@ -424,6 +424,25 @@
     white-space: nowrap;
 }
 
+.settings-recognition-detail__exercises-table {
+    min-width: 1040px;
+}
+
+.settings-recognition-detail__exercises-table th:nth-child(2),
+.settings-recognition-detail__exercises-table td:nth-child(2),
+.settings-recognition-detail__exercises-table th:nth-child(3),
+.settings-recognition-detail__exercises-table td:nth-child(3),
+.settings-recognition-detail__exercises-table th:nth-child(4),
+.settings-recognition-detail__exercises-table td:nth-child(4) {
+    width: 9rem;
+}
+
+.settings-recognition-detail__exercises-table th:nth-child(9),
+.settings-recognition-detail__exercises-table td:nth-child(9) {
+    width: 11rem;
+    white-space: normal;
+}
+
 .settings-koch-detail__exercises-table th[data-tooltip] {
     position: relative;
     cursor: help;

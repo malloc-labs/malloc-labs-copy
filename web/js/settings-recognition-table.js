@@ -3,18 +3,17 @@
 // Fetches /api/recognitions and renders one row per saved record:
 // sequence number (1 = most recent), local date & time, the claimed
 // set the session drew from, and the exercise count. Clicking a row
-// opens a detail dialog with the per-exercise breakdown derived from
-// the voice-honest `analysis` block (recognition_analysis): the truth
-// symbol, what was committed (heard), the outcome, and any
-// self-corrected false start.
+// opens a detail dialog with an exercise-level summary derived from
+// the voice-honest `analysis` block (recognition_analysis): what was
+// played, what Vosk heard, what the learner committed after review,
+// per-exercise outcome counts, and the two confusion streams.
 //
-// Recognition is NOT geared — there is no band/gear/state column here
-// and no weighted score. The detail surfaces counts and outcomes only,
-// the substrate a future gear model would divide. A silent exercise is
-// neutral ("nothing heard"), neither evidence nor error. The committed
-// (heard) column is voice-derived and may differ from the learner's
-// editable answer by design; we show what was heard, not a reconciled
-// value. Backend evidence, not a score (spec §9).
+// Recognition has no state or gear model yet. Those columns are shown
+// as reserved placeholders so the table shape can match the other
+// Settings record dialogs without inventing backend semantics. A silent
+// exercise is neutral ("nothing heard"), neither evidence nor error.
+// The Heard column is voice-derived and may differ from the learner's
+// editable Answer by design. Backend evidence, not a score (spec §9).
 
 const tbody = document.getElementById("settings-recognition-tbody");
 const metaEl = document.getElementById("settings-recognition-records-meta");
@@ -80,25 +79,55 @@ function buildMetaGrid(record) {
 
 const EXERCISES_COLUMNS = [
     { label: "#" },
-    { label: "Symbol" },
+    { label: "Played" },
     {
         label: "Heard",
         tooltip:
-            "What was committed for this symbol — the last thing said in the recognition " +
+            "What was committed for this exercise — the last thing said in each recognition " +
             "window. Voice-derived, so it may differ from a later edited answer.",
     },
     {
-        label: "Outcome",
+        label: "Answer",
         tooltip:
-            "correct / substitution (committed the wrong symbol) / caught-correct or " +
-            "caught-substitution (a false start was superseded before committing) / miss. " +
-            "A silent window reads as “nothing heard” and counts as neither evidence nor error.",
+            "What the learner saved after the session. This can differ from Heard when " +
+            "the recogniser transcript was edited before saving.",
     },
     {
-        label: "Self-corrected",
+        label: "Correct",
         tooltip:
-            "False starts the learner said then superseded before committing — evidence a " +
-            "discrimination is forming, kept separate from committed errors.",
+            "Correct recognition windows over total windows in this exercise. Caught " +
+            "corrections are counted separately, not as plain correct.",
+    },
+    {
+        label: "Subst.",
+        tooltip: "Committed substitutions — windows where the final heard symbol was wrong.",
+    },
+    {
+        label: "Caught",
+        tooltip:
+            "Self-corrections — false starts superseded before the final committed symbol.",
+    },
+    {
+        label: "Miss",
+        tooltip: "Windows where no symbol was heard.",
+    },
+    {
+        label: "Confusions",
+        tooltip:
+            "Committed confusions and caught false starts, kept separate. 'caught' means " +
+            "the learner superseded the false start before committing.",
+    },
+    {
+        label: "State",
+        tooltip:
+            "Reserved for a future Recognition state model. Recognition does not define " +
+            "state yet, so current records show a dash.",
+    },
+    {
+        label: "Gear",
+        tooltip:
+            "Reserved for a future Recognition gear model. Recognition does not define " +
+            "gears yet, so current records show a dash.",
     },
 ];
 
@@ -112,7 +141,7 @@ function buildExercisesHead() {
         if (col.tooltip) {
             th.dataset.tooltip = col.tooltip;
             th.tabIndex = 0;
-            if (idx >= EXERCISES_COLUMNS.length - 2) {
+            if (idx >= EXERCISES_COLUMNS.length - 3) {
                 th.dataset.tooltipAlign = "right";
             }
         }
@@ -122,22 +151,102 @@ function buildExercisesHead() {
     return thead;
 }
 
-// Recognition exercises play one symbol per window, so an analysis
-// carries at most one slot. Collapse a slot list defensively in case a
-// future exercise plays more than one.
-function summariseSlots(slots) {
-    if (!Array.isArray(slots) || slots.length === 0) {
-        return { heard: "-", outcome: "nothing heard", caught: "-" };
+function formatSymbolSequence(value) {
+    if (typeof value !== "string" || value.length === 0) return "-";
+    const trimmed = value.trim();
+    if (!trimmed) return "-";
+    if (/\s/.test(trimmed)) return trimmed.replace(/\s+/g, " ");
+    return Array.from(trimmed).join(" ");
+}
+
+function countsForExercise(analysis) {
+    const counts = analysis && typeof analysis === "object" ? analysis.counts || {} : {};
+    const correct = finiteCount(counts.correct);
+    const substitution = finiteCount(counts.substitution);
+    const caughtCorrect = finiteCount(counts.caught_correct);
+    const caughtSubstitution = finiteCount(counts.caught_substitution);
+    const miss = finiteCount(counts.miss);
+    const caught = caughtCorrect + caughtSubstitution;
+    const total = correct + substitution + caught + miss;
+    return { correct, substitution, caught, miss, total };
+}
+
+function finiteCount(value) {
+    return Number.isFinite(value) ? value : 0;
+}
+
+function countPairKey(pair) {
+    if (!Array.isArray(pair) || pair.length !== 2) return null;
+    const [target, heard] = pair;
+    if (typeof target !== "string" || typeof heard !== "string") return null;
+    if (!target || !heard) return null;
+    return `${target}->${heard}`;
+}
+
+function summarisePairs(pairs) {
+    const tallies = new Map();
+    if (Array.isArray(pairs)) {
+        pairs.forEach((pair) => {
+            const key = countPairKey(pair);
+            if (key) tallies.set(key, (tallies.get(key) || 0) + 1);
+        });
     }
-    const heard = slots
-        .map((s) => (typeof s.committed === "string" && s.committed.length ? s.committed : "·"))
-        .join(" ");
-    const outcome = slots.map((s) => s.outcome || "-").join(", ");
-    const caughtSymbols = slots
-        .flatMap((s) => (Array.isArray(s.superseded) ? s.superseded : []))
-        .filter((sym) => typeof sym === "string" && sym.length);
-    const caught = caughtSymbols.length ? caughtSymbols.join(" ") : "-";
-    return { heard, outcome, caught };
+    return Array.from(tallies.entries()).map(([key, count]) =>
+        count > 1 ? `${key} x${count}` : key,
+    );
+}
+
+function summariseConfusions(analysis) {
+    if (!analysis || typeof analysis !== "object") return "-";
+    const committed = summarisePairs(analysis.committed_confusions);
+    const caught = summarisePairs(analysis.caught_confusions).map((item) => `caught ${item}`);
+    const parts = committed.concat(caught);
+    if (analysis.ambiguous_lag === true) parts.push("lag?");
+    return parts.length ? parts.join(", ") : "-";
+}
+
+function recognitionState(exercise) {
+    return exercise?.analysis?.recognition_state || "-";
+}
+
+function recognitionGear(exercise) {
+    const gear = exercise?.analysis?.recognition_gear ?? exercise?.recognition_gear;
+    return Number.isFinite(gear) ? gear : "-";
+}
+
+function buildSummaryRow(exercises) {
+    const analysed = exercises.filter((exercise) => exercise?.analysis?.has_evidence === true);
+    if (analysed.length === 0) return null;
+
+    let correct = 0;
+    let substitution = 0;
+    let caught = 0;
+    let miss = 0;
+    let total = 0;
+
+    analysed.forEach((exercise) => {
+        const counts = countsForExercise(exercise.analysis);
+        correct += counts.correct;
+        substitution += counts.substitution;
+        caught += counts.caught;
+        miss += counts.miss;
+        total += counts.total;
+    });
+
+    const row = document.createElement("tr");
+    row.className = "settings-koch-detail__exercises-summary";
+    appendCell(row, "Σ");
+    appendCell(row, "");
+    appendCell(row, "");
+    appendCell(row, "");
+    appendCell(row, total > 0 ? `${correct}/${total}` : "-");
+    appendCell(row, substitution);
+    appendCell(row, caught);
+    appendCell(row, miss);
+    appendCell(row, "");
+    appendCell(row, "");
+    appendCell(row, "");
+    return row;
 }
 
 function buildExercisesTable(record) {
@@ -159,27 +268,42 @@ function buildExercisesTable(record) {
 
     const table = document.createElement("table");
     table.className = "settings-koch-detail__exercises-table";
+    table.classList.add("settings-recognition-detail__exercises-table");
     table.appendChild(buildExercisesHead());
 
     const body = document.createElement("tbody");
     exercises.forEach((exercise, idx) => {
         const analysis = exercise.analysis || {};
+        const counts = countsForExercise(analysis);
         const row = document.createElement("tr");
         appendCell(row, exercise.index || idx + 1);
-        appendCell(row, exercise.target || "-");
+        appendCell(row, formatSymbolSequence(exercise.target));
+        appendCell(row, formatSymbolSequence(analysis.committed_answer));
+        appendCell(row, formatSymbolSequence(exercise.answer));
         if (analysis.has_evidence) {
-            const { heard, outcome, caught } = summariseSlots(analysis.slots);
-            appendCell(row, heard);
-            appendCell(row, outcome);
-            appendCell(row, caught);
+            appendCell(row, counts.total > 0 ? `${counts.correct}/${counts.total}` : "-");
+            appendCell(row, counts.substitution);
+            appendCell(row, counts.caught);
+            appendCell(row, counts.miss);
+            appendCell(row, summariseConfusions(analysis));
         } else {
             appendCell(row, "-");
-            appendCell(row, "nothing heard");
+            appendCell(row, "-");
+            appendCell(row, "-");
+            appendCell(row, "-");
             appendCell(row, "-");
         }
+        appendCell(row, recognitionState(exercise));
+        appendCell(row, recognitionGear(exercise));
         body.appendChild(row);
     });
     table.appendChild(body);
+    const summary = buildSummaryRow(exercises);
+    if (summary) {
+        const tfoot = document.createElement("tfoot");
+        tfoot.appendChild(summary);
+        table.appendChild(tfoot);
+    }
     wrap.appendChild(table);
     return wrap;
 }
