@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Copy 653 — Koch Exercises</title>
+    <link rel="stylesheet" href="../css/core.css">
+    <link rel="stylesheet" href="../css/copy-653.css">
+    <link rel="stylesheet" href="../css/key-page.css">
+    <link rel="stylesheet" href="../css/settings.css">
+    <!-- Runs blocking before CSS paint to prevent theme flash -->
+    <script src="../js/theme.js"></script>
+    <script src="../js/landing-keybinds.js" defer></script>
+</head>
+<body class="landing-body settings-review-body">
+    <copy-theme-btn></copy-theme-btn>
+    <main class="landing-shell">
+        <copy-landing-header eyebrow="Settings" eyebrow-href="index.html" eyebrow-key="S" title="Koch Exercises"></copy-landing-header>
+
+        <section class="settings-panel settings-review-panel"
+                 id="settings-panel-koch">
+            <section class="settings-koch-rollup" id="settings-koch-rollup" hidden>
+                <h3 class="settings-koch-rollup__heading">
+                    Recent band evidence
+                    <span class="settings-koch-rollup__meta" id="settings-koch-rollup-meta"></span>
+                    <button type="button"
+                            class="settings-koch-rollup__history-link"
+                            id="settings-koch-history-link"
+                            hidden>Full history →</button>
+                </h3>
+                <table class="settings-koch-rollup__table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Band</th>
+                            <th scope="col">Recent fractions (newest →)</th>
+                            <th scope="col">Strong streak</th>
+                            <th scope="col">Low streak</th>
+                        </tr>
+                    </thead>
+                    <tbody id="settings-koch-rollup-tbody"></tbody>
+                </table>
+            </section>
+            <section class="settings-koch-confusion" id="settings-koch-confusion" hidden>
+                <h3 class="settings-koch-confusion__heading">Symbol confusions</h3>
+                <ul class="settings-koch-confusion__list" id="settings-koch-confusion-list"></ul>
+            </section>
+            <div class="settings-records-meta">
+                <p class="settings-koch-meta" id="settings-koch-meta">Loading saved sessions…</p>
+                <div class="settings-records-meta__actions">
+                    <button type="button"
+                            class="btn settings-calendar-btn"
+                            data-calendar-open="settings-koch-calendar-dialog">Calendar</button>
+                    <button type="button"
+                            class="btn settings-backup-btn"
+                            id="settings-koch-backup"
+                            data-kind="koch-exercise">Back up</button>
+                </div>
+            </div>
+            <div class="settings-koch-table-wrap">
+                <table class="settings-koch-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">#</th>
+                            <th scope="col">Date &amp; time</th>
+                            <th scope="col">Claimed symbols</th>
+                            <th scope="col">Delete</th>
+                        </tr>
+                    </thead>
+                    <tbody id="settings-koch-tbody"></tbody>
+                </table>
+            </div>
+            <dialog class="settings-koch-dialog settings-calendar-dialog"
+                    id="settings-koch-calendar-dialog">
+                <form method="dialog" class="settings-koch-dialog__bar">
+                    <h2 class="settings-koch-dialog__title">Practice calendar</h2>
+                    <button type="submit"
+                            class="settings-koch-dialog__close"
+                            aria-label="Close calendar">Close</button>
+                </form>
+                <div class="settings-koch-dialog__body">
+                    <div class="settings-calendar" id="settings-koch-calendar">
+                        <div class="settings-calendar__header">
+                            <button type="button"
+                                    class="settings-calendar__nav"
+                                    data-calendar-prev
+                                    aria-label="Previous month">&larr;</button>
+                            <h3 class="settings-calendar__title" data-calendar-title>&nbsp;</h3>
+                            <button type="button"
+                                    class="settings-calendar__nav"
+                                    data-calendar-next
+                                    aria-label="Next month">&rarr;</button>
+                        </div>
+                        <p class="settings-calendar__meta" data-calendar-meta>Loading saved sessions…</p>
+                        <div class="settings-calendar__weekdays" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                        </div>
+                        <div class="settings-calendar__grid"
+                             data-calendar-grid
+                             role="grid"></div>
+                    </div>
+                </div>
+            </dialog>
+            <dialog class="settings-koch-dialog" id="settings-koch-lifetime-dialog">
+                <form method="dialog" class="settings-koch-dialog__bar">
+                    <h2 class="settings-koch-dialog__title" id="settings-koch-lifetime-title">
+                        Lifetime
+                    </h2>
+                    <button type="submit"
+                            class="settings-koch-dialog__close"
+                            aria-label="Close lifetime view">Close</button>
+                </form>
+                <div class="settings-koch-dialog__body"
+                     id="settings-koch-lifetime-body"></div>
+            </dialog>
+            <dialog class="settings-koch-dialog" id="settings-koch-dialog">
+                <form method="dialog" class="settings-koch-dialog__bar">
+                    <h2 class="settings-koch-dialog__title" id="settings-koch-dialog-title">
+                        Session
+                    </h2>
+                    <button type="submit"
+                            class="settings-koch-dialog__close"
+                            aria-label="Close session details">Close</button>
+                </form>
+                <div class="settings-koch-dialog__body" id="settings-koch-dialog-body"></div>
+                <div class="settings-koch-dialog__nav" aria-label="Session navigation">
+                    <button type="button"
+                            class="settings-koch-dialog__nav-button"
+                            id="settings-koch-dialog-prev"
+                            aria-label="Previous session"
+                            title="Previous session (Left arrow, H, or <)">&lt;</button>
+                    <span class="settings-koch-dialog__nav-count"
+                          id="settings-koch-dialog-count"
+                          aria-live="polite">0 of 0</span>
+                    <button type="button"
+                            class="settings-koch-dialog__nav-button"
+                            id="settings-koch-dialog-next"
+                            aria-label="Next session"
+                            title="Next session (Right arrow, L, or >)">&gt;</button>
+                </div>
+            </dialog>
+        </section>
+
+
+    </main>
+    <script type="module" src="../js/partials/landing-header.js"></script>
+    <script type="module" src="../js/partials/theme-btn.js"></script>
+    <script type="module" src="../js/settings-koch-table.js"></script>
+    <script type="module" src="../js/settings-koch-rollup.js"></script>
+    <script type="module" src="../js/settings-koch-confusion.js"></script>
+    <script type="module" src="../js/settings-koch-lifetime.js"></script>
+    <script type="module" src="../js/settings-calendar.js"></script>
+    <script type="module" src="../js/settings-backup.js"></script>
+</body>
+</html>

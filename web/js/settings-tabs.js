@@ -1,4 +1,4 @@
-// Settings page tab strip — App / Koch Exercises / Key Exercises.
+// Settings page tab strip — App / Voice / Exercises.
 //
 // Always defaults to App on load; selection is not persisted across
 // reloads (mirrors the timeline-tabs pattern in web/js/main.js).

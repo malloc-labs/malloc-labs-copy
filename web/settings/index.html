@@ -31,46 +31,6 @@
             <button type="button"
                     class="settings-tab"
                     role="tab"
-                    id="settings-tab-koch"
-                    aria-controls="settings-panel-koch"
-                    aria-selected="false"
-                    data-selected="false"
-                    data-tab="koch"
-                    aria-keyshortcuts="K"
-                    title="Koch Exercises (K)"><u>K</u>och Exercises</button>
-            <button type="button"
-                    class="settings-tab"
-                    role="tab"
-                    id="settings-tab-key"
-                    aria-controls="settings-panel-key"
-                    aria-selected="false"
-                    data-selected="false"
-                    data-tab="key"
-                    aria-keyshortcuts="E"
-                    title="Key Exercises (E)">Key <u>E</u>xercises</button>
-            <button type="button"
-                    class="settings-tab"
-                    role="tab"
-                    id="settings-tab-copy-key"
-                    aria-controls="settings-panel-copy-key"
-                    aria-selected="false"
-                    data-selected="false"
-                    data-tab="copy-key"
-                    aria-keyshortcuts="P"
-                    title="Copy > Key (P)">Co<u>p</u>y &gt; Key</button>
-            <button type="button"
-                    class="settings-tab"
-                    role="tab"
-                    id="settings-tab-recognition"
-                    aria-controls="settings-panel-recognition"
-                    aria-selected="false"
-                    data-selected="false"
-                    data-tab="recognition"
-                    aria-keyshortcuts="R"
-                    title="Symbol Recognition (R)"><u>R</u>ecognition</button>
-            <button type="button"
-                    class="settings-tab"
-                    role="tab"
                     id="settings-tab-voice"
                     aria-controls="settings-panel-voice"
                     aria-selected="false"
@@ -78,6 +38,16 @@
                     data-tab="voice"
                     aria-keyshortcuts="V"
                     title="Voice (V)"><u>V</u>oice</button>
+            <button type="button"
+                    class="settings-tab"
+                    role="tab"
+                    id="settings-tab-exercises"
+                    aria-controls="settings-panel-exercises"
+                    aria-selected="false"
+                    data-selected="false"
+                    data-tab="exercises"
+                    aria-keyshortcuts="E"
+                    title="Exercises (E)"><u>E</u>xercises</button>
         </nav>
 
         <section class="settings-panel"
@@ -394,481 +364,6 @@
         </section>
 
         <section class="settings-panel"
-                 id="settings-panel-koch"
-                 role="tabpanel"
-                 aria-labelledby="settings-tab-koch"
-                 hidden>
-            <section class="settings-koch-rollup" id="settings-koch-rollup" hidden>
-                <h3 class="settings-koch-rollup__heading">
-                    Recent band evidence
-                    <span class="settings-koch-rollup__meta" id="settings-koch-rollup-meta"></span>
-                    <button type="button"
-                            class="settings-koch-rollup__history-link"
-                            id="settings-koch-history-link"
-                            hidden>Full history →</button>
-                </h3>
-                <table class="settings-koch-rollup__table">
-                    <thead>
-                        <tr>
-                            <th scope="col">Band</th>
-                            <th scope="col">Recent fractions (newest →)</th>
-                            <th scope="col">Strong streak</th>
-                            <th scope="col">Low streak</th>
-                        </tr>
-                    </thead>
-                    <tbody id="settings-koch-rollup-tbody"></tbody>
-                </table>
-            </section>
-            <section class="settings-koch-confusion" id="settings-koch-confusion" hidden>
-                <h3 class="settings-koch-confusion__heading">Symbol confusions</h3>
-                <ul class="settings-koch-confusion__list" id="settings-koch-confusion-list"></ul>
-            </section>
-            <div class="settings-records-meta">
-                <p class="settings-koch-meta" id="settings-koch-meta">Loading saved sessions…</p>
-                <div class="settings-records-meta__actions">
-                    <button type="button"
-                            class="btn settings-calendar-btn"
-                            data-calendar-open="settings-koch-calendar-dialog">Calendar</button>
-                    <button type="button"
-                            class="btn settings-backup-btn"
-                            id="settings-koch-backup"
-                            data-kind="koch-exercise">Back up</button>
-                </div>
-            </div>
-            <div class="settings-koch-table-wrap">
-                <table class="settings-koch-table">
-                    <thead>
-                        <tr>
-                            <th scope="col">#</th>
-                            <th scope="col">Date &amp; time</th>
-                            <th scope="col">Claimed symbols</th>
-                            <th scope="col">Delete</th>
-                        </tr>
-                    </thead>
-                    <tbody id="settings-koch-tbody"></tbody>
-                </table>
-            </div>
-            <dialog class="settings-koch-dialog settings-calendar-dialog"
-                    id="settings-koch-calendar-dialog">
-                <form method="dialog" class="settings-koch-dialog__bar">
-                    <h2 class="settings-koch-dialog__title">Practice calendar</h2>
-                    <button type="submit"
-                            class="settings-koch-dialog__close"
-                            aria-label="Close calendar">Close</button>
-                </form>
-                <div class="settings-koch-dialog__body">
-                    <div class="settings-calendar" id="settings-koch-calendar">
-                        <div class="settings-calendar__header">
-                            <button type="button"
-                                    class="settings-calendar__nav"
-                                    data-calendar-prev
-                                    aria-label="Previous month">&larr;</button>
-                            <h3 class="settings-calendar__title" data-calendar-title>&nbsp;</h3>
-                            <button type="button"
-                                    class="settings-calendar__nav"
-                                    data-calendar-next
-                                    aria-label="Next month">&rarr;</button>
-                        </div>
-                        <p class="settings-calendar__meta" data-calendar-meta>Loading saved sessions…</p>
-                        <div class="settings-calendar__weekdays" aria-hidden="true">
-                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-                        </div>
-                        <div class="settings-calendar__grid"
-                             data-calendar-grid
-                             role="grid"></div>
-                    </div>
-                </div>
-            </dialog>
-            <dialog class="settings-koch-dialog" id="settings-koch-lifetime-dialog">
-                <form method="dialog" class="settings-koch-dialog__bar">
-                    <h2 class="settings-koch-dialog__title" id="settings-koch-lifetime-title">
-                        Lifetime
-                    </h2>
-                    <button type="submit"
-                            class="settings-koch-dialog__close"
-                            aria-label="Close lifetime view">Close</button>
-                </form>
-                <div class="settings-koch-dialog__body"
-                     id="settings-koch-lifetime-body"></div>
-            </dialog>
-            <dialog class="settings-koch-dialog" id="settings-koch-dialog">
-                <form method="dialog" class="settings-koch-dialog__bar">
-                    <h2 class="settings-koch-dialog__title" id="settings-koch-dialog-title">
-                        Session
-                    </h2>
-                    <button type="submit"
-                            class="settings-koch-dialog__close"
-                            aria-label="Close session details">Close</button>
-                </form>
-                <div class="settings-koch-dialog__body" id="settings-koch-dialog-body"></div>
-                <div class="settings-koch-dialog__nav" aria-label="Session navigation">
-                    <button type="button"
-                            class="settings-koch-dialog__nav-button"
-                            id="settings-koch-dialog-prev"
-                            aria-label="Previous session"
-                            title="Previous session (Left arrow, H, or <)">&lt;</button>
-                    <span class="settings-koch-dialog__nav-count"
-                          id="settings-koch-dialog-count"
-                          aria-live="polite">0 of 0</span>
-                    <button type="button"
-                            class="settings-koch-dialog__nav-button"
-                            id="settings-koch-dialog-next"
-                            aria-label="Next session"
-                            title="Next session (Right arrow, L, or >)">&gt;</button>
-                </div>
-            </dialog>
-        </section>
-
-        <section class="settings-panel"
-                 id="settings-panel-key"
-                 role="tabpanel"
-                 aria-labelledby="settings-tab-key"
-                 hidden>
-            <section class="settings-koch-rollup" id="settings-key-rollup" hidden>
-                <h3 class="settings-koch-rollup__heading">
-                    Recent send evidence
-                    <span class="settings-koch-rollup__meta" id="settings-key-rollup-meta"></span>
-                    <button type="button"
-                            class="settings-koch-rollup__history-link"
-                            id="settings-key-history-link"
-                            hidden>Full history →</button>
-                </h3>
-                <table class="settings-koch-rollup__table">
-                    <thead>
-                        <tr>
-                            <th scope="col">Band</th>
-                            <th scope="col">Recent fractions</th>
-                            <th scope="col">Metrics</th>
-                            <th scope="col">Strong</th>
-                            <th scope="col">Low</th>
-                        </tr>
-                    </thead>
-                    <tbody id="settings-key-rollup-tbody"></tbody>
-                </table>
-            </section>
-            <div class="settings-records-meta">
-                <p class="settings-koch-meta" id="settings-key-meta">Loading saved send sessions…</p>
-                <div class="settings-records-meta__actions">
-                    <button type="button"
-                            class="btn settings-calendar-btn"
-                            data-calendar-open="settings-key-calendar-dialog">Calendar</button>
-                    <button type="button"
-                            class="btn settings-backup-btn"
-                            id="settings-key-backup"
-                            data-kind="cadence-send">Back up</button>
-                </div>
-            </div>
-            <div class="settings-koch-table-wrap">
-                <table class="settings-koch-table">
-                    <thead>
-                        <tr>
-                            <th scope="col">#</th>
-                            <th scope="col">Date &amp; time</th>
-                            <th scope="col">Claimed symbols</th>
-                            <th scope="col">Exercises</th>
-                            <th scope="col">Delete</th>
-                        </tr>
-                    </thead>
-                    <tbody id="settings-key-tbody"></tbody>
-                </table>
-            </div>
-            <dialog class="settings-koch-dialog settings-calendar-dialog"
-                    id="settings-key-calendar-dialog">
-                <form method="dialog" class="settings-koch-dialog__bar">
-                    <h2 class="settings-koch-dialog__title">Send practice calendar</h2>
-                    <button type="submit"
-                            class="settings-koch-dialog__close"
-                            aria-label="Close calendar">Close</button>
-                </form>
-                <div class="settings-koch-dialog__body">
-                    <div class="settings-calendar" id="settings-key-calendar">
-                        <div class="settings-calendar__header">
-                            <button type="button"
-                                    class="settings-calendar__nav"
-                                    data-calendar-prev
-                                    aria-label="Previous month">&larr;</button>
-                            <h3 class="settings-calendar__title" data-calendar-title>&nbsp;</h3>
-                            <button type="button"
-                                    class="settings-calendar__nav"
-                                    data-calendar-next
-                                    aria-label="Next month">&rarr;</button>
-                        </div>
-                        <p class="settings-calendar__meta" data-calendar-meta>Loading saved send sessions…</p>
-                        <div class="settings-calendar__weekdays" aria-hidden="true">
-                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-                        </div>
-                        <div class="settings-calendar__grid"
-                             data-calendar-grid
-                             role="grid"></div>
-                    </div>
-                </div>
-            </dialog>
-            <dialog class="settings-koch-dialog" id="settings-key-lifetime-dialog">
-                <form method="dialog" class="settings-koch-dialog__bar">
-                    <h2 class="settings-koch-dialog__title" id="settings-key-lifetime-title">
-                        Lifetime
-                    </h2>
-                    <button type="submit"
-                            class="settings-koch-dialog__close"
-                            aria-label="Close lifetime view">Close</button>
-                </form>
-                <div class="settings-koch-dialog__body"
-                     id="settings-key-lifetime-body"></div>
-            </dialog>
-            <dialog class="settings-koch-dialog" id="settings-key-dialog">
-                <form method="dialog" class="settings-koch-dialog__bar">
-                    <h2 class="settings-koch-dialog__title" id="settings-key-dialog-title">
-                        Send session
-                    </h2>
-                    <button type="submit"
-                            class="settings-koch-dialog__close"
-                            aria-label="Close send session details">Close</button>
-                </form>
-                <div class="settings-koch-dialog__body" id="settings-key-dialog-body"></div>
-                <div class="settings-koch-dialog__nav" aria-label="Send session navigation">
-                    <button type="button"
-                            class="settings-koch-dialog__nav-button"
-                            id="settings-key-dialog-prev"
-                            aria-label="Previous send session"
-                            title="Previous send session (Left arrow, H, or <)">&lt;</button>
-                    <span class="settings-koch-dialog__nav-count"
-                          id="settings-key-dialog-count"
-                          aria-live="polite">0 of 0</span>
-                    <button type="button"
-                            class="settings-koch-dialog__nav-button"
-                            id="settings-key-dialog-next"
-                            aria-label="Next send session"
-                            title="Next send session (Right arrow, L, or >)">&gt;</button>
-                </div>
-            </dialog>
-        </section>
-
-        <section class="settings-panel"
-                 id="settings-panel-copy-key"
-                 role="tabpanel"
-                 aria-labelledby="settings-tab-copy-key"
-                 hidden>
-            <section class="settings-koch-rollup" id="settings-copy-key-rollup" hidden>
-                <h3 class="settings-koch-rollup__heading">
-                    Recent copy &gt; key evidence
-                    <span class="settings-koch-rollup__meta" id="settings-copy-key-rollup-meta"></span>
-                    <button type="button"
-                            class="settings-koch-rollup__history-link"
-                            id="settings-copy-key-history-link"
-                            hidden>Full history &rarr;</button>
-                </h3>
-                <table class="settings-koch-rollup__table">
-                    <thead>
-                        <tr>
-                            <th scope="col">Band</th>
-                            <th scope="col">Recent fractions</th>
-                            <th scope="col">Metrics</th>
-                            <th scope="col">Strong</th>
-                            <th scope="col">Low</th>
-                        </tr>
-                    </thead>
-                    <tbody id="settings-copy-key-rollup-tbody"></tbody>
-                </table>
-            </section>
-            <div class="settings-records-meta">
-                <p class="settings-koch-meta" id="settings-copy-key-meta">Loading saved copy &gt; key sessions&hellip;</p>
-                <div class="settings-records-meta__actions">
-                    <button type="button"
-                            class="btn settings-calendar-btn"
-                            data-calendar-open="settings-copy-key-calendar-dialog">Calendar</button>
-                    <button type="button"
-                            class="btn settings-backup-btn"
-                            id="settings-copy-key-backup"
-                            data-kind="copy-key">Back up</button>
-                </div>
-            </div>
-            <div class="settings-koch-table-wrap">
-                <table class="settings-koch-table">
-                    <thead>
-                        <tr>
-                            <th scope="col">#</th>
-                            <th scope="col">Date &amp; time</th>
-                            <th scope="col">Claimed symbols</th>
-                            <th scope="col">Exercises</th>
-                            <th scope="col">Delete</th>
-                        </tr>
-                    </thead>
-                    <tbody id="settings-copy-key-tbody"></tbody>
-                </table>
-            </div>
-            <dialog class="settings-koch-dialog settings-calendar-dialog"
-                    id="settings-copy-key-calendar-dialog">
-                <form method="dialog" class="settings-koch-dialog__bar">
-                    <h2 class="settings-koch-dialog__title">Copy &gt; Key practice calendar</h2>
-                    <button type="submit"
-                            class="settings-koch-dialog__close"
-                            aria-label="Close calendar">Close</button>
-                </form>
-                <div class="settings-koch-dialog__body">
-                    <div class="settings-calendar" id="settings-copy-key-calendar">
-                        <div class="settings-calendar__header">
-                            <button type="button"
-                                    class="settings-calendar__nav"
-                                    data-calendar-prev
-                                    aria-label="Previous month">&larr;</button>
-                            <h3 class="settings-calendar__title" data-calendar-title>&nbsp;</h3>
-                            <button type="button"
-                                    class="settings-calendar__nav"
-                                    data-calendar-next
-                                    aria-label="Next month">&rarr;</button>
-                        </div>
-                        <p class="settings-calendar__meta" data-calendar-meta>Loading saved copy &gt; key sessions&hellip;</p>
-                        <div class="settings-calendar__weekdays" aria-hidden="true">
-                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-                        </div>
-                        <div class="settings-calendar__grid"
-                             data-calendar-grid
-                             role="grid"></div>
-                    </div>
-                </div>
-            </dialog>
-            <dialog class="settings-koch-dialog" id="settings-copy-key-lifetime-dialog">
-                <form method="dialog" class="settings-koch-dialog__bar">
-                    <h2 class="settings-koch-dialog__title" id="settings-copy-key-lifetime-title">
-                        Lifetime
-                    </h2>
-                    <button type="submit"
-                            class="settings-koch-dialog__close"
-                            aria-label="Close lifetime view">Close</button>
-                </form>
-                <div class="settings-koch-dialog__body"
-                     id="settings-copy-key-lifetime-body"></div>
-            </dialog>
-            <dialog class="settings-koch-dialog" id="settings-copy-key-dialog">
-                <form method="dialog" class="settings-koch-dialog__bar">
-                    <h2 class="settings-koch-dialog__title" id="settings-copy-key-dialog-title">
-                        Copy &gt; Key session
-                    </h2>
-                    <button type="submit"
-                            class="settings-koch-dialog__close"
-                            aria-label="Close copy key session details">Close</button>
-                </form>
-                <div class="settings-koch-dialog__body" id="settings-copy-key-dialog-body"></div>
-                <div class="settings-koch-dialog__nav" aria-label="Copy key session navigation">
-                    <button type="button"
-                            class="settings-koch-dialog__nav-button"
-                            id="settings-copy-key-dialog-prev"
-                            aria-label="Previous copy key session"
-                            title="Previous session (Left arrow, H, or <)">&lt;</button>
-                    <span class="settings-koch-dialog__nav-count"
-                          id="settings-copy-key-dialog-count"
-                          aria-live="polite">0 of 0</span>
-                    <button type="button"
-                            class="settings-koch-dialog__nav-button"
-                            id="settings-copy-key-dialog-next"
-                            aria-label="Next copy key session"
-                            title="Next session (Right arrow, L, or >)">&gt;</button>
-                </div>
-            </dialog>
-        </section>
-
-        <section class="settings-panel"
-                 id="settings-panel-recognition"
-                 role="tabpanel"
-                 aria-labelledby="settings-tab-recognition"
-                 hidden>
-            <section class="settings-koch-confusion" id="settings-recognition-committed" hidden>
-                <h3 class="settings-koch-confusion__heading">Committed confusions</h3>
-                <ul class="settings-koch-confusion__list"
-                    id="settings-recognition-committed-list"></ul>
-            </section>
-            <section class="settings-koch-confusion" id="settings-recognition-caught" hidden>
-                <h3 class="settings-koch-confusion__heading">Caught (self-corrected)</h3>
-                <ul class="settings-koch-confusion__list"
-                    id="settings-recognition-caught-list"></ul>
-            </section>
-            <p class="settings-koch-meta" id="settings-recognition-meta">Loading recognition sessions…</p>
-            <div class="settings-records-meta">
-                <p class="settings-koch-meta" id="settings-recognition-records-meta">Loading saved recognition sessions…</p>
-                <div class="settings-records-meta__actions">
-                    <button type="button"
-                            class="btn settings-calendar-btn"
-                            data-calendar-open="settings-recognition-calendar-dialog">Calendar</button>
-                    <button type="button"
-                            class="btn settings-backup-btn"
-                            id="settings-recognition-backup"
-                            data-kind="recognition">Back up</button>
-                </div>
-            </div>
-            <div class="settings-koch-table-wrap">
-                <table class="settings-koch-table">
-                    <thead>
-                        <tr>
-                            <th scope="col">#</th>
-                            <th scope="col">Date &amp; time</th>
-                            <th scope="col">Claimed symbols</th>
-                            <th scope="col">Exercises</th>
-                            <th scope="col">Delete</th>
-                        </tr>
-                    </thead>
-                    <tbody id="settings-recognition-tbody"></tbody>
-                </table>
-            </div>
-            <dialog class="settings-koch-dialog settings-calendar-dialog"
-                    id="settings-recognition-calendar-dialog">
-                <form method="dialog" class="settings-koch-dialog__bar">
-                    <h2 class="settings-koch-dialog__title">Recognition practice calendar</h2>
-                    <button type="submit"
-                            class="settings-koch-dialog__close"
-                            aria-label="Close calendar">Close</button>
-                </form>
-                <div class="settings-koch-dialog__body">
-                    <div class="settings-calendar" id="settings-recognition-calendar">
-                        <div class="settings-calendar__header">
-                            <button type="button"
-                                    class="settings-calendar__nav"
-                                    data-calendar-prev
-                                    aria-label="Previous month">&larr;</button>
-                            <h3 class="settings-calendar__title" data-calendar-title>&nbsp;</h3>
-                            <button type="button"
-                                    class="settings-calendar__nav"
-                                    data-calendar-next
-                                    aria-label="Next month">&rarr;</button>
-                        </div>
-                        <p class="settings-calendar__meta" data-calendar-meta>Loading saved recognition sessions…</p>
-                        <div class="settings-calendar__weekdays" aria-hidden="true">
-                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-                        </div>
-                        <div class="settings-calendar__grid"
-                             data-calendar-grid
-                             role="grid"></div>
-                    </div>
-                </div>
-            </dialog>
-            <dialog class="settings-koch-dialog" id="settings-recognition-dialog">
-                <form method="dialog" class="settings-koch-dialog__bar">
-                    <h2 class="settings-koch-dialog__title" id="settings-recognition-dialog-title">
-                        Recognition session
-                    </h2>
-                    <button type="submit"
-                            class="settings-koch-dialog__close"
-                            aria-label="Close recognition session details">Close</button>
-                </form>
-                <div class="settings-koch-dialog__body" id="settings-recognition-dialog-body"></div>
-                <div class="settings-koch-dialog__nav" aria-label="Recognition session navigation">
-                    <button type="button"
-                            class="settings-koch-dialog__nav-button"
-                            id="settings-recognition-dialog-prev"
-                            aria-label="Previous recognition session"
-                            title="Previous session (Left arrow, H, or <)">&lt;</button>
-                    <span class="settings-koch-dialog__nav-count"
-                          id="settings-recognition-dialog-count"
-                          aria-live="polite">0 of 0</span>
-                    <button type="button"
-                            class="settings-koch-dialog__nav-button"
-                            id="settings-recognition-dialog-next"
-                            aria-label="Next recognition session"
-                            title="Next session (Right arrow, L, or >)">&gt;</button>
-                </div>
-            </dialog>
-        </section>
-
-        <section class="settings-panel"
                  id="settings-panel-voice"
                  role="tabpanel"
                  aria-labelledby="settings-tab-voice"
@@ -984,25 +479,37 @@
             </dialog>
         </section>
 
+
+        <section class="settings-panel"
+                 id="settings-panel-exercises"
+                 role="tabpanel"
+                 aria-labelledby="settings-tab-exercises"
+                 hidden>
+            <nav class="settings-exercise-hub" aria-label="Exercise data review pages">
+                <a class="settings-exercise-hub__link" href="koch.html">
+                    <span>Koch Exercises</span>
+                    <span aria-hidden="true">-&gt;</span>
+                </a>
+                <a class="settings-exercise-hub__link" href="key.html">
+                    <span>Key Exercises</span>
+                    <span aria-hidden="true">-&gt;</span>
+                </a>
+                <a class="settings-exercise-hub__link" href="copy-key.html">
+                    <span>Copy &gt; Key</span>
+                    <span aria-hidden="true">-&gt;</span>
+                </a>
+                <a class="settings-exercise-hub__link" href="recognition.html">
+                    <span>Recognition</span>
+                    <span aria-hidden="true">-&gt;</span>
+                </a>
+            </nav>
+        </section>
+
     </main>
     <script type="module" src="../js/partials/landing-header.js"></script>
     <script type="module" src="../js/partials/theme-btn.js"></script>
     <script type="module" src="../js/settings.js"></script>
     <script type="module" src="../js/settings-tabs.js"></script>
-    <script type="module" src="../js/settings-koch-table.js"></script>
-    <script type="module" src="../js/settings-koch-rollup.js"></script>
-    <script type="module" src="../js/settings-koch-confusion.js"></script>
-    <script type="module" src="../js/settings-koch-lifetime.js"></script>
-    <script type="module" src="../js/settings-key-table.js"></script>
-    <script type="module" src="../js/settings-key-rollup.js"></script>
-    <script type="module" src="../js/settings-key-lifetime.js"></script>
-    <script type="module" src="../js/settings-copy-key-table.js"></script>
-    <script type="module" src="../js/settings-copy-key-rollup.js"></script>
-    <script type="module" src="../js/settings-copy-key-lifetime.js"></script>
-    <script type="module" src="../js/settings-calendar.js"></script>
-    <script type="module" src="../js/settings-backup.js"></script>
-    <script type="module" src="../js/settings-recognition-confusion.js"></script>
-    <script type="module" src="../js/settings-recognition-table.js"></script>
     <script type="module" src="../js/settings-voice.js"></script>
 </body>
 </html>

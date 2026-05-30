@@ -1,9 +1,9 @@
 /*
- * settings.css — styles for web/settings/index.html.
+ * settings.css — styles for web/settings/*.html.
  *
- * Owns the settings page only: tabs, the Koch saved-sessions table and
- * expanded dialog, lifetime rollup grids, the timing form, and the
- * save/status row. Shared shell tokens live in core.css.
+ * Owns the settings surfaces: tabs, the quiet exercise review hub,
+ * saved-session tables, expanded dialogs, lifetime rollup grids, the
+ * timing form, and the save/status row. Shared shell tokens live in core.css.
  */
 
 .settings-tabs {
@@ -72,7 +72,10 @@
 }
 
 #settings-panel-koch:not([hidden]),
-#settings-panel-key:not([hidden]) {
+#settings-panel-key:not([hidden]),
+#settings-panel-copy-key:not([hidden]),
+#settings-panel-recognition:not([hidden]),
+.settings-review-panel {
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
@@ -81,8 +84,63 @@
 }
 
 #settings-panel-app:not([hidden]),
-#settings-panel-voice:not([hidden]) {
+#settings-panel-voice:not([hidden]),
+#settings-panel-exercises:not([hidden]) {
     overflow: auto;
+}
+
+.settings-review-body {
+    --settings-page-top-space: clamp(1.5rem, 4vh, 3rem);
+    --settings-page-footer-space: clamp(2rem, 6vh, 4rem);
+    align-items: start;
+    height: 100dvh;
+    padding-top: var(--settings-page-top-space);
+    padding-bottom: var(--settings-page-footer-space);
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.settings-review-body .landing-shell {
+    display: flex;
+    flex-direction: column;
+    height: calc(
+        100dvh
+        - var(--settings-page-top-space)
+        - var(--settings-page-footer-space)
+    );
+    min-height: 0;
+}
+
+.settings-review-body .landing-header {
+    flex: 0 0 auto;
+}
+
+.settings-exercise-hub {
+    display: grid;
+    gap: var(--mr-space-2);
+    margin-top: var(--mr-space-4);
+}
+
+.settings-exercise-hub__link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--mr-space-3);
+    padding: var(--mr-space-3) 0;
+    border-bottom: var(--mr-border-rule);
+    color: var(--mr-text);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    text-decoration: none;
+}
+
+.settings-exercise-hub__link:first-child {
+    border-top: var(--mr-border-rule);
+}
+
+.settings-exercise-hub__link:hover,
+.settings-exercise-hub__link:focus-visible {
+    color: var(--mr-anchor);
 }
 
 /* Koch tab — saved-sessions table. Mirrors the key-diagnostics-table
