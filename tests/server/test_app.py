@@ -903,8 +903,14 @@ async def test_api_recognition_confusion_separates_committed_and_caught(tmp_path
         payload = json.loads(response.read())
         assert payload["claimed_set_key"] == "K M R U"
         assert payload["exercises_used"] == 2
-        assert payload["committed_substitutions"] == [{"target": "U", "typed": "R", "count": 1}]
-        assert payload["caught_substitutions"] == [{"target": "U", "typed": "R", "count": 1}]
+        assert [
+            {"target": item["target"], "typed": item["typed"], "count": item["count"]}
+            for item in payload["committed_substitutions"]
+        ] == [{"target": "U", "typed": "R", "count": 1}]
+        assert [
+            {"target": item["target"], "typed": item["typed"], "count": item["count"]}
+            for item in payload["caught_substitutions"]
+        ] == [{"target": "U", "typed": "R", "count": 1}]
     finally:
         server.close()
         await server.wait_closed()

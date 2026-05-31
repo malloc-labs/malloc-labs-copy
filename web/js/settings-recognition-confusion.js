@@ -10,8 +10,8 @@
 //
 // The streams are rendered as two separate sections and never merged: a
 // caught confusion is evidence the discrimination is forming, not a
-// committed error. Like the Koch panel this is backend evidence, not a
-// score — no percentages, no grading (spec §9).
+// committed error. Percentages are trend evidence for the Settings view,
+// not in-session scoring or feedback.
 
 const committedRoot = document.getElementById("settings-recognition-committed");
 const committedList = document.getElementById("settings-recognition-committed-list");
@@ -25,6 +25,18 @@ const meta = document.getElementById("settings-recognition-meta");
 const COMMITTED_MIN = 4;
 const CAUGHT_MIN = 2;
 
+function formatRate(value, total) {
+    if (!Number.isFinite(value) || total <= 0) return "—";
+    return `${Math.round(value * 100)}%`;
+}
+
+function formatTrend(value) {
+    if (value === "improving") return "improving";
+    if (value === "worsening") return "worsening";
+    if (value === "stable") return "stable";
+    return "not enough data";
+}
+
 function renderStream(root, listEl, pairs, minCount, connector) {
     listEl.replaceChildren();
     const shown = (Array.isArray(pairs) ? pairs : []).filter((p) => p.count >= minCount);
@@ -32,20 +44,47 @@ function renderStream(root, listEl, pairs, minCount, connector) {
         root.hidden = true;
         return;
     }
+    const header = document.createElement("li");
+    header.className = "settings-koch-confusion__pair settings-koch-confusion__pair--header";
+    ["Pair", "Recent", "Previous", "Trend", "Total"].forEach((label) => {
+        const cell = document.createElement("span");
+        cell.textContent = label;
+        header.appendChild(cell);
+    });
+    listEl.appendChild(header);
     shown.forEach((pair) => {
         const li = document.createElement("li");
         li.className = "settings-koch-confusion__pair";
+        const pairLabel = document.createElement("span");
+        pairLabel.className = "settings-koch-confusion__label";
         const target = document.createElement("span");
         target.className = "settings-koch-confusion__symbol";
         target.textContent = pair.target;
-        const arrow = document.createTextNode(connector);
         const typed = document.createElement("span");
         typed.className = "settings-koch-confusion__symbol";
         typed.textContent = pair.typed;
+        pairLabel.append(target, document.createTextNode(connector), typed);
+
+        const recent = document.createElement("span");
+        recent.className = "settings-koch-confusion__rate";
+        recent.textContent = formatRate(pair.recent_rate, pair.recent_total);
+        recent.title = `${pair.recent_count || 0} of ${pair.recent_total || 0} recent target exposures`;
+
+        const previous = document.createElement("span");
+        previous.className = "settings-koch-confusion__previous";
+        previous.textContent = formatRate(pair.previous_rate, pair.previous_total);
+        previous.title = `${pair.previous_count || 0} of ${pair.previous_total || 0} previous target exposures`;
+
+        const trend = document.createElement("span");
+        trend.className = "settings-koch-confusion__trend";
+        trend.dataset.trend = pair.trend || "insufficient";
+        trend.textContent = formatTrend(pair.trend);
+
         const count = document.createElement("span");
         count.className = "settings-koch-confusion__count";
-        count.textContent = ` — ${pair.count}×`;
-        li.append(target, arrow, typed, count);
+        count.textContent = `${pair.count}×`;
+        count.title = "Lifetime count";
+        li.append(pairLabel, recent, previous, trend, count);
         listEl.appendChild(li);
     });
     root.hidden = false;
