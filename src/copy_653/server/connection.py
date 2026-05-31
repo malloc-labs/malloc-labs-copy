@@ -77,6 +77,7 @@ from copy_653.server.letter_playback_actions import (
 )
 from copy_653.server.recognition_actions import (
     ActiveRecognitionSession,
+    _coerce_recognition_diagnostic,
     _coerce_recognition_exercise_completion,
     _run_recognition_session,
     _start_recognition_action,
@@ -522,6 +523,21 @@ async def handler(
                         )
                     else:
                         await state.recognition.push_completion(completion)
+            elif action == "append-recognition-diagnostic":
+                if state.recognition is None:
+                    await _send_event(ws, {"type": "error", "reason": "no-active-recognition"})
+                else:
+                    diagnostic = _coerce_recognition_diagnostic(message)
+                    if diagnostic is None:
+                        await _send_event(
+                            ws,
+                            {"type": "error", "reason": "invalid-recognition-diagnostic"},
+                        )
+                    else:
+                        state.recognition.append_late_voice_capture(
+                            diagnostic["exercise_index"],
+                            diagnostic["late_voice_capture"],
+                        )
             elif action == "request-copy-exercises":
                 # A fresh request closes any in-flight Cadence session
                 # before opening a new one — we never silently merge

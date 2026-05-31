@@ -689,12 +689,54 @@
     border-top: 0;
 }
 
+#settings-panel-recognition .settings-koch-confusion__pair {
+    display: grid;
+    grid-template-columns: minmax(11rem, 1fr) 4.5rem 5rem minmax(7rem, auto) 3.5rem;
+    gap: var(--mr-space-2);
+    align-items: baseline;
+}
+
+#settings-panel-recognition .settings-koch-confusion__pair--header {
+    color: var(--mr-muted);
+    font-size: 0.85em;
+    text-transform: uppercase;
+}
+
+#settings-panel-recognition .settings-koch-confusion__label {
+    min-width: 0;
+}
+
 .settings-koch-confusion__symbol {
     font-weight: 600;
 }
 
+#settings-panel-recognition .settings-koch-confusion__rate {
+    font-weight: 600;
+}
+
+#settings-panel-recognition .settings-koch-confusion__previous,
+#settings-panel-recognition .settings-koch-confusion__trend,
 .settings-koch-confusion__count {
     color: var(--mr-muted);
+}
+
+#settings-panel-recognition .settings-koch-confusion__trend[data-trend="improving"] {
+    color: var(--mr-anchor);
+}
+
+#settings-panel-recognition .settings-koch-confusion__trend[data-trend="worsening"] {
+    color: var(--mr-warning);
+}
+
+@media (max-width: 640px) {
+    #settings-panel-recognition .settings-koch-confusion__pair {
+        grid-template-columns: 1fr 4rem 4.5rem;
+    }
+
+    #settings-panel-recognition .settings-koch-confusion__pair > :nth-child(4),
+    #settings-panel-recognition .settings-koch-confusion__pair > :nth-child(5) {
+        grid-column: 2 / span 2;
+    }
 }
 
 .settings-koch-rollup__heading {

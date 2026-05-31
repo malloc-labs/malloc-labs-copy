@@ -29,6 +29,14 @@ const timelineBody = document.querySelector(".timeline-body");
 const COUNTDOWN_SECONDS = 5;
 const SET_SIZE = 8;
 const VOICE_SAMPLE_RATE = 16_000;
+// Exercise completion is deliberately adaptive. A fluent answer should
+// keep the training cadence tight, but a slightly slower learner — or a
+// slower browser/Vosk final — should not lose an otherwise valid spoken
+// answer just because the client saved on a fixed wall-clock tick.
+const EXERCISE_COMPLETION_INITIAL_GRACE_MS = 2500;
+const EXERCISE_COMPLETION_QUIET_MS = 700;
+const EXERCISE_COMPLETION_HARD_CAP_MS = 6000;
+const EXERCISE_DIAGNOSTIC_TAIL_MS = 3000;
 
 let socket = null;
 let countdownTimer = null;
@@ -41,6 +49,9 @@ let voiceReady = false;
 let voiceStatusMessage = "Checking voice configuration…";
 let pendingSaveResolve = null;
 let voiceStartPromise = null;
+let pendingExerciseCompletion = null;
+let lastVoiceFinalByExercise = [];
+let diagnosticTail = null;
 
 // Per-exercise buffer of Vosk final events captured during the session.
 // Each entry: { t: seconds since session-start, text: raw transcript,
@@ -190,6 +201,9 @@ async function startVoiceCapture() {
             const symbols = Array.isArray(msg.symbols) ? msg.symbols : [];
             recordVoiceFinal(msg.text || "", symbols);
             if (symbols.length) appendSymbolsToActiveRow(symbols);
+        } else if (msg.type === "partial") {
+            if (!sessionActive || !currentExercises.length) return;
+            markExerciseVoiceActivity(Math.max(1, currentExerciseIndex));
         }
     };
     ws.onclose = () => { if (voice.session === session) stopVoiceCapture(); };
@@ -248,6 +262,20 @@ function stopVoiceCapture() {
         voice.stream = null;
     }
     if (voice.ws) { try { voice.ws.close(); } catch {} voice.ws = null; }
+}
+
+function clearPendingExerciseCompletion() {
+    if (pendingExerciseCompletion?.timer) {
+        window.clearTimeout(pendingExerciseCompletion.timer);
+    }
+    pendingExerciseCompletion = null;
+}
+
+function clearDiagnosticTail() {
+    if (diagnosticTail?.timer) {
+        window.clearTimeout(diagnosticTail.timer);
+    }
+    diagnosticTail = null;
 }
 
 function floatTo16BitPCM(input) {
@@ -321,10 +349,18 @@ function appendSymbolsToActiveRow(symbols) {
 // timing failure.
 function recordVoiceFinal(text, symbols) {
     const exerciseIdx = Math.max(1, currentExerciseIndex);
+    const now = performance.now();
     const tSeconds = (performance.now() - sessionStartMs) / 1000;
     const entry = { t: round4(tSeconds), text: text, symbols: Array.from(symbols) };
+    if (diagnosticTail?.exerciseIndex === exerciseIdx) {
+        appendRecognitionDiagnostic(exerciseIdx, entry);
+        renderVoiceEvent(entry, { late: true });
+        return;
+    }
     while (voiceCapture.length < exerciseIdx) voiceCapture.push([]);
     voiceCapture[exerciseIdx - 1].push(entry);
+    lastVoiceFinalByExercise[exerciseIdx - 1] = now;
+    markExerciseVoiceActivity(exerciseIdx);
     renderVoiceEvent(entry);
 }
 
@@ -332,18 +368,19 @@ function round4(n) {
     return Math.round(n * 10000) / 10000;
 }
 
-function renderVoiceEvent(entry) {
+function renderVoiceEvent(entry, { late = false } = {}) {
     const li = document.createElement("li");
-    li.dataset.kind = "voice";
+    li.dataset.kind = late ? "voice-late" : "voice";
     li.dataset.exerciseIndex = String(Math.max(1, currentExerciseIndex));
     const time = document.createElement("span");
     time.className = "events-time";
     time.textContent = `${entry.t.toFixed(2)}s`;
     const arrow = document.createElement("span");
     arrow.className = "events-voice-text";
-    arrow.textContent = entry.symbols.length
+    const rendered = entry.symbols.length
         ? `${entry.text} → ${entry.symbols.join("")}`
         : `${entry.text} → —`;
+    arrow.textContent = late ? `late: ${rendered}` : rendered;
     li.append(time, arrow);
     eventsEl.appendChild(li);
 }
@@ -366,6 +403,9 @@ function collectAnswers() {
 
 function completeRecognitionExercise(exerciseIndex) {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    if (pendingExerciseCompletion?.exerciseIndex === exerciseIndex) {
+        clearPendingExerciseCompletion();
+    }
     const input = answersEl.querySelector(
         `.answer-row__input[data-exercise-index="${exerciseIndex}"]`,
     );
@@ -375,6 +415,71 @@ function completeRecognitionExercise(exerciseIndex) {
         answer: input ? input.value : "",
         voice_capture: voiceCapture[exerciseIndex - 1] || [],
     }));
+    openDiagnosticTail(exerciseIndex);
+}
+
+function openDiagnosticTail(exerciseIndex) {
+    clearDiagnosticTail();
+    diagnosticTail = {
+        exerciseIndex,
+        timer: window.setTimeout(clearDiagnosticTail, EXERCISE_DIAGNOSTIC_TAIL_MS),
+    };
+}
+
+function appendRecognitionDiagnostic(exerciseIndex, entry) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({
+        action: "append-recognition-diagnostic",
+        exercise_index: exerciseIndex,
+        late_voice_capture: [{ ...entry, reason: "after_committed_response" }],
+    }));
+}
+
+function scheduleRecognitionExerciseCompletion(exerciseIndex) {
+    clearPendingExerciseCompletion();
+    const now = performance.now();
+    const lastVoiceAt = lastVoiceFinalByExercise[exerciseIndex - 1] || null;
+    pendingExerciseCompletion = {
+        exerciseIndex,
+        endedAt: now,
+        lastVoiceAt,
+        timer: null,
+    };
+    schedulePendingExerciseCompletionTimer();
+}
+
+function markExerciseVoiceActivity(exerciseIndex) {
+    if (pendingExerciseCompletion?.exerciseIndex !== exerciseIndex) return;
+    pendingExerciseCompletion.lastVoiceAt = performance.now();
+    schedulePendingExerciseCompletionTimer();
+}
+
+function schedulePendingExerciseCompletionTimer() {
+    if (!pendingExerciseCompletion) return;
+    if (pendingExerciseCompletion.timer) {
+        window.clearTimeout(pendingExerciseCompletion.timer);
+        pendingExerciseCompletion.timer = null;
+    }
+
+    const now = performance.now();
+    const hardDeadline =
+        pendingExerciseCompletion.endedAt + EXERCISE_COMPLETION_HARD_CAP_MS;
+    // If no speech evidence is present, give the recognizer a bounded
+    // initial grace period. Once any partial/final activity appears, move
+    // to a shorter quiet-period rule so accurate prompt answers do not sit
+    // through the full grace window before the next exercise starts.
+    const voiceActivityAt = pendingExerciseCompletion.lastVoiceAt == null
+        ? null
+        : Math.max(pendingExerciseCompletion.lastVoiceAt, pendingExerciseCompletion.endedAt);
+    const preferredDeadline = voiceActivityAt == null
+        ? pendingExerciseCompletion.endedAt + EXERCISE_COMPLETION_INITIAL_GRACE_MS
+        : voiceActivityAt + EXERCISE_COMPLETION_QUIET_MS;
+    const deadline = Math.min(preferredDeadline, hardDeadline);
+    const delay = Math.max(0, deadline - now);
+    pendingExerciseCompletion.timer = window.setTimeout(() => {
+        const exerciseIndex = pendingExerciseCompletion?.exerciseIndex;
+        if (exerciseIndex != null) completeRecognitionExercise(exerciseIndex);
+    }, delay);
 }
 
 // ─── Controls ────────────────────────────────────────────────────────────────
@@ -596,6 +701,9 @@ function appendEvent(event) {
         sessionActive = true;
         sessionStartMs = performance.now();
         voiceCapture = currentExercises.map(() => []);
+        lastVoiceFinalByExercise = currentExercises.map(() => null);
+        clearPendingExerciseCompletion();
+        clearDiagnosticTail();
         setStartButtonMode("active");
         const meta = toggleBtn.querySelector(".timeline-meta");
         meta.textContent = `seed ${event.seed} · ${currentExercises.length} exercises`;
@@ -628,6 +736,7 @@ function appendEvent(event) {
     }
 
     if (event.type === "recognition-exercise-start") {
+        clearDiagnosticTail();
         if (currentExerciseIndex !== 0) {
             const divider = document.createElement("li");
             divider.dataset.kind = "exercise-divider";
@@ -682,14 +791,14 @@ function appendEvent(event) {
     }
 
     if (event.type === "recognition-exercise-end") {
-        window.setTimeout(() => {
-            completeRecognitionExercise(event.exercise_index);
-        }, 1000);
+        scheduleRecognitionExerciseCompletion(event.exercise_index);
         return;
     }
 
     if (event.type === "session-end") {
         sessionActive = false;
+        clearPendingExerciseCompletion();
+        clearDiagnosticTail();
         stopVoiceCapture();
         unlockAnswerInputs();
         saveBtn.disabled = true;
@@ -724,6 +833,8 @@ function appendEvent(event) {
         eventsEl.appendChild(li);
         setStartButtonMode("idle");
         sessionActive = false;
+        clearPendingExerciseCompletion();
+        clearDiagnosticTail();
         stopVoiceCapture();
         setTimelineLocked(false);
         if (pendingSaveResolve) {

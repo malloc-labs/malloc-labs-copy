@@ -56,6 +56,7 @@ GAP_AFTER_SAY_SECONDS = 0.5
 GAP_BETWEEN_MORSE_REPEATS_SECONDS = 0.6
 GAP_BETWEEN_SYMBOLS_SECONDS = 0.8
 GAP_BETWEEN_EXERCISES_SECONDS = 2.0
+DIAGNOSTIC_TAIL_AFTER_FINAL_COMPLETION_SECONDS = 3.0
 
 
 @dataclass
@@ -83,6 +84,21 @@ class ActiveRecognitionSession:
 
     async def push_completion(self, payload: dict[str, Any]) -> None:
         await self.completions.put(payload)
+
+    def append_late_voice_capture(self, exercise_index: int, entries: list[dict[str, Any]]) -> None:
+        """Attach diagnostic-only recognizer finals to an analysed exercise.
+
+        ``voice_capture`` remains the committed response used for
+        progression. ``late_voice_capture`` records finals that arrived
+        after that committed snapshot, so review/debugging can see what
+        the application heard without inflating ICR evidence.
+        """
+        if exercise_index < 1 or exercise_index > len(self.exercises):
+            return
+        exercise = self.exercises[exercise_index - 1]
+        late = exercise.setdefault("late_voice_capture", [])
+        if isinstance(late, list):
+            late.extend(entries)
 
 
 def _play_samples(samples, sample_rate_hz: int, output_device: int | str | None) -> None:
@@ -227,6 +243,8 @@ async def _run_recognition_session(session: ActiveRecognitionSession) -> Path | 
             session.exercises[-1] = analysed[0]
             target = str(exercise_entry["target"])
             next_exercise = None if _recognition_answer_matches_target(answer, target) else exercise
+
+        await asyncio.sleep(DIAGNOSTIC_TAIL_AFTER_FINAL_COMPLETION_SECONDS)
 
         generation = build_recognition_generation_profile(
             claimed_set=session.claimed,
@@ -392,6 +410,21 @@ def _coerce_recognition_exercise_completion(message: dict[str, Any]) -> dict[str
         "exercise_index": exercise_index,
         "answer": answer,
         "voice_capture": voice_capture,
+    }
+
+
+def _coerce_recognition_diagnostic(message: dict[str, Any]) -> dict[str, Any] | None:
+    exercise_index = message.get("exercise_index")
+    late_voice_capture = message.get("late_voice_capture")
+    if not isinstance(exercise_index, int) or isinstance(exercise_index, bool):
+        return None
+    if not isinstance(late_voice_capture, list) or not all(
+        isinstance(item, dict) for item in late_voice_capture
+    ):
+        return None
+    return {
+        "exercise_index": exercise_index,
+        "late_voice_capture": late_voice_capture,
     }
 
 

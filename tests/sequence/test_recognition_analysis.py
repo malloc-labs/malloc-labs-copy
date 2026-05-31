@@ -418,11 +418,17 @@ def test_confusion_keeps_committed_and_caught_separate():
     result = load_recognition_confusion(records, claimed_set_key="K M R U")
 
     assert result["exercises_used"] == 3
-    assert result["committed_substitutions"] == [
+    assert [
+        {"target": item["target"], "typed": item["typed"], "count": item["count"]}
+        for item in result["committed_substitutions"]
+    ] == [
         {"target": "U", "typed": "R", "count": 2},
         {"target": "K", "typed": "M", "count": 1},
     ]
-    assert result["caught_substitutions"] == [{"target": "U", "typed": "R", "count": 1}]
+    assert [
+        {"target": item["target"], "typed": item["typed"], "count": item["count"]}
+        for item in result["caught_substitutions"]
+    ] == [{"target": "U", "typed": "R", "count": 1}]
 
 
 def test_confusion_ignores_other_claimed_sets_and_no_evidence():
@@ -435,7 +441,10 @@ def test_confusion_ignores_other_claimed_sets_and_no_evidence():
     result = load_recognition_confusion(records, claimed_set_key="K M R U")
 
     assert result["exercises_used"] == 1
-    assert result["committed_substitutions"] == [{"target": "U", "typed": "R", "count": 1}]
+    assert [
+        {"target": item["target"], "typed": item["typed"], "count": item["count"]}
+        for item in result["committed_substitutions"]
+    ] == [{"target": "U", "typed": "R", "count": 1}]
     assert result["caught_substitutions"] == []
 
 
@@ -445,8 +454,72 @@ def test_confusion_empty_when_no_matching_records():
     assert result == {
         "claimed_set_key": "K M R U",
         "exercises_used": 0,
+        "trend_window_size": 5,
+        "recent_exercises_used": 0,
+        "previous_exercises_used": 0,
         "committed_substitutions": [],
         "caught_substitutions": [],
+    }
+
+
+def _slot(truth: str, committed: str | None = None) -> dict:
+    return {
+        "truth": truth,
+        "committed": committed,
+        "tokens": [committed] if committed is not None else [],
+    }
+
+
+def _analysis_with_slots(*, committed=(), slots=()) -> dict:
+    analysis = _analysis(committed=committed)
+    analysis["slots"] = [dict(slot) for slot in slots]
+    return analysis
+
+
+def test_confusion_reports_recent_previous_rates_and_trend():
+    records = [
+        _record(
+            "K M R U",
+            _analysis_with_slots(
+                committed=[("K", "R")],
+                slots=[_slot("K", "R"), _slot("U", "U")],
+            ),
+        )
+        | {"started_at": "2026-05-31T12:00:00Z"},
+        _record(
+            "K M R U",
+            _analysis_with_slots(slots=[_slot("K", "K"), _slot("U", "U")]),
+        )
+        | {"started_at": "2026-05-31T11:00:00Z"},
+        _record(
+            "K M R U",
+            _analysis_with_slots(
+                committed=[("K", "R"), ("K", "R")],
+                slots=[_slot("K", "R"), _slot("K", "R")],
+            ),
+        )
+        | {"started_at": "2026-05-31T10:00:00Z"},
+    ]
+
+    result = load_recognition_confusion(
+        records,
+        claimed_set_key="K M R U",
+        trend_window_size=2,
+    )
+
+    assert result["recent_exercises_used"] == 2
+    assert result["previous_exercises_used"] == 1
+    assert result["committed_substitutions"][0] == {
+        "target": "K",
+        "typed": "R",
+        "count": 3,
+        "recent_count": 1,
+        "recent_total": 2,
+        "recent_rate": 0.5,
+        "previous_count": 2,
+        "previous_total": 2,
+        "previous_rate": 1.0,
+        "trend": "improving",
     }
 
 
