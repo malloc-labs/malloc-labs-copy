@@ -25,11 +25,13 @@ from copy_653.config import (
     load_server_settings,
     load_session_duration,
     load_voice_settings,
+    save_audio_output_device,
     save_audio_timing,
     save_claimed_symbols,
     save_keyer_settings,
     save_recognition_settings,
     save_save_directory,
+    save_voice_input_device,
     save_voice_settings,
 )
 from copy_653.letters.sequence import LettersConfig
@@ -235,6 +237,44 @@ def test_save_audio_timing_preserves_other_audio_and_tables(tmp_path: Path):
     assert loaded.cadence_variation == 2
     assert loaded.output_device == "Mac mini Speakers"
     assert load_claimed_symbols(config_file) == ("K", "M")
+
+
+def test_save_audio_output_device_preserves_timing_and_tables(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(textwrap.dedent("""
+        [audio]
+        character_speed_wpm = 20
+        effective_speed_wpm = 10
+        amplitude = 0.4
+
+        [symbols]
+        claimed = ["K"]
+        """))
+
+    params = save_audio_output_device("Jabra EVOLVE 20 MS, Core Audio", path=config_file)
+
+    assert params.output_device == "Jabra EVOLVE 20 MS, Core Audio"
+    loaded = load_audio_parameters(config_file)
+    assert loaded.character_speed_wpm == 20
+    assert loaded.effective_speed_wpm == 10
+    assert loaded.amplitude == 0.4
+    assert loaded.output_device == "Jabra EVOLVE 20 MS, Core Audio"
+    assert load_claimed_symbols(config_file) == ("K",)
+
+
+def test_save_audio_output_device_clears_to_system_default(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(textwrap.dedent("""
+        [audio]
+        output_device = "Mac mini Speakers"
+        character_speed_wpm = 20
+        """))
+
+    save_audio_output_device(None, path=config_file)
+
+    data = tomllib.loads(config_file.read_text())
+    assert "output_device" not in data["audio"]
+    assert load_audio_parameters(config_file).output_device is None
 
 
 def test_save_audio_timing_can_replace_invalid_existing_timing(tmp_path: Path):
@@ -778,10 +818,14 @@ def test_load_voice_settings_reads_table(tmp_path: Path):
             [voice]
             language = "en"
             model_path = "vosk-model-small-en-us-0.15"
+            input_device_id = "browser-device-id"
+            input_device_label = "Jabra EVOLVE 20 MS"
             """))
     cfg = load_voice_settings(config_file)
     assert cfg.language == "en"
     assert cfg.model_path == "vosk-model-small-en-us-0.15"
+    assert cfg.input_device_id == "browser-device-id"
+    assert cfg.input_device_label == "Jabra EVOLVE 20 MS"
     # Relative path → resolved under the default models directory.
     assert cfg.resolved_model_path() == DEFAULT_VOICE_MODELS_DIR / "vosk-model-small-en-us-0.15"
 
@@ -873,3 +917,47 @@ def test_save_voice_settings_preserves_other_tables(tmp_path: Path):
     assert data["audio"]["character_speed_wpm"] == 25
     assert data["symbols"]["claimed"] == ["K", "M", "U"]
     assert data["voice"]["language"] == "en"
+
+
+def test_save_voice_input_device_writes_to_voice_table(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(textwrap.dedent("""
+            [voice]
+            language = "en"
+            model_path = "vosk-model-small-en-us-0.15"
+
+            [audio]
+            character_speed_wpm = 20
+            """))
+
+    saved = save_voice_input_device(
+        input_device_id="browser-device-id",
+        input_device_label="Jabra EVOLVE 20 MS",
+        path=config_file,
+    )
+
+    assert saved.input_device_id == "browser-device-id"
+    assert saved.input_device_label == "Jabra EVOLVE 20 MS"
+    data = tomllib.loads(config_file.read_text())
+    assert data["voice"]["language"] == "en"
+    assert data["voice"]["model_path"] == "vosk-model-small-en-us-0.15"
+    assert data["voice"]["input_device_id"] == "browser-device-id"
+    assert data["voice"]["input_device_label"] == "Jabra EVOLVE 20 MS"
+    assert data["audio"]["character_speed_wpm"] == 20
+
+
+def test_save_voice_input_device_clears_to_browser_default(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(textwrap.dedent("""
+            [voice]
+            language = "en"
+            input_device_id = "browser-device-id"
+            input_device_label = "Jabra EVOLVE 20 MS"
+            """))
+
+    save_voice_input_device(input_device_id=None, input_device_label=None, path=config_file)
+
+    data = tomllib.loads(config_file.read_text())
+    assert "input_device_id" not in data["voice"]
+    assert "input_device_label" not in data["voice"]
+    assert load_voice_settings(config_file).input_device_id is None

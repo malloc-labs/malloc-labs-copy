@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
 from websockets.server import WebSocketServerProtocol
 
 from copy_653.audio import texture
+from copy_653.audio import synth
 from copy_653.config import (
     load_audio_parameters,
     load_developer_settings,
@@ -16,6 +18,7 @@ from copy_653.config import (
     load_save_directory,
     load_warm_up_timeout_seconds,
     save_audio_timing,
+    save_audio_output_device,
     save_developer_settings,
     save_keyer_settings,
     save_recognition_settings,
@@ -33,6 +36,68 @@ from copy_653.server.wire_events import (
     _audio_settings_event_from_params,
     _send_event,
 )
+
+
+def _coerce_output_device(value: Any) -> int | str | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError("output_device must be a device name, index, or null")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    raise ValueError("output_device must be a device name, index, or null")
+
+
+def _audio_output_devices_event(config_path: Path) -> dict[str, Any]:
+    params = load_audio_parameters(config_path)
+    devices: list[dict[str, Any]] = []
+    default_output_device: int | None = None
+    try:
+        import sounddevice as sd
+
+        default_pair = getattr(sd.default, "device", None)
+        if isinstance(default_pair, (list, tuple)) and len(default_pair) >= 2:
+            default_output_device = default_pair[1] if isinstance(default_pair[1], int) else None
+        raw_devices = sd.query_devices()
+        for idx, info in enumerate(raw_devices):
+            if int(info.get("max_output_channels", 0)) <= 0:
+                continue
+            hostapi_name = ""
+            try:
+                hostapi_name = str(sd.query_hostapis(info["hostapi"]).get("name", ""))
+            except Exception:
+                hostapi_name = ""
+            name = str(info.get("name", f"Device {idx}"))
+            full_name = f"{name}, {hostapi_name}" if hostapi_name else name
+            devices.append(
+                {
+                    "index": int(info.get("index", idx)),
+                    "name": name,
+                    "hostapi": hostapi_name,
+                    "full_name": full_name,
+                    "max_output_channels": int(info.get("max_output_channels", 0)),
+                    "default_samplerate": float(info.get("default_samplerate", 0.0)),
+                    "is_default_output": default_output_device == int(info.get("index", idx)),
+                }
+            )
+    except Exception as exc:
+        return {
+            "type": "audio-output-devices",
+            "current_output_device": params.output_device,
+            "default_output_device": default_output_device,
+            "devices": [],
+            "error": str(exc),
+        }
+
+    return {
+        "type": "audio-output-devices",
+        "current_output_device": params.output_device,
+        "default_output_device": default_output_device,
+        "devices": devices,
+    }
 
 
 async def _get_audio_settings_action(
@@ -56,6 +121,66 @@ async def _get_audio_settings_action(
             recognition_settings=recognition_settings,
         ),
     )
+
+
+async def _get_audio_output_devices_action(
+    ws: WebSocketServerProtocol,
+    config_path: Path,
+) -> None:
+    await _send_event(ws, _audio_output_devices_event(config_path))
+
+
+async def _set_audio_output_device_action(
+    ws: WebSocketServerProtocol,
+    message: dict[str, Any],
+    config_path: Path,
+) -> None:
+    try:
+        output_device = _coerce_output_device(message.get("output_device"))
+        save_audio_output_device(output_device, path=config_path)
+    except ValueError as exc:
+        await _send_event(
+            ws,
+            {
+                "type": "error",
+                "reason": "invalid-audio-output-device",
+                "detail": str(exc),
+            },
+        )
+        return
+    await _send_event(ws, _audio_output_devices_event(config_path))
+
+
+async def _play_audio_output_test_action(
+    ws: WebSocketServerProtocol,
+    message: dict[str, Any],
+    config_path: Path,
+) -> None:
+    try:
+        output_device = _coerce_output_device(message.get("output_device"))
+        params = load_audio_parameters(config_path)
+        samples = synth.synthesize_sequence(["K"], params)
+        import sounddevice as sd
+
+        await _send_event(ws, {"type": "audio-output-test-start", "output_device": output_device})
+        await asyncio.to_thread(
+            sd.play,
+            samples,
+            samplerate=params.sample_rate_hz,
+            device=output_device,
+            blocking=True,
+        )
+    except Exception as exc:
+        await _send_event(
+            ws,
+            {
+                "type": "error",
+                "reason": "audio-output-test-failed",
+                "detail": str(exc),
+            },
+        )
+        return
+    await _send_event(ws, {"type": "audio-output-test-end", "output_device": output_device})
 
 
 async def _set_audio_settings_action(

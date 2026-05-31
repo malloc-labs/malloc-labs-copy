@@ -36,9 +36,13 @@ from copy_653.letters import ANCHORED_SYMBOLS, find_anchors_dir
 from copy_653.midi import KeyDecoder, KeyElementAssembler
 from copy_653.server.audio_settings_actions import (
     _get_audio_settings_action,
+    _get_audio_output_devices_action,
+    _play_audio_output_test_action,
     _set_audio_settings_action,
+    _set_audio_output_device_action,
 )
 from copy_653.server.voice_settings_actions import (
+    _set_voice_input_device_action,
     _get_voice_settings_action,
     _set_voice_settings_action,
 )
@@ -413,10 +417,22 @@ _BARE_HANDLERS: dict[str, Callable[[ConnectionState, dict[str, Any]], Awaitable[
     "set-audio-settings": lambda state, msg: _set_audio_settings_action(
         state.ws, msg, state.config_path
     ),
+    "get-audio-output-devices": lambda state, msg: _get_audio_output_devices_action(
+        state.ws, state.config_path
+    ),
+    "set-audio-output-device": lambda state, msg: _set_audio_output_device_action(
+        state.ws, msg, state.config_path
+    ),
+    "play-audio-output-test": lambda state, msg: _play_audio_output_test_action(
+        state.ws, msg, state.config_path
+    ),
     "get-voice-settings": lambda state, msg: _get_voice_settings_action(
         state.ws, state.config_path
     ),
     "set-voice-settings": lambda state, msg: _set_voice_settings_action(
+        state.ws, msg, state.config_path
+    ),
+    "set-voice-input-device": lambda state, msg: _set_voice_input_device_action(
         state.ws, msg, state.config_path
     ),
     "save-test-message": lambda state, msg: _save_test_message_action(state.ws, msg),

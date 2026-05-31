@@ -197,6 +197,8 @@ class VoiceSettings:
 
     language: str = DEFAULT_VOICE_LANGUAGE
     model_path: str | None = None
+    input_device_id: str | None = None
+    input_device_label: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.language, str) or not self.language.strip():
@@ -206,6 +208,20 @@ class VoiceSettings:
         ):
             raise ValueError(
                 f"[voice].model_path must be a non-empty string or absent, got {self.model_path!r}"
+            )
+        if self.input_device_id is not None and (
+            not isinstance(self.input_device_id, str) or not self.input_device_id.strip()
+        ):
+            raise ValueError(
+                "[voice].input_device_id must be a non-empty string or absent, "
+                f"got {self.input_device_id!r}"
+            )
+        if self.input_device_label is not None and (
+            not isinstance(self.input_device_label, str) or not self.input_device_label.strip()
+        ):
+            raise ValueError(
+                "[voice].input_device_label must be a non-empty string or absent, "
+                f"got {self.input_device_label!r}"
             )
 
     def resolved_model_path(self) -> Path | None:
@@ -344,6 +360,29 @@ def save_audio_timing(
         audio_table["receiver_bed"] = params.receiver_bed
     if cadence_variation is not None:
         audio_table["cadence_variation"] = params.cadence_variation
+    _write_toml_atomic(data, config_path)
+    return params
+
+
+def save_audio_output_device(
+    output_device: int | str | None,
+    *,
+    path: Path | None = None,
+) -> AudioParameters:
+    """Persist the PortAudio output device used for generated audio."""
+    config_path = path if path is not None else DEFAULT_CONFIG_PATH
+    data = _read_toml(config_path) or {}
+    audio_table = data.setdefault("audio", {})
+
+    known_keys = set(AudioParameters.__dataclass_fields__.keys())
+    filtered = {k: v for k, v in audio_table.items() if k in known_keys}
+    filtered["output_device"] = output_device
+    params = AudioParameters(**filtered)
+
+    if output_device is None:
+        audio_table.pop("output_device", None)
+    else:
+        audio_table["output_device"] = params.output_device
     _write_toml_atomic(data, config_path)
     return params
 
@@ -628,18 +667,69 @@ def save_voice_settings(
     """Persist speech-recogniser settings, preserving other tables."""
     config_path = path if path is not None else DEFAULT_CONFIG_PATH
     data = _read_toml(config_path) or {}
+    current = load_voice_settings(config_path)
 
     voice_table = data.get("voice")
     if not isinstance(voice_table, dict):
         voice_table = {}
         data["voice"] = voice_table
 
-    settings = VoiceSettings(language=language, model_path=model_path)
+    settings = VoiceSettings(
+        language=language,
+        model_path=model_path,
+        input_device_id=current.input_device_id,
+        input_device_label=current.input_device_label,
+    )
     voice_table["language"] = settings.language
     if settings.model_path is None:
         voice_table.pop("model_path", None)
     else:
         voice_table["model_path"] = settings.model_path
+    if settings.input_device_id is not None:
+        voice_table["input_device_id"] = settings.input_device_id
+    if settings.input_device_label is not None:
+        voice_table["input_device_label"] = settings.input_device_label
+
+    _write_toml_atomic(data, config_path)
+    return settings
+
+
+def save_voice_input_device(
+    *,
+    input_device_id: str | None,
+    input_device_label: str | None = None,
+    path: Path | None = None,
+) -> VoiceSettings:
+    """Persist browser voice-input selection metadata, preserving voice config."""
+    config_path = path if path is not None else DEFAULT_CONFIG_PATH
+    data = _read_toml(config_path) or {}
+    current = load_voice_settings(config_path)
+
+    voice_table = data.get("voice")
+    if not isinstance(voice_table, dict):
+        voice_table = {}
+        data["voice"] = voice_table
+
+    settings = VoiceSettings(
+        language=current.language,
+        model_path=current.model_path,
+        input_device_id=input_device_id,
+        input_device_label=input_device_label,
+    )
+
+    voice_table["language"] = settings.language
+    if settings.model_path is None:
+        voice_table.pop("model_path", None)
+    else:
+        voice_table["model_path"] = settings.model_path
+    if settings.input_device_id is None:
+        voice_table.pop("input_device_id", None)
+    else:
+        voice_table["input_device_id"] = settings.input_device_id
+    if settings.input_device_label is None:
+        voice_table.pop("input_device_label", None)
+    else:
+        voice_table["input_device_label"] = settings.input_device_label
 
     _write_toml_atomic(data, config_path)
     return settings

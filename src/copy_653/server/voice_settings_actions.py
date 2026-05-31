@@ -22,7 +22,12 @@ from typing import Any
 
 from websockets.server import WebSocketServerProtocol
 
-from copy_653.config import VoiceSettings, load_voice_settings, save_voice_settings
+from copy_653.config import (
+    VoiceSettings,
+    load_voice_settings,
+    save_voice_input_device,
+    save_voice_settings,
+)
 from copy_653.server.wire_events import _send_event
 
 
@@ -56,6 +61,31 @@ async def _set_voice_settings_action(
     await _send_event(ws, _voice_settings_event(settings))
 
 
+async def _set_voice_input_device_action(
+    ws: WebSocketServerProtocol,
+    message: dict[str, Any],
+    config_path: Path,
+) -> None:
+    try:
+        input_device_id = _nullable_string(message.get("input_device_id"), "input_device_id")
+        input_device_label = _nullable_string(
+            message.get("input_device_label"), "input_device_label"
+        )
+        settings = save_voice_input_device(
+            input_device_id=input_device_id,
+            input_device_label=input_device_label,
+            path=config_path,
+        )
+    except ValueError as err:
+        await _send_event(
+            ws,
+            {"type": "error", "reason": "invalid-voice-input-device", "detail": str(err)},
+        )
+        return
+
+    await _send_event(ws, _voice_settings_event(settings))
+
+
 def _voice_settings_event(settings: VoiceSettings) -> dict[str, Any]:
     resolved = settings.resolved_model_path()
     return {
@@ -64,6 +94,8 @@ def _voice_settings_event(settings: VoiceSettings) -> dict[str, Any]:
         "model_path": settings.model_path,
         "model_path_resolved": str(resolved) if resolved is not None else None,
         "model_exists": bool(resolved and Path(resolved).is_dir()),
+        "input_device_id": settings.input_device_id,
+        "input_device_label": settings.input_device_label,
     }
 
 
@@ -79,5 +111,14 @@ def _nullable_model_path(value: Any) -> str | None:
         return None
     if not isinstance(value, str):
         raise ValueError("model_path must be a string or null")
+    stripped = value.strip()
+    return stripped or None
+
+
+def _nullable_string(value: Any, field: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be a string or null")
     stripped = value.strip()
     return stripped or None
