@@ -9,8 +9,28 @@
 // Per spec §8.3 the listening *page* has an affordance budget of 5;
 // this is the settings page, where verification surfaces live.
 
+import {
+    getVoiceInputDeviceId,
+    setVoiceInputDeviceId,
+    voiceInputAudioConstraints,
+} from "./voice-input-device.js";
+
 const SAMPLE_RATE = 16_000;
 
+const outputSelect       = document.getElementById("settings-audio-output-device");
+const outputCurrentEl    = document.getElementById("settings-audio-output-current");
+const outputRefreshBtn   = document.getElementById("settings-audio-output-refresh");
+const outputTestBtn      = document.getElementById("settings-audio-output-test");
+const outputSaveBtn      = document.getElementById("settings-audio-output-save");
+const outputStatusEl     = document.getElementById("settings-audio-output-status");
+const voiceInputSelect   = document.getElementById("settings-voice-input-device");
+const voiceInputCurrent  = document.getElementById("settings-voice-input-current");
+const voiceInputPermit   = document.getElementById("settings-voice-input-permission");
+const voiceInputRefresh  = document.getElementById("settings-voice-input-refresh");
+const voiceInputTest     = document.getElementById("settings-voice-input-test");
+const voiceInputSave     = document.getElementById("settings-voice-input-save");
+const voiceInputStatus   = document.getElementById("settings-voice-input-status");
+const voiceInputMeter    = document.getElementById("settings-voice-input-meter");
 const statusEl       = document.getElementById("settings-voice-status");
 const tableBody      = document.querySelector("#settings-voice-lexicon-table tbody");
 const filesEl        = document.getElementById("settings-voice-lexicon-files");
@@ -30,6 +50,14 @@ const testSymbolEl   = document.getElementById("settings-voice-test-symbol");
 // ─── Main /ws connection (config read/write) ─────────────────────────────────
 
 let mainSocket = null;
+let currentOutputDevice = null;
+const voiceInputTestState = {
+    ctx: null,
+    stream: null,
+    analyser: null,
+    frame: 0,
+    running: false,
+};
 
 function _connectMainSocket() {
     if (mainSocket && (mainSocket.readyState === WebSocket.OPEN
@@ -43,14 +71,37 @@ function _connectMainSocket() {
         try { event = JSON.parse(ev.data); } catch { return; }
         if (event.type === "voice-settings") {
             _applyVoiceSettingsEvent(event);
+        } else if (event.type === "audio-output-devices") {
+            _renderAudioOutputDevices(event);
+        } else if (event.type === "audio-output-test-start") {
+            _setOutputStatus("playing");
+        } else if (event.type === "audio-output-test-end") {
+            _setOutputStatus("test complete", "ok");
         } else if (event.type === "error" && event.reason === "invalid-voice-settings") {
             _setSaveStatus(`error: ${event.detail || "invalid settings"}`, "error");
+        } else if (event.type === "error" && event.reason === "invalid-voice-input-device") {
+            _setVoiceInputStatus(`error: ${event.detail || "invalid microphone"}`, "error");
+        } else if (event.type === "error" && event.reason === "invalid-audio-output-device") {
+            _setOutputStatus(`error: ${event.detail || "invalid output"}`, "error");
+        } else if (event.type === "error" && event.reason === "audio-output-test-failed") {
+            _setOutputStatus(`test failed: ${event.detail || "output failed"}`, "error");
         }
     });
     mainSocket.addEventListener("open", () => {
         mainSocket.send(JSON.stringify({ action: "get-voice-settings" }));
+        mainSocket.send(JSON.stringify({ action: "get-audio-output-devices" }));
     });
     return mainSocket;
+}
+
+function _sendMainSocket(payload) {
+    const ws = _connectMainSocket();
+    const send = () => ws.send(JSON.stringify(payload));
+    if (ws.readyState === WebSocket.OPEN) {
+        send();
+    } else {
+        ws.addEventListener("open", send, { once: true });
+    }
 }
 
 function _applyVoiceSettingsEvent(event) {
@@ -64,6 +115,14 @@ function _applyVoiceSettingsEvent(event) {
     _setField("model_path", event.model_path ?? "(unset)");
     _setField("model_path_resolved", event.model_path_resolved ?? "—");
     _setField("model_exists", _yesNo(event.model_exists));
+    if (event.input_device_id) {
+        setVoiceInputDeviceId(event.input_device_id);
+    }
+    if (voiceInputCurrent) {
+        const label = event.input_device_label || (event.input_device_id ? "saved microphone" : "Browser default");
+        voiceInputCurrent.textContent = `config: ${label}`;
+    }
+    _setVoiceInputStatus("ready", "ok");
     // The voice-settings event doesn't carry vosk_installed / ready, so
     // re-fetch the HTTP status to keep the dependent fields fresh.
     refreshStatus();
@@ -140,6 +199,257 @@ function _yesNo(value) {
     if (value === true)  return "yes";
     if (value === false) return "no";
     return "—";
+}
+
+// ─── Audio output device ─────────────────────────────────────────────────────
+
+function _deviceValue(device) {
+    if (device == null || device === "") return "";
+    if (Number.isInteger(device)) {
+        return JSON.stringify({ kind: "index", value: device });
+    }
+    return JSON.stringify({ kind: "name", value: String(device) });
+}
+
+function _selectedOutputDevice() {
+    if (!outputSelect) return null;
+    if (!outputSelect.value) return null;
+    try {
+        const parsed = JSON.parse(outputSelect.value);
+        if (parsed.kind === "index" && Number.isInteger(parsed.value)) return parsed.value;
+        if (parsed.kind === "name" && typeof parsed.value === "string") return parsed.value;
+    } catch {
+        return outputSelect.value;
+    }
+    return null;
+}
+
+function _setOutputStatus(text, kind = "info") {
+    if (!outputStatusEl) return;
+    outputStatusEl.textContent = text;
+    outputStatusEl.dataset.kind = kind;
+}
+
+function _renderAudioOutputDevices(event) {
+    if (!outputSelect) return;
+    currentOutputDevice = event.current_output_device ?? null;
+    outputSelect.replaceChildren();
+
+    const defaultOption = document.createElement("option");
+    defaultOption.value = "";
+    defaultOption.textContent = "System default";
+    outputSelect.appendChild(defaultOption);
+
+    const devices = Array.isArray(event.devices) ? event.devices : [];
+    for (const device of devices) {
+        const option = document.createElement("option");
+        option.value = _deviceValue(device.full_name || device.name || String(device.index));
+        const suffix = device.is_default_output ? " (system default)" : "";
+        option.textContent = `[${device.index}] ${device.full_name || device.name}${suffix}`;
+        outputSelect.appendChild(option);
+    }
+
+    const selected = _deviceValue(currentOutputDevice);
+    if (selected && !Array.from(outputSelect.options).some((option) => option.value === selected)) {
+        const option = document.createElement("option");
+        option.value = selected;
+        option.textContent = `${selected} (saved)`;
+        outputSelect.appendChild(option);
+    }
+    outputSelect.value = selected;
+
+    const label = currentOutputDevice == null ? "System default" : String(currentOutputDevice);
+    outputCurrentEl.textContent = event.error
+        ? `saved: ${label}; device list unavailable: ${event.error}`
+        : `saved: ${label}`;
+    _setOutputStatus(event.error ? "device list unavailable" : "ready", event.error ? "error" : "ok");
+}
+
+if (outputRefreshBtn) {
+    outputRefreshBtn.addEventListener("click", () => {
+        _setOutputStatus("refreshing");
+        _sendMainSocket({ action: "get-audio-output-devices" });
+    });
+}
+
+if (outputTestBtn) {
+    outputTestBtn.addEventListener("click", () => {
+        _setOutputStatus("starting test");
+        _sendMainSocket({
+            action: "play-audio-output-test",
+            output_device: _selectedOutputDevice(),
+        });
+    });
+}
+
+if (outputSaveBtn) {
+    outputSaveBtn.addEventListener("click", () => {
+        _setOutputStatus("saving");
+        _sendMainSocket({
+            action: "set-audio-output-device",
+            output_device: _selectedOutputDevice(),
+        });
+    });
+}
+
+// ─── Browser voice input device ──────────────────────────────────────────────
+
+function _setVoiceInputStatus(text, kind = "info") {
+    if (!voiceInputStatus) return;
+    voiceInputStatus.textContent = text;
+    voiceInputStatus.dataset.kind = kind;
+}
+
+function _selectedVoiceInputLabel() {
+    return voiceInputSelect?.selectedOptions[0]?.textContent || "Browser default";
+}
+
+async function _refreshVoiceInputDevices() {
+    if (!voiceInputSelect || !navigator.mediaDevices?.enumerateDevices) return;
+    const saved = getVoiceInputDeviceId();
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const inputs = devices.filter((device) => device.kind === "audioinput");
+
+    voiceInputSelect.replaceChildren();
+    const defaultOption = document.createElement("option");
+    defaultOption.value = "";
+    defaultOption.textContent = "Browser default";
+    voiceInputSelect.appendChild(defaultOption);
+
+    for (const device of inputs) {
+        const option = document.createElement("option");
+        option.value = device.deviceId;
+        option.textContent = device.label || `Microphone ${voiceInputSelect.options.length}`;
+        voiceInputSelect.appendChild(option);
+    }
+
+    if (saved && !inputs.some((device) => device.deviceId === saved)) {
+        const option = document.createElement("option");
+        option.value = saved;
+        option.textContent = "Saved microphone (not currently listed)";
+        voiceInputSelect.appendChild(option);
+    }
+    voiceInputSelect.value = saved;
+    const selectedLabel = _selectedVoiceInputLabel();
+    voiceInputCurrent.textContent = `saved: ${selectedLabel}`;
+    _setVoiceInputStatus(inputs.length ? "ready" : "no microphones listed", inputs.length ? "ok" : "error");
+}
+
+async function _grantVoiceInputAccess() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+        _setVoiceInputStatus("microphone API unavailable", "error");
+        return;
+    }
+    _setVoiceInputStatus("requesting access");
+    let stream = null;
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        _setVoiceInputStatus("access granted", "ok");
+        await _refreshVoiceInputDevices();
+    } catch (err) {
+        _setVoiceInputStatus(`access failed: ${err.message || err}`, "error");
+    } finally {
+        if (stream) stream.getTracks().forEach((track) => track.stop());
+    }
+}
+
+if (voiceInputPermit) {
+    voiceInputPermit.addEventListener("click", _grantVoiceInputAccess);
+}
+
+if (voiceInputRefresh) {
+    voiceInputRefresh.addEventListener("click", () => {
+        _refreshVoiceInputDevices().catch((err) => {
+            _setVoiceInputStatus(`refresh failed: ${err.message || err}`, "error");
+        });
+    });
+}
+
+if (voiceInputSave) {
+    voiceInputSave.addEventListener("click", () => {
+        const deviceId = voiceInputSelect.value || "";
+        const selectedLabel = _selectedVoiceInputLabel();
+        setVoiceInputDeviceId(deviceId);
+        voiceInputCurrent.textContent = `saved: ${selectedLabel}`;
+        _setVoiceInputStatus("saving");
+        _sendMainSocket({
+            action: "set-voice-input-device",
+            input_device_id: deviceId || null,
+            input_device_label: deviceId ? selectedLabel : null,
+        });
+    });
+}
+
+function _stopVoiceInputLevelTest(stateText = "test stopped") {
+    voiceInputTestState.running = false;
+    if (voiceInputTestState.frame) {
+        cancelAnimationFrame(voiceInputTestState.frame);
+        voiceInputTestState.frame = 0;
+    }
+    if (voiceInputTestState.ctx) {
+        try { voiceInputTestState.ctx.close(); } catch {}
+        voiceInputTestState.ctx = null;
+    }
+    if (voiceInputTestState.stream) {
+        voiceInputTestState.stream.getTracks().forEach((track) => track.stop());
+        voiceInputTestState.stream = null;
+    }
+    voiceInputTestState.analyser = null;
+    if (voiceInputMeter) voiceInputMeter.style.width = "0%";
+    if (voiceInputTest) voiceInputTest.textContent = "Test";
+    _setVoiceInputStatus(stateText, "info");
+}
+
+function _renderVoiceInputLevel() {
+    const analyser = voiceInputTestState.analyser;
+    if (!analyser || !voiceInputTestState.running) return;
+    const data = new Uint8Array(analyser.fftSize);
+    analyser.getByteTimeDomainData(data);
+    let peak = 0;
+    for (const sample of data) {
+        peak = Math.max(peak, Math.abs(sample - 128) / 128);
+    }
+    if (voiceInputMeter) {
+        voiceInputMeter.style.width = `${Math.min(100, Math.round(peak * 100))}%`;
+    }
+    voiceInputTestState.frame = requestAnimationFrame(_renderVoiceInputLevel);
+}
+
+async function _startVoiceInputLevelTest() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+        _setVoiceInputStatus("microphone API unavailable", "error");
+        return;
+    }
+    _setVoiceInputStatus("opening microphone");
+    const deviceId = voiceInputSelect.value || "";
+    const stream = await navigator.mediaDevices.getUserMedia(voiceInputAudioConstraints(deviceId));
+    const ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    ctx.createMediaStreamSource(stream).connect(analyser);
+
+    voiceInputTestState.stream = stream;
+    voiceInputTestState.ctx = ctx;
+    voiceInputTestState.analyser = analyser;
+    voiceInputTestState.running = true;
+    voiceInputTest.textContent = "Stop";
+    _setVoiceInputStatus(`testing ${_selectedVoiceInputLabel()}`, "ok");
+    _renderVoiceInputLevel();
+}
+
+if (voiceInputTest) {
+    voiceInputTest.addEventListener("click", async () => {
+        if (voiceInputTestState.running) {
+            _stopVoiceInputLevelTest();
+            return;
+        }
+        try {
+            await _startVoiceInputLevelTest();
+        } catch (err) {
+            _stopVoiceInputLevelTest(`test failed: ${err.message || err}`);
+            if (voiceInputStatus) voiceInputStatus.dataset.kind = "error";
+        }
+    });
 }
 
 // ─── Lexicon ─────────────────────────────────────────────────────────────────
@@ -303,15 +613,7 @@ async function _startTest() {
     if (test.session !== session) return;
 
     testStateEl.textContent = "Requesting microphone…";
-    const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-            channelCount: 1,
-            sampleRate: SAMPLE_RATE,
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-        },
-    });
+    const stream = await navigator.mediaDevices.getUserMedia(voiceInputAudioConstraints());
     if (test.session !== session) { stream.getTracks().forEach((t) => t.stop()); return; }
     test.stream = stream;
 
@@ -394,5 +696,6 @@ if (voiceTabBtn) {
         // [voice] config. Other tabs already use their own /ws clients
         // (see settings.js); a second connection is the existing pattern.
         _connectMainSocket();
+        _refreshVoiceInputDevices().catch(() => {});
     });
 }

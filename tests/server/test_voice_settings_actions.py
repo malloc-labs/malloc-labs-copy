@@ -216,3 +216,42 @@ async def test_set_voice_settings_reports_model_exists_when_dir_present(tmp_path
     finally:
         server.close()
         await server.wait_closed()
+
+
+async def test_set_voice_input_device_writes_table_and_echoes(tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(textwrap.dedent("""
+            [voice]
+            language = "en"
+            model_path = "vosk-model-small-en-us-0.15"
+            """))
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=_make_web_root(tmp_path),
+        config_path=config_path,
+    )
+    try:
+        async with ws_connect(f"ws://127.0.0.1:{port}/ws") as ws:
+            await ws.send(
+                json.dumps(
+                    {
+                        "action": "set-voice-input-device",
+                        "input_device_id": "browser-device-id",
+                        "input_device_label": "Jabra EVOLVE 20 MS",
+                    }
+                )
+            )
+            event = await _drain_until(ws, "voice-settings")
+            assert event["input_device_id"] == "browser-device-id"
+            assert event["input_device_label"] == "Jabra EVOLVE 20 MS"
+
+        data = tomllib.loads(config_path.read_text())
+        assert data["voice"]["language"] == "en"
+        assert data["voice"]["model_path"] == "vosk-model-small-en-us-0.15"
+        assert data["voice"]["input_device_id"] == "browser-device-id"
+        assert data["voice"]["input_device_label"] == "Jabra EVOLVE 20 MS"
+    finally:
+        server.close()
+        await server.wait_closed()

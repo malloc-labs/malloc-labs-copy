@@ -37,7 +37,7 @@
                     data-selected="false"
                     data-tab="voice"
                     aria-keyshortcuts="V"
-                    title="Voice (V)"><u>V</u>oice</button>
+                    title="Audio & Voice (V)">Audio &amp; <u>V</u>oice</button>
             <button type="button"
                     class="settings-tab"
                     role="tab"
@@ -368,6 +368,61 @@
                  role="tabpanel"
                  aria-labelledby="settings-tab-voice"
                  hidden>
+            <details class="settings-section" open>
+                <summary>Audio Output</summary>
+                <p class="settings-section__desc">Training audio from Python: Morse, previews, exercises, and phonetic anchors. This is separate from the browser microphone used for voice recognition.</p>
+                <div class="settings-field">
+                    <label for="settings-audio-output-device">Output device</label>
+                    <select id="settings-audio-output-device"></select>
+                    <p id="settings-audio-output-current">loading devices</p>
+                    <div class="settings-field__inline-actions">
+                        <button type="button"
+                                class="settings-section__action"
+                                id="settings-audio-output-refresh">Refresh</button>
+                        <button type="button"
+                                class="settings-section__action"
+                                id="settings-audio-output-test">Test</button>
+                        <button type="button"
+                                class="settings-section__action"
+                                id="settings-audio-output-save">Save</button>
+                        <span class="settings-field__status"
+                              id="settings-audio-output-status"
+                              aria-live="polite"></span>
+                    </div>
+                    <p>Copy asks PortAudio/CoreAudio for this output. External per-app routers may still transform the final route after the stream opens.</p>
+                </div>
+            </details>
+
+            <details class="settings-section" open>
+                <summary>Voice Input</summary>
+                <p class="settings-section__desc">Browser microphone input for Symbol Recognition. Device labels may stay hidden until microphone access is granted.</p>
+                <div class="settings-field">
+                    <label for="settings-voice-input-device">Microphone</label>
+                    <select id="settings-voice-input-device"></select>
+                    <p id="settings-voice-input-current">browser default</p>
+                    <div class="settings-field__inline-actions">
+                        <button type="button"
+                                class="settings-section__action"
+                                id="settings-voice-input-permission">Grant access</button>
+                        <button type="button"
+                                class="settings-section__action"
+                                id="settings-voice-input-refresh">Refresh</button>
+                        <button type="button"
+                                class="settings-section__action"
+                                id="settings-voice-input-test">Test</button>
+                        <button type="button"
+                                class="settings-section__action"
+                                id="settings-voice-input-save">Save</button>
+                        <span class="settings-field__status"
+                              id="settings-voice-input-status"
+                              aria-live="polite"></span>
+                    </div>
+                    <div class="settings-voice-test__meter" aria-label="Selected microphone input level">
+                        <div class="settings-voice-test__meter-fill" id="settings-voice-input-meter"></div>
+                    </div>
+                </div>
+            </details>
+
             <details class="settings-section" open>
                 <summary>Status</summary>
                 <p class="settings-section__desc">Engine-side readiness of the offline speech recogniser. Voice is an optional input modality for the Symbol Recognition page; the rest of Copy works without it.</p>

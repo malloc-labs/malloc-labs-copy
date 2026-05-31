@@ -13,6 +13,7 @@ import {
     setSequenceTokenPlaying,
     startCountdown,
 } from "./koch-core.js";
+import { voiceInputAudioConstraints } from "./voice-input-device.js";
 
 const sequenceRow  = document.getElementById("sequence-row");
 const startBtn     = document.getElementById("start");
@@ -202,15 +203,7 @@ async function startVoiceCapture() {
     await ready;
     if (voice.session !== session) return;
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-            channelCount: 1,
-            sampleRate: VOICE_SAMPLE_RATE,
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-        },
-    });
+    const stream = await navigator.mediaDevices.getUserMedia(voiceInputAudioConstraints());
     if (voice.session !== session) { stream.getTracks().forEach((t) => t.stop()); return; }
     voice.stream = stream;
 
