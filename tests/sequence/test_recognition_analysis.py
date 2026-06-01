@@ -640,6 +640,33 @@ def test_recognition_set_evidence_counts_silent_sessions_against_progression():
     assert resolve_set_gear(evidence, current_gear=1) == 1
 
 
+def test_recognition_set_gear_holds_after_one_low_set():
+    records = [
+        _recognition_set_record(set_id="set-a", set_session=session, gear=1, fraction=0.0)
+        for session in range(1, 9)
+    ]
+
+    evidence = load_set_evidence(records, claimed_set_key="K M")
+
+    assert evidence["recent_fractions"] == [0.0]
+    assert evidence["low_streak"] == 1
+    assert resolve_set_gear(evidence, current_gear=1) == 1
+
+
+def test_recognition_set_gear_drops_after_two_low_sets():
+    records = [
+        _recognition_set_record(set_id=set_id, set_session=session, gear=1, fraction=0.0)
+        for set_id in ("set-a", "set-b")
+        for session in range(1, 9)
+    ]
+
+    evidence = load_set_evidence(records, claimed_set_key="K M")
+
+    assert evidence["recent_fractions"] == [0.0, 0.0]
+    assert evidence["low_streak"] == 2
+    assert resolve_set_gear(evidence, current_gear=1) == 0
+
+
 def test_recognition_set_gear_can_be_reused_inside_active_set():
     records = [
         _recognition_set_record(set_id="set-a", set_session=session, gear=2, fraction=0.5)

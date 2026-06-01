@@ -201,6 +201,8 @@ async def _run_recognition_session(session: ActiveRecognitionSession) -> Path | 
             "exercise_count": EXERCISE_COUNT,
             "seed": session.seed,
             "set_session": session.set_session,
+            "gear": session.gear,
+            "recognition_kind": _recognition_kind_for_gear(session.gear),
         },
     )
 

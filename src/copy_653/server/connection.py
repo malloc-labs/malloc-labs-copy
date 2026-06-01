@@ -79,6 +79,7 @@ from copy_653.server.recognition_actions import (
     ActiveRecognitionSession,
     _coerce_recognition_diagnostic,
     _coerce_recognition_exercise_completion,
+    _recognition_kind_for_gear,
     _run_recognition_session,
     _start_recognition_action,
 )
@@ -91,6 +92,7 @@ from copy_653.server.records import (
     _iter_recognition_records,
     _koch_readiness_state,
     _next_send_symbol_readiness,
+    _resolve_recognition_session_gears,
 )
 from copy_653.server.validation import (
     _browser_midi_note_event,
@@ -362,6 +364,29 @@ def _reconstruct_recognition_set_state(state: ConnectionState) -> None:
     state.recognition_session_next = max_session + 1
 
 
+def _next_recognition_profile(state: ConnectionState, claimed: tuple[str, ...]) -> dict[str, Any]:
+    if not claimed:
+        return {}
+    try:
+        save_directory = load_save_directory(state.config_path)
+        gears = _resolve_recognition_session_gears(
+            save_directory,
+            " ".join(sorted(claimed)),
+            exercise_count=1,
+            set_id=state.recognition_set_id,
+            set_session=state.recognition_session_next,
+        )
+    except Exception:
+        logger.exception("could not resolve next recognition profile")
+        return {}
+    gear = gears[0] if gears else 0
+    return {
+        "recognition_set_session": state.recognition_session_next,
+        "recognition_gear": gear,
+        "recognition_kind": _recognition_kind_for_gear(gear),
+    }
+
+
 async def _run_start_recognition_session(state: ConnectionState) -> None:
     """Wrap a recognition ``start-recognition`` with the set state machine."""
     try:
@@ -470,6 +495,7 @@ async def handler(
             ready_for_next=ready_for_next,
             ready_for_next_send=ready_for_next_send,
             set_is_fresh=state.is_fresh_set,
+            **_next_recognition_profile(state, claimed),
         ),
     )
 

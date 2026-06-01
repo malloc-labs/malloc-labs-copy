@@ -54,6 +54,10 @@ OUTCOME_CAUGHT_CORRECT = "caught_correct"
 OUTCOME_CAUGHT_SUBSTITUTION = "caught_substitution"
 OUTCOME_MISS = "miss"
 
+# Recognition set-level progression already waits for 8 sessions before
+# deciding. One strong completed set can move up; two low completed sets
+# are required to move down so the first harder set can be adaptation.
+N_LOW_SETS_FOR_RECOGNITION_SHIFT_DOWN = 2
 N_LOW_RUNS_FOR_RECOGNITION_SHIFT_DOWN = N_LOW_RUNS_FOR_SHIFT_DOWN
 
 
@@ -438,7 +442,7 @@ def resolve_set_gear(
     current_gear: int,
     max_gear: int = MAX_GEAR,
     n_clean_sets_for_shift: int = 1,
-    n_low_sets_for_shift_down: int = 1,
+    n_low_sets_for_shift_down: int = N_LOW_SETS_FOR_RECOGNITION_SHIFT_DOWN,
 ) -> int:
     strong_streak = evidence.get("strong_streak", 0)
     low_streak = evidence.get("low_streak", 0)
