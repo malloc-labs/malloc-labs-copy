@@ -52,6 +52,9 @@ def _claimed_symbols_event(
     ready_for_next: bool = False,
     ready_for_next_send: bool = False,
     set_is_fresh: bool = True,
+    recognition_set_session: int | None = None,
+    recognition_gear: int | None = None,
+    recognition_kind: str | None = None,
 ) -> dict[str, Any]:
     """Build the ``claimed-symbols`` event payload from a claimed list.
 
@@ -86,7 +89,7 @@ def _claimed_symbols_event(
     record access — tests and the initial cold path — degrade to "no
     nudge", which is the safe default.
     """
-    return {
+    event: dict[str, Any] = {
         "type": "claimed-symbols",
         "symbols": list(claimed),
         "suggested_next": patterns.next_koch_after(claimed),
@@ -95,6 +98,13 @@ def _claimed_symbols_event(
         "ready_for_next_send": ready_for_next_send,
         "set_is_fresh": set_is_fresh,
     }
+    if recognition_set_session is not None:
+        event["recognition_set_session"] = recognition_set_session
+    if recognition_gear is not None:
+        event["recognition_gear"] = recognition_gear
+    if recognition_kind is not None:
+        event["recognition_kind"] = recognition_kind
+    return event
 
 
 def _sent_symbol_event(decoded: DecodedSymbol) -> dict[str, Any]:

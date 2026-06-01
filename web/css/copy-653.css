@@ -322,8 +322,15 @@ copy-top-menu {
     margin-bottom: var(--mr-space-6);
     max-width: none;
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: baseline;
+    gap: var(--mr-space-2) var(--mr-space-4);
+}
+
+.primed__set {
+    margin-left: auto;
+    text-align: right;
 }
 
 .primed__set:empty {
@@ -883,6 +890,18 @@ copy-top-menu {
 
 .events-voice-text {
     font-family: var(--mr-font-mono);
+}
+
+.recognition-timing {
+    margin-bottom: var(--mr-space-4);
+}
+
+.recognition-timing:empty {
+    display: none;
+}
+
+.recognition-timing__exercise {
+    --zone-group-width: 6ch;
 }
 
 /* Tab 1 (Answers) — two-column table (Answer | Sent) with a leading

@@ -391,14 +391,20 @@ function updateNavButtons() {
 
 function detailTitle(record) {
     const parts = [formatStartedAt(record.started_at)];
-    const groupSession = groupedSessionIndex(record);
-    if (Number.isInteger(groupSession)) {
-        parts.push(`Session ${groupSession}`);
+    const setIndex = groupedSetIndex(record);
+    const setSession = record?.generation?.set_session ?? record?.set_session;
+    if (Number.isInteger(setIndex) && Number.isInteger(setSession)) {
+        parts.push(`Set ${setIndex}`);
+        parts.push(`Session ${setSession} of 8`);
+    } else if (Number.isInteger(setIndex)) {
+        parts.push(`Set ${setIndex}`);
+    } else if (Number.isInteger(setSession)) {
+        parts.push(`Session ${setSession} of 8`);
     }
     return parts.join(" · ");
 }
 
-function groupedSessionIndex(record) {
+function groupedSetIndex(record) {
     const setId = record?.generation?.set_id ?? record?.set_id;
     if (!setId) return null;
     const groups = groupBySet(currentRecords).filter((group) => group.set_id);
@@ -515,7 +521,7 @@ function renderSetHeader(group, setIndex) {
     arrow.className = "settings-koch-set-header__arrow";
     arrow.textContent = "▶";
     const label = document.createTextNode(
-        ` Session ${setIndex} · ${total} of 8${complete ? " · complete" : ""} · ${dateStr}`,
+        ` Set ${setIndex} · ${total} of 8${complete ? " · complete" : ""} · ${dateStr}`,
     );
     cell.append(arrow, label);
     row.appendChild(cell);

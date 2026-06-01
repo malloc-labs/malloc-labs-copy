@@ -1,16 +1,29 @@
+import asyncio
+import json
 import random
+
+import pytest
 
 from copy_653.server.recognition_actions import (
     ActiveRecognitionSession,
     _coerce_recognition_diagnostic,
     _coerce_recognition_exercise_completion,
     _generate_recognition_exercise,
+    _run_recognition_session,
     _recognition_answer_matches_target,
     _recognition_kind_for_gear,
     _say_after_for_slot,
 )
 from copy_653.audio.parameters import AudioParameters
 from copy_653.config import RecognitionSettings
+
+
+class _CaptureWs:
+    def __init__(self):
+        self.events = []
+
+    async def send(self, payload):
+        self.events.append(json.loads(payload))
 
 
 def test_recognition_gear_zero_generates_four_single_symbols():
@@ -146,3 +159,35 @@ def test_late_voice_capture_is_diagnostic_only(tmp_path):
     assert session.exercises[0]["late_voice_capture"] == [
         {"t": 2.5, "text": "romeo", "symbols": ["R"], "reason": "after_committed_response"}
     ]
+
+
+def test_recognition_session_start_announces_gear_and_kind(tmp_path, monkeypatch):
+    ws = _CaptureWs()
+    session = ActiveRecognitionSession(
+        ws=ws,  # type: ignore[arg-type]
+        config_path=tmp_path / "config.toml",
+        audio_params=AudioParameters(),
+        claimed=("K", "M"),
+        recognition_settings=RecognitionSettings(),
+        anchors_dir=tmp_path,
+        seed=1,
+        set_session=1,
+        set_id="test",
+        gears=[1],
+        rng=random.Random(1),
+    )
+
+    def stop_after_start(*_args, **_kwargs):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(
+        "copy_653.server.recognition_actions._generate_recognition_exercise",
+        stop_after_start,
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(_run_recognition_session(session))
+
+    assert ws.events[0]["type"] == "session-start"
+    assert ws.events[0]["gear"] == 1
+    assert ws.events[0]["recognition_kind"] == "pairs"

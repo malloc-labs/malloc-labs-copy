@@ -22,6 +22,8 @@ const primedTextEl = document.getElementById("primed-text");
 const primedSetEl  = document.getElementById("primed-set");
 const eventsEl     = document.getElementById("events");
 const answersEl    = document.getElementById("answers");
+const timingTabsEl = document.getElementById("recognition-timing-tabs");
+const timingEl     = document.getElementById("recognition-timing");
 const saveBtn      = document.getElementById("save-answers");
 const toggleBtn    = document.querySelector(".timeline-toggle");
 const timelineBody = document.querySelector(".timeline-body");
@@ -45,6 +47,8 @@ let sessionActive = false;
 let currentExercises = [];
 let currentExerciseIndex = 0;
 let currentSetSession = 0;
+let currentRecognitionGear = null;
+let currentRecognitionKind = "";
 let voiceReady = false;
 let voiceStatusMessage = "Checking voice configuration…";
 let pendingSaveResolve = null;
@@ -52,6 +56,8 @@ let voiceStartPromise = null;
 let pendingExerciseCompletion = null;
 let lastVoiceFinalByExercise = [];
 let diagnosticTail = null;
+let symbolEventsByExercise = [];
+let selectedTimingExerciseIndex = 1;
 
 // Per-exercise buffer of Vosk final events captured during the session.
 // Each entry: { t: seconds since session-start, text: raw transcript,
@@ -80,9 +86,23 @@ function renderPrimed() {
     }
     primedTextEl.textContent =
         `Recognition: ${claimedState.symbols.join(", ")}`;
-    primedSetEl.textContent = currentSetSession > 0
-        ? `Set ${currentSetSession} of ${SET_SIZE}`
-        : "";
+    primedSetEl.textContent = recognitionSetNotice();
+}
+
+function recognitionSetNotice() {
+    const parts = [];
+    if (currentSetSession > 0) parts.push(`Set ${currentSetSession} of ${SET_SIZE}`);
+    const mode = recognitionModeLabel(currentRecognitionGear, currentRecognitionKind);
+    if (mode) parts.push(mode);
+    return parts.join(" · ");
+}
+
+function recognitionModeLabel(gear, kind) {
+    if (!Number.isInteger(gear)) return "";
+    if (gear <= 0) return "Gear 0: singles, first confirms";
+    if (kind === "words") return `Gear ${gear}: words, no confirm`;
+    if (kind === "pairs") return `Gear ${gear}: pairs, no confirm`;
+    return `Gear ${gear}: no confirm`;
 }
 
 // ─── Timeline disclosure ─────────────────────────────────────────────────────
@@ -299,7 +319,10 @@ function renderAnswerRows(exerciseCount) {
     const heading = document.createElement("th");
     heading.scope = "col";
     heading.textContent = "Your answer";
-    headRow.append(blank, heading);
+    const correctHeading = document.createElement("th");
+    correctHeading.scope = "col";
+    correctHeading.textContent = "Correct";
+    headRow.append(blank, heading, correctHeading);
     thead.appendChild(headRow);
 
     const tbody = document.createElement("tbody");
@@ -308,8 +331,10 @@ function renderAnswerRows(exerciseCount) {
         tr.dataset.exerciseIndex = String(i);
         const th = document.createElement("th");
         th.scope = "row";
+        th.className = "answer-row__label";
         th.textContent = String(i);
         const td = document.createElement("td");
+        td.className = "answer-row__cell";
         const input = document.createElement("input");
         input.type = "text";
         input.className = "answer-row__input";
@@ -318,11 +343,35 @@ function renderAnswerRows(exerciseCount) {
         input.autocomplete = "off";
         input.spellcheck = false;
         td.appendChild(input);
-        tr.append(th, td);
+        const correctTd = document.createElement("td");
+        correctTd.className = "answer-row__sent";
+        correctTd.dataset.correctFor = String(i);
+        tr.append(th, td, correctTd);
         tbody.appendChild(tr);
     }
 
     answersEl.append(thead, tbody);
+}
+
+function exerciseTruthString(exerciseIndex) {
+    return (currentExercises[exerciseIndex - 1] || "").trim();
+}
+
+function exerciseTruthCompact(exerciseIndex) {
+    return exerciseTruthString(exerciseIndex).replace(/\s+/g, "");
+}
+
+function revealCorrectAnswers() {
+    answersEl.querySelectorAll("[data-correct-for]").forEach((cell) => {
+        const exerciseIndex = Number(cell.dataset.correctFor);
+        const truth = exerciseTruthString(exerciseIndex);
+        cell.textContent = truth;
+        const input = answersEl.querySelector(
+            `.answer-row__input[data-exercise-index="${exerciseIndex}"]`,
+        );
+        const answer = input ? input.value.trim().toUpperCase().replace(/\s+/g, "") : "";
+        cell.dataset.correct = answer === exerciseTruthCompact(exerciseIndex) ? "true" : "false";
+    });
 }
 
 function setActiveRow(exerciseIndex) {
@@ -339,6 +388,16 @@ function appendSymbolsToActiveRow(symbols) {
     );
     if (!input) return;
     input.value = input.value + symbols.join("");
+}
+
+function appendTruthSymbol(event) {
+    const exerciseIndex = event.exercise_index;
+    if (!Number.isInteger(exerciseIndex) || exerciseIndex <= 0) return;
+    while (currentExercises.length < exerciseIndex) currentExercises.push("");
+    const existing = currentExercises[exerciseIndex - 1] || "";
+    currentExercises[exerciseIndex - 1] = existing
+        ? `${existing} ${event.symbol}`
+        : String(event.symbol || "");
 }
 
 // Push a Vosk final into the per-exercise capture buffer and render it
@@ -480,6 +539,146 @@ function schedulePendingExerciseCompletionTimer() {
         const exerciseIndex = pendingExerciseCompletion?.exerciseIndex;
         if (exerciseIndex != null) completeRecognitionExercise(exerciseIndex);
     }, delay);
+}
+
+// ─── Recognition timing review ───────────────────────────────────────────────
+
+function clearRecognitionTimingReview() {
+    timingTabsEl?.replaceChildren();
+    timingEl?.replaceChildren();
+    selectedTimingExerciseIndex = 1;
+}
+
+function timingWindowMs() {
+    const firstSymbol = symbolEventsByExercise
+        .flat()
+        .find((event) => Number.isFinite(event.t_on) && Number.isFinite(event.t_off));
+    const symbolDurationMs = firstSymbol
+        ? Math.max(1, (firstSymbol.t_off - firstSymbol.t_on) * 1000)
+        : 0;
+    let observedGapMs = 0;
+    for (const events of symbolEventsByExercise) {
+        for (let i = 0; i < events.length - 1; i++) {
+            const current = events[i];
+            const next = events[i + 1];
+            if (Number.isFinite(current.t_off) && Number.isFinite(next.t_on)) {
+                observedGapMs = Math.max(observedGapMs, (next.t_on - current.t_off) * 1000);
+            }
+        }
+    }
+    return Math.max(1500, Math.round(symbolDurationMs + observedGapMs));
+}
+
+function pairVoiceEventsWithTargets(exerciseIndex) {
+    const targets = symbolEventsByExercise[exerciseIndex - 1] || [];
+    const voiceEvents = voiceCapture[exerciseIndex - 1] || [];
+    const spoken = [];
+    voiceEvents.forEach((entry) => {
+        (entry.symbols || []).forEach((symbol) => {
+            spoken.push({ symbol, t: Number(entry.t) });
+        });
+    });
+    return targets.map((target, idx) => {
+        const heard = spoken[idx];
+        if (!heard || !Number.isFinite(heard.t) || !Number.isFinite(target.t_on)) return null;
+        return {
+            symbol: heard.symbol,
+            latencyMs: Math.max(0, Math.round((heard.t - target.t_on) * 1000)),
+        };
+    });
+}
+
+function buildTimingExerciseBlock(exerciseIndex) {
+    const exercise = exerciseTruthString(exerciseIndex);
+    const targets = symbolEventsByExercise[exerciseIndex - 1] || [];
+    const responses = pairVoiceEventsWithTargets(exerciseIndex);
+    const windowMs = timingWindowMs();
+
+    const block = document.createElement("section");
+    block.className = "key-rhythm-baseline__exercise recognition-timing__exercise";
+    block.setAttribute("aria-label", `Exercise ${exerciseIndex} recognition timing`);
+
+    const label = document.createElement("p");
+    label.className = "key-rhythm-baseline__exercise-label";
+    label.textContent = `Exercise ${exerciseIndex} / ${exercise || "-"}`;
+    block.appendChild(label);
+
+    const cols = document.createElement("div");
+    cols.className = "key-rhythm-baseline__cols";
+    targets.forEach((target, idx) => {
+        const col = document.createElement("div");
+        col.className = "key-rhythm-baseline__col key-rhythm-baseline__col--char";
+
+        const symbol = document.createElement("span");
+        symbol.className = "key-rhythm-baseline__symbol";
+        symbol.textContent = target.symbol;
+
+        const zones = document.createElement("div");
+        zones.className = "key-rhythm-baseline__zones";
+        zones.setAttribute("aria-hidden", "true");
+        ["green", "amber", "red"].forEach((zone) => {
+            const cell = document.createElement("span");
+            cell.className = `key-rhythm-baseline__zone key-rhythm-baseline__zone--${zone}`;
+            zones.appendChild(cell);
+        });
+
+        const attempt = document.createElement("div");
+        attempt.className = "key-rhythm-baseline__attempt";
+        const response = responses[idx];
+        if (response) {
+            const marker = document.createElement("div");
+            marker.className = "key-rhythm-baseline__attempt-marker";
+            marker.style.setProperty(
+                "--attempt-x",
+                String(Math.min(1, response.latencyMs / windowMs)),
+            );
+            marker.title = `${response.symbol} at ${(response.latencyMs / 1000).toFixed(2)}s`;
+            const arrow = document.createElement("span");
+            arrow.className = "key-rhythm-baseline__attempt-arrow";
+            arrow.setAttribute("aria-hidden", "true");
+            arrow.textContent = "↑";
+            const heard = document.createElement("span");
+            heard.className = "key-rhythm-baseline__attempt-symbol";
+            heard.textContent = response.symbol;
+            marker.append(arrow, heard);
+            attempt.appendChild(marker);
+        }
+        col.append(symbol, zones, attempt);
+        cols.appendChild(col);
+    });
+    block.appendChild(cols);
+    return block;
+}
+
+function renderRecognitionTimingReview() {
+    if (!timingTabsEl || !timingEl) return;
+    timingTabsEl.replaceChildren();
+    timingEl.replaceChildren();
+    const indices = currentExercises
+        .map((exercise, idx) => (exercise && exercise.trim() ? idx + 1 : -1))
+        .filter((idx) => idx > 0);
+    if (!indices.length) return;
+    if (!indices.includes(selectedTimingExerciseIndex)) {
+        selectedTimingExerciseIndex = indices[0];
+    }
+
+    indices.forEach((exerciseIndex, tabIdx) => {
+        const tab = document.createElement("button");
+        tab.type = "button";
+        tab.className = "key-rhythm-review__tab";
+        tab.role = "tab";
+        tab.textContent = `${tabIdx + 1} / ${exerciseTruthCompact(exerciseIndex)}`;
+        const selected = exerciseIndex === selectedTimingExerciseIndex;
+        tab.setAttribute("aria-selected", String(selected));
+        if (selected) tab.dataset.selected = "true";
+        tab.addEventListener("click", () => {
+            selectedTimingExerciseIndex = exerciseIndex;
+            renderRecognitionTimingReview();
+        });
+        timingTabsEl.appendChild(tab);
+    });
+
+    timingEl.appendChild(buildTimingExerciseBlock(selectedTimingExerciseIndex));
 }
 
 // ─── Controls ────────────────────────────────────────────────────────────────
@@ -680,6 +879,15 @@ window.addEventListener("blur", () => {
 function appendEvent(event) {
     if (event.type === "claimed-symbols") {
         claimedState = event;
+        currentSetSession = Number.isInteger(event.recognition_set_session)
+            ? event.recognition_set_session
+            : currentSetSession;
+        currentRecognitionGear = Number.isInteger(event.recognition_gear)
+            ? event.recognition_gear
+            : currentRecognitionGear;
+        currentRecognitionKind = typeof event.recognition_kind === "string"
+            ? event.recognition_kind
+            : currentRecognitionKind;
         renderSequence(sequenceRow, event);
         renderPrimed();
         return;
@@ -698,10 +906,16 @@ function appendEvent(event) {
         currentExercises = Array.from({ length: exerciseCount }, () => "");
         currentExerciseIndex = 0;
         currentSetSession = event.set_session || 0;
+        currentRecognitionGear = Number.isInteger(event.gear) ? event.gear : null;
+        currentRecognitionKind = typeof event.recognition_kind === "string"
+            ? event.recognition_kind
+            : "";
         sessionActive = true;
         sessionStartMs = performance.now();
         voiceCapture = currentExercises.map(() => []);
+        symbolEventsByExercise = currentExercises.map(() => []);
         lastVoiceFinalByExercise = currentExercises.map(() => null);
+        clearRecognitionTimingReview();
         clearPendingExerciseCompletion();
         clearDiagnosticTail();
         setStartButtonMode("active");
@@ -720,9 +934,7 @@ function appendEvent(event) {
         saveBtn.dataset.state = "idle";
         saveBtn.textContent = "Save";
         primedTextEl.textContent = `Exercise — of ${currentExercises.length}`;
-        primedSetEl.textContent = currentSetSession > 0
-            ? `Set ${currentSetSession} of ${SET_SIZE}`
-            : "";
+        primedSetEl.textContent = recognitionSetNotice();
         // Voice capture is normally pre-warmed before the start request
         // so Exercise 1 is captured. This fallback keeps a direct server
         // start or reconnect from leaving the page silent.
@@ -755,6 +967,13 @@ function appendEvent(event) {
     }
 
     if (event.type === "symbol") {
+        appendTruthSymbol(event);
+        if (Number.isInteger(event.exercise_index) && event.exercise_index > 0) {
+            while (symbolEventsByExercise.length < event.exercise_index) {
+                symbolEventsByExercise.push([]);
+            }
+            symbolEventsByExercise[event.exercise_index - 1].push({ ...event });
+        }
         if (event.exercise_index !== currentExerciseIndex) {
             if (currentExerciseIndex !== 0) {
                 const divider = document.createElement("li");
@@ -801,6 +1020,8 @@ function appendEvent(event) {
         clearDiagnosticTail();
         stopVoiceCapture();
         unlockAnswerInputs();
+        revealCorrectAnswers();
+        renderRecognitionTimingReview();
         saveBtn.disabled = true;
         saveBtn.dataset.state = "saved";
         saveBtn.textContent = "Saved";
@@ -878,6 +1099,7 @@ saveBtn.addEventListener("click", () => {
 // Allow re-saving after edits.
 answersEl.addEventListener("input", (event) => {
     if (!(event.target instanceof HTMLInputElement)) return;
+    revealCorrectAnswers();
     if (saveBtn.dataset.state === "saved") {
         saveBtn.dataset.state = "ready";
         saveBtn.disabled = false;
