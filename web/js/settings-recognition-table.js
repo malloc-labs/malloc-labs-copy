@@ -157,6 +157,116 @@ function formatSymbolSequence(value) {
     return Array.from(trimmed).join(" ");
 }
 
+function symbolsForExercise(record, exercise) {
+    const exerciseIndex = exercise?.index;
+    const symbols = Array.isArray(record.symbols) ? record.symbols : [];
+    return symbols
+        .filter((entry) => entry && entry.exercise_index === exerciseIndex)
+        .sort((a, b) => Number(a.t_on) - Number(b.t_on));
+}
+
+function heardEventsForExercise(exercise) {
+    const capture = Array.isArray(exercise?.voice_capture) ? exercise.voice_capture : [];
+    const events = [];
+    capture.forEach((entry) => {
+        const timed = Array.isArray(entry?.symbol_events) ? entry.symbol_events : [];
+        if (timed.length) {
+            timed.forEach((event) => {
+                const index = Number(event.index);
+                const t = Number(event.t);
+                if (!Number.isInteger(index) || !Number.isFinite(t)) return;
+                events[index - 1] = {
+                    symbol: event.symbol || "?",
+                    t,
+                    source: event.source || "partial",
+                };
+            });
+            return;
+        }
+        const symbols = Array.isArray(entry?.symbols) ? entry.symbols : [];
+        const t = Number(entry?.first_partial_t ?? entry?.t);
+        if (!Number.isFinite(t)) return;
+        symbols.forEach((symbol) => {
+            events.push({
+                symbol,
+                t,
+                source: entry.first_partial_t == null ? "final" : "partial",
+            });
+        });
+    });
+    return events;
+}
+
+function recognitionLatencyBand(latencyMs) {
+    if (!Number.isFinite(latencyMs)) return "missing";
+    if (latencyMs <= 1500) return "fluent";
+    if (latencyMs <= 3000) return "working";
+    return "hesitant";
+}
+
+function buildRecognitionTimingBlock(record, exercise) {
+    const played = symbolsForExercise(record, exercise);
+    if (!played.length) return null;
+    const heard = heardEventsForExercise(exercise);
+    const responses = played.map((target, idx) => {
+        const event = heard[idx];
+        const tOff = Number(target.t_off);
+        if (!event || !Number.isFinite(event.t) || !Number.isFinite(tOff)) return null;
+        return {
+            symbol: event.symbol,
+            source: event.source,
+            latencyMs: Math.max(0, Math.round((event.t - tOff) * 1000)),
+        };
+    });
+    if (!responses.some(Boolean)) return null;
+
+    const block = document.createElement("div");
+    block.className = "settings-recognition-latency";
+    const cols = document.createElement("div");
+    cols.className = "settings-recognition-latency__cols";
+    played.forEach((target, idx) => {
+        const col = document.createElement("div");
+        col.className = "settings-recognition-latency__item";
+
+        const symbol = document.createElement("span");
+        symbol.className = "settings-recognition-latency__target";
+        symbol.textContent = target.symbol || "?";
+
+        const responseWrap = document.createElement("span");
+        const response = responses[idx];
+        if (response) {
+            responseWrap.className =
+                `settings-recognition-latency__response ` +
+                `settings-recognition-latency__response--${recognitionLatencyBand(response.latencyMs)}`;
+            responseWrap.title =
+                `${response.symbol} ${recognitionLatencyBand(response.latencyMs)} ` +
+                `(${response.source || "heard"}): ` +
+                `${(response.latencyMs / 1000).toFixed(2)}s after symbol end`;
+
+            const heardSymbol = document.createElement("span");
+            heardSymbol.className = "settings-recognition-latency__heard";
+            heardSymbol.textContent = response.symbol;
+
+            const delay = document.createElement("span");
+            delay.className = "settings-recognition-latency__delay";
+            delay.textContent = `+${(response.latencyMs / 1000).toFixed(2)}s`;
+
+            responseWrap.append(heardSymbol, delay);
+        } else {
+            responseWrap.className =
+                "settings-recognition-latency__response " +
+                "settings-recognition-latency__response--missing";
+            responseWrap.title = "No timed voice response for this symbol";
+            responseWrap.textContent = "-";
+        }
+
+        col.append(symbol, responseWrap);
+        cols.appendChild(col);
+    });
+    block.appendChild(cols);
+    return block;
+}
+
 function countsForExercise(analysis) {
     const counts = analysis && typeof analysis === "object" ? analysis.counts || {} : {};
     const correct = finiteCount(counts.correct);
@@ -280,7 +390,14 @@ function buildExercisesTable(record) {
         const row = document.createElement("tr");
         appendCell(row, exercise.index || idx + 1);
         appendCell(row, formatSymbolSequence(exercise.target));
-        appendCell(row, formatSymbolSequence(analysis.committed_answer));
+        const heardCell = document.createElement("td");
+        const timingBlock = buildRecognitionTimingBlock(record, exercise);
+        if (timingBlock) {
+            heardCell.appendChild(timingBlock);
+        } else {
+            heardCell.textContent = formatSymbolSequence(analysis.committed_answer);
+        }
+        row.appendChild(heardCell);
         appendCell(row, formatSymbolSequence(exercise.answer));
         if (analysis.has_evidence) {
             appendCell(row, counts.total > 0 ? `${counts.correct}/${counts.total}` : "-");

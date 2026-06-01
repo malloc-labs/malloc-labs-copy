@@ -15,6 +15,7 @@ from copy_653.sequence.recognition_analysis import (
     latest_gears_for_claimed_set,
     load_band_evidence,
     load_recognition_confusion,
+    load_recognition_timing,
     load_set_evidence,
     resolve_gears,
     resolve_set_gear,
@@ -521,6 +522,150 @@ def test_confusion_reports_recent_previous_rates_and_trend():
         "previous_rate": 1.0,
         "trend": "improving",
     }
+
+
+# ─── load_recognition_timing (response latency across records) ───────────────
+
+
+def _timing_record(
+    *,
+    started_at: str,
+    claimed_set_key: str = "K M R U",
+    gear: int = 1,
+    target: str = "RK",
+    response_t: float = 4.6,
+    first_partial_t: float | None = None,
+    fraction: float = 1.0,
+    committed=(),
+    miss_count: int = 0,
+) -> dict:
+    symbols = [
+        {
+            "symbol": symbol,
+            "t_on": idx * 1.0,
+            "t_off": idx * 1.0 + 0.5,
+            "exercise_index": 1,
+            "word": target,
+        }
+        for idx, symbol in enumerate(target)
+    ]
+    return {
+        "mode": "recognition",
+        "started_at": started_at,
+        "generation": {
+            "claimed_set_key": claimed_set_key,
+            "recognition": {"recognition_time_ms": 1500},
+        },
+        "symbols": symbols,
+        "exercises": [
+            {
+                "index": 1,
+                "target": " ".join(target),
+                "gear": gear,
+                "answer": target,
+                "voice_capture": [
+                    _utt(target.lower(), list(target), response_t)
+                    | ({"first_partial_t": first_partial_t} if first_partial_t is not None else {})
+                ],
+                "analysis": {
+                    "has_evidence": True,
+                    "combined_fraction": fraction,
+                    "committed_confusions": [list(p) for p in committed],
+                    "counts": {OUTCOME_MISS: miss_count},
+                },
+            }
+        ],
+    }
+
+
+def test_recognition_timing_groups_targets_and_measures_after_target_end():
+    records = [
+        _timing_record(started_at="2026-06-01T10:00:00Z", response_t=4.6),
+        _timing_record(
+            started_at="2026-06-01T09:00:00Z", response_t=3.6, committed=[("K", "M")], fraction=0.5
+        ),
+        _timing_record(
+            started_at="2026-06-01T08:00:00Z", target="RU", response_t=3.0, miss_count=1
+        ),
+    ]
+
+    result = load_recognition_timing(records, claimed_set_key="K M R U")
+
+    assert result["exercises_used"] == 3
+    assert result["targets"][0] == {
+        "gear": 1,
+        "target": "RK",
+        "count": 2,
+        "median_ms": 2600,
+        "recent_count": 2,
+        "recent_median_ms": 2600,
+        "previous_count": 0,
+        "previous_median_ms": None,
+        "trend": "insufficient",
+        "correct_count": 1,
+        "confused_count": 1,
+        "missed_count": 0,
+        "late_count": 2,
+    }
+
+
+def test_recognition_timing_reports_recent_previous_trend():
+    records = [
+        _timing_record(started_at="2026-06-01T12:00:00Z", response_t=3.0),
+        _timing_record(started_at="2026-06-01T11:00:00Z", response_t=3.2),
+        _timing_record(started_at="2026-06-01T10:00:00Z", response_t=4.0),
+        _timing_record(started_at="2026-06-01T09:00:00Z", response_t=4.2),
+    ]
+
+    result = load_recognition_timing(
+        records,
+        claimed_set_key="K M R U",
+        trend_window_size=2,
+    )
+
+    row = result["targets"][0]
+    assert row["recent_median_ms"] == 1600
+    assert row["previous_median_ms"] == 2600
+    assert row["trend"] == "improving"
+
+
+def test_recognition_timing_prefers_first_partial_for_new_records():
+    records = [
+        _timing_record(
+            started_at="2026-06-01T12:00:00Z",
+            response_t=5.0,
+            first_partial_t=2.4,
+        ),
+    ]
+
+    result = load_recognition_timing(records, claimed_set_key="K M R U")
+
+    assert result["targets"][0]["median_ms"] == 900
+
+
+def test_recognition_timing_uses_per_symbol_units_for_new_gear_zero_records():
+    record = _timing_record(
+        started_at="2026-06-01T12:00:00Z",
+        gear=0,
+        target="KR",
+        response_t=4.0,
+    )
+    exercise = record["exercises"][0]
+    exercise["voice_capture"][0]["symbol_events"] = [
+        {"index": 1, "symbol": "K", "t": 1.0, "source": "partial"},
+        {"index": 2, "symbol": "R", "t": 2.3, "source": "partial"},
+    ]
+    exercise["analysis"]["slots"] = [
+        {"index": 1, "truth": "K", "outcome": OUTCOME_CORRECT},
+        {"index": 2, "truth": "R", "outcome": OUTCOME_CORRECT},
+    ]
+
+    result = load_recognition_timing([record], claimed_set_key="K M R U")
+
+    rows = {row["target"]: row for row in result["targets"]}
+    assert rows["K"]["median_ms"] == 500
+    assert rows["R"]["median_ms"] == 800
+    assert "KR" not in rows
 
 
 # ─── Recognition progression evidence ────────────────────────────────────────

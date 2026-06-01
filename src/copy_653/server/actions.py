@@ -500,8 +500,9 @@ def _coerce_voice_capture(raw: Any) -> list[list[dict[str, Any]]] | None:
     """Return a sanitised voice_capture or ``None`` if the shape is wrong.
 
     Each entry must be a list (parallel to exercises) of dicts with
-    ``text: str`` and ``symbols: list[str]``. Optional numeric ``t``.
-    Unknown keys are dropped silently for forward compatibility.
+    ``text: str`` and ``symbols: list[str]``. Optional timing fields are
+    preserved when present. Unknown keys are dropped silently for
+    forward compatibility.
     """
     if not isinstance(raw, list):
         return None
@@ -523,6 +524,32 @@ def _coerce_voice_capture(raw: Any) -> list[list[dict[str, Any]]] | None:
             t = entry.get("t")
             if isinstance(t, (int, float)) and not isinstance(t, bool):
                 clean["t"] = float(t)
+            for key in ("first_partial_t", "last_partial_t"):
+                value = entry.get(key)
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    clean[key] = float(value)
+            symbol_events = entry.get("symbol_events")
+            if isinstance(symbol_events, list):
+                clean_events: list[dict[str, Any]] = []
+                for event in symbol_events:
+                    if not isinstance(event, dict):
+                        continue
+                    symbol = event.get("symbol")
+                    event_t = event.get("t")
+                    if not isinstance(symbol, str):
+                        continue
+                    if not isinstance(event_t, (int, float)) or isinstance(event_t, bool):
+                        continue
+                    clean_event: dict[str, Any] = {"symbol": symbol, "t": float(event_t)}
+                    index = event.get("index")
+                    if isinstance(index, int) and not isinstance(index, bool):
+                        clean_event["index"] = index
+                    source = event.get("source")
+                    if isinstance(source, str):
+                        clean_event["source"] = source
+                    clean_events.append(clean_event)
+                if clean_events:
+                    clean["symbol_events"] = clean_events
             sanitised.append(clean)
         out.append(sanitised)
     return out

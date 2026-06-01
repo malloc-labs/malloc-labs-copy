@@ -36,7 +36,10 @@ from copy_653.sequence.cadence_analysis import (
     load_band_history as load_cadence_band_history,
     record_claimed_set_key as cadence_record_claimed_set_key,
 )
-from copy_653.sequence.recognition_analysis import load_recognition_confusion
+from copy_653.sequence.recognition_analysis import (
+    load_recognition_confusion,
+    load_recognition_timing,
+)
 from copy_653.server.records import (
     _iter_cadence_records,
     _iter_copy_key_records,
@@ -214,6 +217,15 @@ def _api_recognition_confusion(
     )
 
 
+def _api_recognition_timing(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
+    return _json_response(
+        _read_recognition_timing(
+            config_path,
+            claimed_set_key=_optional_query_value(params, "claimed_set_key"),
+        )
+    )
+
+
 def _api_recognitions(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
     return _json_response(_list_recognitions(config_path))
 
@@ -322,6 +334,7 @@ _API_ROUTES: dict[str, ApiHandler] = {
     "/api/koch-band-history": _api_koch_band_history,
     "/api/koch-confusion": _api_koch_confusion,
     "/api/recognition-confusion": _api_recognition_confusion,
+    "/api/recognition-timing": _api_recognition_timing,
     "/api/recognitions": _api_recognitions,
     "/api/recognition": _api_recognition,
     "/api/delete-recognition": _api_delete_recognition,
@@ -822,6 +835,29 @@ def _read_recognition_confusion(
         }
 
     return load_recognition_confusion(records, claimed_set_key=resolved_key)
+
+
+def _read_recognition_timing(
+    config_path: Path | None,
+    *,
+    claimed_set_key: str | None,
+) -> dict[str, Any]:
+    try:
+        _save_directory, records, resolved_key = _resolve_records_and_key(
+            config_path,
+            iter_records=_iter_recognition_records,
+            extract_key=record_claimed_set_key,
+            claimed_set_key=claimed_set_key,
+        )
+    except Exception:
+        logger.exception("could not resolve save_directory for recognition timing read")
+        return {
+            "claimed_set_key": claimed_set_key or "",
+            "exercises_used": 0,
+            "targets": [],
+        }
+
+    return load_recognition_timing(records, claimed_set_key=resolved_key)
 
 
 # ---------------------------------------------------------------------------
