@@ -60,11 +60,12 @@ let symbolEventsByExercise = [];
 let selectedTimingExerciseIndex = 1;
 
 // Per-exercise buffer of Vosk final events captured during the session.
-// Each entry: { t: seconds since session-start, text: raw transcript,
-// symbols: tokenised list }. Sent verbatim in save-recognition-answers
-// so the session record carries both what Vosk heard and what the
-// learner committed — phase 5.1's "two recognitions" diagnostic.
+// Each entry includes the final transcript/timestamp plus any earlier
+// partial timing observed for the same utterance. Sent verbatim in
+// save-recognition-answers so the session record carries both what Vosk
+// heard and what the learner committed.
 let voiceCapture = [];
+let voicePartialState = [];
 let sessionStartMs = 0;
 
 const voice = {
@@ -223,7 +224,8 @@ async function startVoiceCapture() {
             if (symbols.length) appendSymbolsToActiveRow(symbols);
         } else if (msg.type === "partial") {
             if (!sessionActive || !currentExercises.length) return;
-            markExerciseVoiceActivity(Math.max(1, currentExerciseIndex));
+            const symbols = Array.isArray(msg.symbols) ? msg.symbols : [];
+            recordVoicePartial(msg.text || "", symbols);
         }
     };
     ws.onclose = () => { if (voice.session === session) stopVoiceCapture(); };
@@ -406,21 +408,92 @@ function appendTruthSymbol(event) {
 // first exercise's bucket — Vosk can fire mid-countdown if the user
 // speaks early, and dropping those entirely would hide an interesting
 // timing failure.
+function recordVoicePartial(text, symbols) {
+    const exerciseIdx = Math.max(1, currentExerciseIndex);
+    const now = performance.now();
+    const tSeconds = (now - sessionStartMs) / 1000;
+    const t = round4(tSeconds);
+    while (voicePartialState.length < exerciseIdx) {
+        voicePartialState.push({
+            firstPartialT: null,
+            lastPartialT: null,
+            symbolEvents: [],
+        });
+    }
+    const state = voicePartialState[exerciseIdx - 1];
+    if (state.firstPartialT == null) state.firstPartialT = t;
+    state.lastPartialT = t;
+    const cleanSymbols = Array.from(symbols);
+    const offset = capturedSymbolCount(exerciseIdx);
+    cleanSymbols.forEach((symbol, index) => {
+        const absoluteIndex = offset + index + 1;
+        if (state.symbolEvents.some((event) => event.index === absoluteIndex)) return;
+        state.symbolEvents.push({
+            index: absoluteIndex,
+            symbol,
+            t,
+            source: "partial",
+        });
+    });
+    markExerciseVoiceActivity(exerciseIdx);
+}
+
 function recordVoiceFinal(text, symbols) {
     const exerciseIdx = Math.max(1, currentExerciseIndex);
     const now = performance.now();
     const tSeconds = (performance.now() - sessionStartMs) / 1000;
-    const entry = { t: round4(tSeconds), text: text, symbols: Array.from(symbols) };
+    const t = round4(tSeconds);
+    const cleanSymbols = Array.from(symbols);
+    const partial = voicePartialState[exerciseIdx - 1] || {};
+    const symbolEvents = Array.isArray(partial.symbolEvents)
+        ? partial.symbolEvents.map((event) => ({ ...event }))
+        : [];
+    const offset = capturedSymbolCount(exerciseIdx);
+    cleanSymbols.forEach((symbol, index) => {
+        const absoluteIndex = offset + index + 1;
+        if (symbolEvents.some((event) => event.index === absoluteIndex)) return;
+        symbolEvents.push({
+            index: absoluteIndex,
+            symbol,
+            t,
+            source: "final",
+        });
+    });
+    const entry = {
+        t,
+        text: text,
+        symbols: cleanSymbols,
+    };
+    if (partial.firstPartialT != null) entry.first_partial_t = partial.firstPartialT;
+    if (partial.lastPartialT != null) entry.last_partial_t = partial.lastPartialT;
+    if (symbolEvents.length) entry.symbol_events = symbolEvents;
     if (diagnosticTail?.exerciseIndex === exerciseIdx) {
         appendRecognitionDiagnostic(exerciseIdx, entry);
         renderVoiceEvent(entry, { late: true });
+        voicePartialState[exerciseIdx - 1] = {
+            firstPartialT: null,
+            lastPartialT: null,
+            symbolEvents: [],
+        };
         return;
     }
     while (voiceCapture.length < exerciseIdx) voiceCapture.push([]);
     voiceCapture[exerciseIdx - 1].push(entry);
     lastVoiceFinalByExercise[exerciseIdx - 1] = now;
+    voicePartialState[exerciseIdx - 1] = {
+        firstPartialT: null,
+        lastPartialT: null,
+        symbolEvents: [],
+    };
     markExerciseVoiceActivity(exerciseIdx);
     renderVoiceEvent(entry);
+}
+
+function capturedSymbolCount(exerciseIndex) {
+    return (voiceCapture[exerciseIndex - 1] || []).reduce((total, entry) => {
+        const symbols = Array.isArray(entry.symbols) ? entry.symbols : [];
+        return total + symbols.length;
+    }, 0);
 }
 
 function round4(n) {
@@ -433,7 +506,9 @@ function renderVoiceEvent(entry, { late = false } = {}) {
     li.dataset.exerciseIndex = String(Math.max(1, currentExerciseIndex));
     const time = document.createElement("span");
     time.className = "events-time";
-    time.textContent = `${entry.t.toFixed(2)}s`;
+    time.textContent = Number.isFinite(entry.first_partial_t)
+        ? `${entry.first_partial_t.toFixed(2)}-${entry.t.toFixed(2)}s`
+        : `${entry.t.toFixed(2)}s`;
     const arrow = document.createElement("span");
     arrow.className = "events-voice-text";
     const rendered = entry.symbols.length
@@ -549,7 +624,7 @@ function clearRecognitionTimingReview() {
     selectedTimingExerciseIndex = 1;
 }
 
-function timingWindowMs() {
+function timingWindowMs(responses = []) {
     const firstSymbol = symbolEventsByExercise
         .flat()
         .find((event) => Number.isFinite(event.t_on) && Number.isFinite(event.t_off));
@@ -566,7 +641,15 @@ function timingWindowMs() {
             }
         }
     }
-    return Math.max(1500, Math.round(symbolDurationMs + observedGapMs));
+    const maxLatencyMs = responses.reduce((max, response) => {
+        if (!response || !Number.isFinite(response.latencyMs)) return max;
+        return Math.max(max, response.latencyMs);
+    }, 0);
+    return Math.max(
+        1500,
+        Math.round(symbolDurationMs + observedGapMs),
+        Math.ceil(maxLatencyMs * 1.15),
+    );
 }
 
 function pairVoiceEventsWithTargets(exerciseIndex) {
@@ -574,16 +657,35 @@ function pairVoiceEventsWithTargets(exerciseIndex) {
     const voiceEvents = voiceCapture[exerciseIndex - 1] || [];
     const spoken = [];
     voiceEvents.forEach((entry) => {
-        (entry.symbols || []).forEach((symbol) => {
-            spoken.push({ symbol, t: Number(entry.t) });
+        const timedEvents = Array.isArray(entry.symbol_events) ? entry.symbol_events : [];
+        if (timedEvents.length) {
+            timedEvents.forEach((event) => {
+                const eventIndex = Number(event.index);
+                const eventTime = Number(event.t);
+                if (!Number.isInteger(eventIndex) || !Number.isFinite(eventTime)) return;
+                spoken[eventIndex - 1] = {
+                    symbol: event.symbol,
+                    t: eventTime,
+                    source: event.source || "partial",
+                };
+            });
+            return;
+        }
+        (entry.symbols || []).forEach((symbol, index) => {
+            spoken.push({
+                symbol,
+                t: Number(entry.first_partial_t ?? entry.t),
+                source: entry.first_partial_t == null ? "final" : "partial",
+            });
         });
     });
     return targets.map((target, idx) => {
         const heard = spoken[idx];
-        if (!heard || !Number.isFinite(heard.t) || !Number.isFinite(target.t_on)) return null;
+        if (!heard || !Number.isFinite(heard.t) || !Number.isFinite(target.t_off)) return null;
         return {
             symbol: heard.symbol,
-            latencyMs: Math.max(0, Math.round((heard.t - target.t_on) * 1000)),
+            source: heard.source,
+            latencyMs: Math.max(0, Math.round((heard.t - target.t_off) * 1000)),
         };
     });
 }
@@ -592,7 +694,7 @@ function buildTimingExerciseBlock(exerciseIndex) {
     const exercise = exerciseTruthString(exerciseIndex);
     const targets = symbolEventsByExercise[exerciseIndex - 1] || [];
     const responses = pairVoiceEventsWithTargets(exerciseIndex);
-    const windowMs = timingWindowMs();
+    const windowMs = timingWindowMs(responses);
 
     const block = document.createElement("section");
     block.className = "key-rhythm-baseline__exercise recognition-timing__exercise";
@@ -632,7 +734,9 @@ function buildTimingExerciseBlock(exerciseIndex) {
                 "--attempt-x",
                 String(Math.min(1, response.latencyMs / windowMs)),
             );
-            marker.title = `${response.symbol} at ${(response.latencyMs / 1000).toFixed(2)}s`;
+            marker.title =
+                `${response.symbol} ${response.source || "heard"} ` +
+                `${(response.latencyMs / 1000).toFixed(2)}s after symbol end`;
             const arrow = document.createElement("span");
             arrow.className = "key-rhythm-baseline__attempt-arrow";
             arrow.setAttribute("aria-hidden", "true");
@@ -679,6 +783,27 @@ function renderRecognitionTimingReview() {
     });
 
     timingEl.appendChild(buildTimingExerciseBlock(selectedTimingExerciseIndex));
+    updateTruthEventFilter();
+}
+
+function updateTruthEventFilter() {
+    if (!eventsEl) return;
+    const selected = String(selectedTimingExerciseIndex);
+    const scopedKinds = new Set([
+        "exercise-header",
+        "symbol",
+        "voice",
+        "voice-late",
+        "end",
+    ]);
+    eventsEl.querySelectorAll("li").forEach((item) => {
+        const kind = item.dataset.kind || "";
+        if (!scopedKinds.has(kind)) {
+            item.hidden = true;
+            return;
+        }
+        item.hidden = item.dataset.exerciseIndex !== selected;
+    });
 }
 
 // ─── Controls ────────────────────────────────────────────────────────────────
@@ -913,6 +1038,11 @@ function appendEvent(event) {
         sessionActive = true;
         sessionStartMs = performance.now();
         voiceCapture = currentExercises.map(() => []);
+        voicePartialState = currentExercises.map(() => ({
+            firstPartialT: null,
+            lastPartialT: null,
+            symbolEvents: [],
+        }));
         symbolEventsByExercise = currentExercises.map(() => []);
         lastVoiceFinalByExercise = currentExercises.map(() => null);
         clearRecognitionTimingReview();
@@ -959,6 +1089,7 @@ function appendEvent(event) {
         setActiveRow(currentExerciseIndex);
         const header = document.createElement("li");
         header.dataset.kind = "exercise-header";
+        header.dataset.exerciseIndex = String(event.exercise_index);
         header.textContent = `Exercise ${event.exercise_index}`;
         eventsEl.appendChild(header);
         primedTextEl.textContent =
@@ -985,6 +1116,7 @@ function appendEvent(event) {
             setActiveRow(currentExerciseIndex);
             const header = document.createElement("li");
             header.dataset.kind = "exercise-header";
+            header.dataset.exerciseIndex = String(event.exercise_index);
             const exerciseString = currentExercises[event.exercise_index - 1] || "";
             header.textContent = `Exercise ${event.exercise_index}: ${exerciseString}`;
             eventsEl.appendChild(header);
