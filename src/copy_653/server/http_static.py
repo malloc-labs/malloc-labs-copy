@@ -40,7 +40,10 @@ from copy_653.sequence.recognition_analysis import (
     load_recognition_confusion,
     load_recognition_timing,
 )
-from copy_653.sequence.burden_analysis import load_recognition_burden_profile
+from copy_653.sequence.burden_analysis import (
+    DEFAULT_RECOGNITION_BURDEN_WINDOW_SIZE,
+    load_recognition_burden_profile,
+)
 from copy_653.server.records import (
     _iter_cadence_records,
     _iter_copy_key_records,
@@ -897,7 +900,7 @@ def _read_recognition_burden_profile(
             "burdens": {},
         }
 
-    window_size = _parse_window_size(window_size_raw, DEFAULT_EVIDENCE_WINDOW_SIZE)
+    window_size = _parse_window_size(window_size_raw, DEFAULT_RECOGNITION_BURDEN_WINDOW_SIZE)
     return load_recognition_burden_profile(
         records,
         claimed_set_key=resolved_key,

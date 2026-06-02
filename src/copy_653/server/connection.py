@@ -80,6 +80,7 @@ from copy_653.server.recognition_actions import (
     _coerce_recognition_diagnostic,
     _coerce_recognition_exercise_completion,
     _recognition_kind_for_gear,
+    _run_recognition_receiver_bed_loop,
     _run_recognition_session,
     _start_recognition_action,
 )
@@ -143,6 +144,7 @@ class ConnectionState:
     test_message_task: asyncio.Task[None] | None = None
     texture_preview_task: asyncio.Task[None] | None = None
     key_input_task: asyncio.Task[None] | None = None
+    recognition_floor_task: asyncio.Task[None] | None = None
     browser: BrowserKeyInputState | None = None
     cadence: _ActiveCadenceSession | None = None
     copy_key: _ActiveCopyKeySession | None = None
@@ -521,6 +523,11 @@ async def handler(
                 await supersede(state.session_task)
                 state.pending_recognition_record_path = None
                 state.session_task = asyncio.create_task(_run_start_recognition_session(state))
+            elif action == "start-recognition-floor":
+                if state.recognition_floor_task is None or state.recognition_floor_task.done():
+                    state.recognition_floor_task = asyncio.create_task(
+                        _run_recognition_receiver_bed_loop(state.config_path)
+                    )
             elif action == "stop":
                 # session-end is sent by _run_start_session's CancelledError handler.
                 if state.session_task is not None and not state.session_task.done():
@@ -788,6 +795,7 @@ async def handler(
         ):
             if task is not None and not task.done():
                 task.cancel()
+        await supersede(state.recognition_floor_task)
         if state.browser is not None:
             await state.browser.cancel_flush()
         state.close_active_cadence_session()

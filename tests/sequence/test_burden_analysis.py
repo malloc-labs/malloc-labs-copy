@@ -3,6 +3,7 @@ from copy_653.sequence.burden_analysis import (
     DEBT_LOW,
     DEBT_MODERATE,
     DEBT_UNKNOWN,
+    DEFAULT_RECOGNITION_BURDEN_WINDOW_SIZE,
     load_recognition_burden_profile,
 )
 from copy_653.sequence.recognition_analysis import (
@@ -247,3 +248,19 @@ def test_burden_profile_filters_claimed_set_key():
 
     assert profile["records_used"] == 1
     assert profile["burdens"]["symbol_inventory"]["debt"] == DEBT_LOW
+
+
+def test_burden_profile_default_window_is_longer_than_progression_window():
+    records = [
+        _record(
+            f"2026-06-01T12:{minute:02d}:00Z",
+            _exercise(gear=0, fraction=1.0, slots=[_slot("K")]),
+            claimed_set_key="K M",
+        )
+        for minute in range(DEFAULT_RECOGNITION_BURDEN_WINDOW_SIZE + 2)
+    ]
+
+    profile = load_recognition_burden_profile(records, claimed_set_key="K M")
+
+    assert profile["window_size"] == DEFAULT_RECOGNITION_BURDEN_WINDOW_SIZE
+    assert profile["records_used"] == DEFAULT_RECOGNITION_BURDEN_WINDOW_SIZE

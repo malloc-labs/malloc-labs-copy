@@ -9,6 +9,8 @@ from copy_653.server.recognition_actions import (
     _coerce_recognition_diagnostic,
     _coerce_recognition_exercise_completion,
     _generate_recognition_exercise,
+    _play_recognition_exercise,
+    _recognition_floor_samples,
     _run_recognition_session,
     _recognition_answer_matches_target,
     _recognition_kind_for_gear,
@@ -71,6 +73,59 @@ def test_recognition_answer_match_compacts_spacing():
     assert _recognition_answer_matches_target("R K", "RK")
     assert _recognition_answer_matches_target("rk", "R K")
     assert not _recognition_answer_matches_target("RU", "R K")
+
+
+def test_recognition_page_floor_generates_non_silent_bed():
+    samples = _recognition_floor_samples(
+        AudioParameters(sample_rate_hz=100, receiver_bed=2, cadence_variation=0)
+    )
+
+    assert len(samples) == 3000
+    assert samples.any()
+
+
+def test_recognition_exercise_playback_leaves_floor_to_page_loop(tmp_path, monkeypatch):
+    ws = _CaptureWs()
+    session = ActiveRecognitionSession(
+        ws=ws,  # type: ignore[arg-type]
+        config_path=tmp_path / "config.toml",
+        audio_params=AudioParameters(receiver_bed=2),
+        claimed=("K", "M"),
+        recognition_settings=RecognitionSettings(
+            say_before=False,
+            morse_count=1,
+            recognition_time_ms=0,
+            say_after=False,
+        ),
+        anchors_dir=tmp_path,
+        seed=1,
+        set_session=1,
+        set_id="test",
+        gears=[0],
+        rng=random.Random(1),
+    )
+    played = []
+
+    def fail_if_exercise_adds_receiver_bed(*_args, **_kwargs):
+        raise AssertionError("recognition exercise playback should not mix receiver bed")
+
+    monkeypatch.setattr(
+        "copy_653.server.recognition_actions.texture.add_receiver_bed",
+        fail_if_exercise_adds_receiver_bed,
+    )
+    monkeypatch.setattr(
+        "copy_653.server.recognition_actions._play_samples",
+        lambda samples, sample_rate_hz, output_device: played.append((samples, sample_rate_hz)),
+    )
+    monkeypatch.setattr(
+        "copy_653.server.recognition_actions.GAP_BETWEEN_SYMBOLS_SECONDS",
+        0,
+    )
+
+    asyncio.run(_play_recognition_exercise(session, exercise=["K"], exercise_index=1))
+
+    assert len(played) == 1
+    assert any(event["type"] == "symbol" and event["symbol"] == "K" for event in ws.events)
 
 
 def test_complete_recognition_exercise_payload_is_strict():

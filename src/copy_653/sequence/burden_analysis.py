@@ -12,10 +12,10 @@ from collections import defaultdict
 from typing import Any
 
 from copy_653.sequence.exercise_analysis import LOW_FRACTION, STRONG_FRACTION
-from copy_653.sequence.exercise_analysis import DEFAULT_EVIDENCE_WINDOW_SIZE
 from copy_653.sequence.exercise_analysis import record_claimed_set_key
 
 BURDEN_PROFILE_VERSION = "burden-profile-v1"
+DEFAULT_RECOGNITION_BURDEN_WINDOW_SIZE = 20
 
 DEBT_LOW = "low"
 DEBT_MODERATE = "moderate"
@@ -42,7 +42,7 @@ def load_recognition_burden_profile(
     records: list[dict[str, Any]],
     *,
     claimed_set_key: str,
-    window_size: int = DEFAULT_EVIDENCE_WINDOW_SIZE,
+    window_size: int = DEFAULT_RECOGNITION_BURDEN_WINDOW_SIZE,
 ) -> dict[str, Any]:
     """Build a read-only burden debt profile from recognition records.
 

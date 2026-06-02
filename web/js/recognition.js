@@ -1243,7 +1243,10 @@ answersEl.addEventListener("input", (event) => {
 
 installClaimHandlers(sequenceRow, () => socket, () => sessionActive);
 socket = connectKoch({
-    onOpen() { setStartButtonMode("idle"); },
+    onOpen() {
+        setStartButtonMode("idle");
+        socket.send(JSON.stringify({ action: "start-recognition-floor" }));
+    },
     onMessage: appendEvent,
     onClose() {
         clearCountdown();
