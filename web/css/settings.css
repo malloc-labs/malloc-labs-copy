@@ -852,6 +852,7 @@
     flex-direction: column;
     max-height: min(34vh, 18rem);
     min-height: 0;
+    overflow: hidden;
 }
 
 #settings-recognition-timing:not([open]) {
@@ -863,6 +864,8 @@
 }
 
 #settings-recognition-timing .settings-koch-confusion__list {
+    flex: 1 1 auto;
+    min-height: 0;
     overflow: auto;
     padding-right: var(--mr-space-1);
     scrollbar-width: thin;
