@@ -19,10 +19,13 @@
 
         <section class="settings-panel settings-review-panel"
                  id="settings-panel-recognition">
-            <section class="settings-koch-confusion settings-recognition-burden"
+            <details class="settings-koch-confusion settings-recognition-burden"
                      id="settings-recognition-burden"
+                     open
                      hidden>
-                <h3 class="settings-koch-confusion__heading">Recognition burden debt</h3>
+                <summary class="settings-recognition-section__summary">
+                    <span class="settings-koch-confusion__heading">Recognition burden debt</span>
+                </summary>
                 <p class="settings-recognition-burden__meta"
                    id="settings-recognition-burden-meta">Loading burden profile…</p>
                 <div class="settings-recognition-burden__table-wrap">
@@ -32,55 +35,65 @@
                                 <th scope="col">Burden</th>
                                 <th scope="col">Debt</th>
                                 <th scope="col">Confidence</th>
-                                <th scope="col">Evidence</th>
                             </tr>
                         </thead>
                         <tbody id="settings-recognition-burden-tbody"></tbody>
                     </table>
                 </div>
-            </section>
-            <section class="settings-koch-confusion" id="settings-recognition-committed" hidden>
-                <h3 class="settings-koch-confusion__heading">Committed confusions</h3>
+            </details>
+            <details class="settings-koch-confusion" id="settings-recognition-committed" hidden>
+                <summary class="settings-recognition-section__summary">
+                    <span class="settings-koch-confusion__heading">Committed confusions</span>
+                </summary>
                 <ul class="settings-koch-confusion__list"
                     id="settings-recognition-committed-list"></ul>
-            </section>
-            <section class="settings-koch-confusion" id="settings-recognition-caught" hidden>
-                <h3 class="settings-koch-confusion__heading">Caught (self-corrected)</h3>
+            </details>
+            <details class="settings-koch-confusion" id="settings-recognition-caught" hidden>
+                <summary class="settings-recognition-section__summary">
+                    <span class="settings-koch-confusion__heading">Caught (self-corrected)</span>
+                </summary>
                 <ul class="settings-koch-confusion__list"
                     id="settings-recognition-caught-list"></ul>
-            </section>
-            <section class="settings-koch-confusion" id="settings-recognition-timing" hidden>
-                <h3 class="settings-koch-confusion__heading">Recognition timing</h3>
+            </details>
+            <details class="settings-koch-confusion" id="settings-recognition-timing" hidden>
+                <summary class="settings-recognition-section__summary">
+                    <span class="settings-koch-confusion__heading">Recognition timing</span>
+                </summary>
                 <ul class="settings-koch-confusion__list"
                     id="settings-recognition-timing-list"></ul>
-            </section>
+            </details>
             <p class="settings-koch-meta" id="settings-recognition-meta">Loading recognition sessions…</p>
-            <div class="settings-records-meta">
-                <p class="settings-koch-meta" id="settings-recognition-records-meta">Loading saved recognition sessions…</p>
-                <div class="settings-records-meta__actions">
-                    <button type="button"
-                            class="btn settings-calendar-btn"
-                            data-calendar-open="settings-recognition-calendar-dialog">Calendar</button>
-                    <button type="button"
-                            class="btn settings-backup-btn"
-                            id="settings-recognition-backup"
-                            data-kind="recognition">Back up</button>
+            <details class="settings-recognition-records" open>
+                <summary class="settings-recognition-section__summary">
+                    <span class="settings-koch-confusion__heading">Exercises and calendar</span>
+                </summary>
+                <div class="settings-records-meta">
+                    <p class="settings-koch-meta" id="settings-recognition-records-meta">Loading saved recognition sessions…</p>
+                    <div class="settings-records-meta__actions">
+                        <button type="button"
+                                class="btn settings-calendar-btn"
+                                data-calendar-open="settings-recognition-calendar-dialog">Calendar</button>
+                        <button type="button"
+                                class="btn settings-backup-btn"
+                                id="settings-recognition-backup"
+                                data-kind="recognition">Back up</button>
+                    </div>
                 </div>
-            </div>
-            <div class="settings-koch-table-wrap">
-                <table class="settings-koch-table">
-                    <thead>
-                        <tr>
-                            <th scope="col">#</th>
-                            <th scope="col">Date &amp; time</th>
-                            <th scope="col">Claimed symbols</th>
-                            <th scope="col">Exercises</th>
-                            <th scope="col">Delete</th>
-                        </tr>
-                    </thead>
-                    <tbody id="settings-recognition-tbody"></tbody>
-                </table>
-            </div>
+                <div class="settings-koch-table-wrap">
+                    <table class="settings-koch-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">#</th>
+                                <th scope="col">Date &amp; time</th>
+                                <th scope="col">Claimed symbols</th>
+                                <th scope="col">Exercises</th>
+                                <th scope="col">Delete</th>
+                            </tr>
+                        </thead>
+                        <tbody id="settings-recognition-tbody"></tbody>
+                    </table>
+                </div>
+            </details>
             <dialog class="settings-koch-dialog settings-calendar-dialog"
                     id="settings-recognition-calendar-dialog">
                 <form method="dialog" class="settings-koch-dialog__bar">

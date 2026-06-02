@@ -28,6 +28,7 @@ CONFIDENCE_HIGH = "high"
 
 MIN_SYMBOL_EXPOSURES_MEDIUM_CONFIDENCE = 8
 MIN_SYMBOL_EXPOSURES_HIGH_CONFIDENCE = 20
+MIN_SYMBOL_RECENT_EXPOSURES_SIGNAL = 8
 MIN_UNIT_EXERCISES_MEDIUM_CONFIDENCE = 4
 MIN_UNIT_EXERCISES_HIGH_CONFIDENCE = 10
 MIN_CONFUSION_EXPOSURES_MEDIUM_CONFIDENCE = 20
@@ -58,7 +59,10 @@ def load_recognition_burden_profile(
     matching = _matching_recognition_records(records, claimed_set_key)
     matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
     recent = matching[: max(0, window_size)]
+    claimed_symbols = set(claimed_set_key.split())
     stats = _collect_stats(recent)
+    symbol_stats = _collect_symbol_stats(records, symbols=claimed_symbols)
+    recent_symbol_stats = _collect_symbol_stats(recent, symbols=claimed_symbols)
 
     return {
         "version": BURDEN_PROFILE_VERSION,
@@ -67,7 +71,7 @@ def load_recognition_burden_profile(
         "window_size": max(0, window_size),
         "records_used": len(recent),
         "burdens": {
-            "symbol_inventory": _symbol_inventory_burden(stats),
+            "symbol_inventory": _symbol_inventory_burden(symbol_stats, recent_symbol_stats),
             "unit_length": _unit_length_burden(stats),
             "confusion": _confusion_burden(stats),
             "signal": _unknown_burden("No signal probes or receiver-bed contrast evidence yet."),
@@ -78,6 +82,14 @@ def load_recognition_burden_profile(
             ),
         },
     }
+
+
+def _recognition_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        record
+        for record in records
+        if isinstance(record, dict) and record.get("mode") == "recognition"
+    ]
 
 
 def _matching_recognition_records(
@@ -141,8 +153,57 @@ def _collect_stats(records: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _symbol_inventory_burden(stats: dict[str, Any]) -> dict[str, Any]:
+def _collect_symbol_stats(
+    records: list[dict[str, Any]],
+    *,
+    symbols: set[str],
+) -> dict[str, Any]:
+    symbol_slots: dict[str, Counter[str]] = defaultdict(Counter)
+    introduced_at: dict[str, str] = {}
+
+    for record in sorted(
+        _recognition_records(records), key=lambda r: str(r.get("started_at") or "")
+    ):
+        started_at = str(record.get("started_at") or "")
+        exercises = record.get("exercises")
+        if not isinstance(exercises, list):
+            continue
+        for exercise in exercises:
+            if not isinstance(exercise, dict):
+                continue
+            analysis = exercise.get("analysis")
+            if not isinstance(analysis, dict) or analysis.get("has_evidence") is not True:
+                continue
+
+            slots = analysis.get("slots")
+            if not isinstance(slots, list):
+                continue
+            for slot in slots:
+                if not isinstance(slot, dict):
+                    continue
+                truth = slot.get("truth")
+                outcome = slot.get("outcome")
+                if not isinstance(truth, str) or not truth or not isinstance(outcome, str):
+                    continue
+                symbol = truth.upper()
+                if symbols and symbol not in symbols:
+                    continue
+                symbol_slots[symbol][outcome] += 1
+                introduced_at.setdefault(symbol, started_at)
+
+    return {
+        "symbol_slots": symbol_slots,
+        "introduced_at": introduced_at,
+    }
+
+
+def _symbol_inventory_burden(
+    stats: dict[str, Any],
+    recent_stats: dict[str, Any],
+) -> dict[str, Any]:
     symbol_slots: dict[str, Counter[str]] = stats["symbol_slots"]
+    recent_symbol_slots: dict[str, Counter[str]] = recent_stats["symbol_slots"]
+    introduced_at: dict[str, str] = stats["introduced_at"]
     if not symbol_slots:
         return _unknown_burden("No symbol-level recognition slots available.")
 
@@ -151,34 +212,66 @@ def _symbol_inventory_burden(stats: dict[str, Any]) -> dict[str, Any]:
         counts = symbol_slots[symbol]
         total = sum(counts.values())
         correct = counts["correct"] + counts["caught_correct"]
+        recent_counts = recent_symbol_slots.get(symbol, Counter())
+        recent_total = sum(recent_counts.values())
+        recent_correct = recent_counts["correct"] + recent_counts["caught_correct"]
         rows.append(
             {
                 "symbol": symbol,
+                "introduced_at": introduced_at.get(symbol, ""),
                 "exposures": total,
                 "correct": correct,
                 "fraction": _fraction(correct, total),
                 "misses": counts["miss"],
                 "substitutions": counts["substitution"] + counts["caught_substitution"],
+                "lifetime_exposures": total,
+                "lifetime_correct": correct,
+                "lifetime_fraction": _fraction(correct, total),
+                "lifetime_misses": counts["miss"],
+                "lifetime_substitutions": counts["substitution"] + counts["caught_substitution"],
+                "recent_exposures": recent_total,
+                "recent_correct": recent_correct,
+                "recent_fraction": _fraction(recent_correct, recent_total),
+                "recent_misses": recent_counts["miss"],
+                "recent_substitutions": recent_counts["substitution"]
+                + recent_counts["caught_substitution"],
             }
         )
 
-    weakest = min(rows, key=lambda row: (row["fraction"], row["exposures"]))
-    min_exposures = min(row["exposures"] for row in rows)
+    for row in rows:
+        row["signal"] = _symbol_signal(row)
+
+    weakest = min(rows, key=lambda row: (row["lifetime_fraction"], row["lifetime_exposures"]))
+    min_exposures = min(row["lifetime_exposures"] for row in rows)
     confidence = _confidence_from_count(
         min_exposures,
         medium=MIN_SYMBOL_EXPOSURES_MEDIUM_CONFIDENCE,
         high=MIN_SYMBOL_EXPOSURES_HIGH_CONFIDENCE,
     )
-    debt = _debt_from_fraction(weakest["fraction"])
+    debt = _debt_from_fraction(weakest["lifetime_fraction"])
     evidence = [
         (
-            f"Weakest symbol {weakest['symbol']} at "
-            f"{_percent(weakest['fraction'])} over {weakest['exposures']} exposures."
+            f"Weakest lifetime symbol {weakest['symbol']} at "
+            f"{_percent(weakest['lifetime_fraction'])} over "
+            f"{weakest['lifetime_exposures']} exposures since introduction."
         )
     ]
-    stable = [row["symbol"] for row in rows if row["fraction"] >= STRONG_FRACTION]
+    weakest_recent = min(
+        [row for row in rows if row["recent_exposures"] > 0],
+        key=lambda row: (row["recent_fraction"], row["recent_exposures"]),
+        default=None,
+    )
+    if weakest_recent:
+        evidence.append(
+            f"Weakest recent symbol {weakest_recent['symbol']} at "
+            f"{_percent(weakest_recent['recent_fraction'])} over "
+            f"{weakest_recent['recent_exposures']} exposures in the recent window."
+        )
+    stable = [row["symbol"] for row in rows if row["lifetime_fraction"] >= STRONG_FRACTION]
     if stable:
-        evidence.append(f"Stable symbols at current evidence threshold: {' '.join(stable)}.")
+        evidence.append(
+            f"Stable lifetime symbols at current evidence threshold: {' '.join(stable)}."
+        )
 
     return {
         "debt": debt,
@@ -186,6 +279,25 @@ def _symbol_inventory_burden(stats: dict[str, Any]) -> dict[str, Any]:
         "evidence": evidence,
         "symbols": rows,
     }
+
+
+def _symbol_signal(row: dict[str, Any]) -> str:
+    lifetime_exposures = int(row["lifetime_exposures"])
+    recent_exposures = int(row["recent_exposures"])
+    lifetime_fraction = float(row["lifetime_fraction"])
+    recent_fraction = float(row["recent_fraction"])
+
+    if lifetime_exposures < MIN_SYMBOL_EXPOSURES_MEDIUM_CONFIDENCE:
+        return "undersampled"
+    if recent_exposures < MIN_SYMBOL_RECENT_EXPOSURES_SIGNAL:
+        return "watch"
+    if lifetime_fraction >= STRONG_FRACTION and recent_fraction >= STRONG_FRACTION:
+        return "stable"
+    if lifetime_fraction < STRONG_FRACTION and recent_fraction >= STRONG_FRACTION:
+        return "recovering"
+    if lifetime_fraction < STRONG_FRACTION and recent_fraction < LOW_FRACTION:
+        return "fragile"
+    return "watch"
 
 
 def _unit_length_burden(stats: dict[str, Any]) -> dict[str, Any]:

@@ -89,6 +89,12 @@ def test_burden_profile_reports_low_symbol_debt_with_unknown_probe_axes():
         "R": 1.0,
         "U": 1.0,
     }
+    assert {row["symbol"]: row["signal"] for row in symbol["symbols"]} == {
+        "K": "stable",
+        "M": "stable",
+        "R": "stable",
+        "U": "stable",
+    }
     assert profile["burdens"]["signal"]["debt"] == DEBT_UNKNOWN
     assert profile["burdens"]["rhythm"]["debt"] == DEBT_UNKNOWN
     assert profile["burdens"]["anchor"]["debt"] == DEBT_UNKNOWN
@@ -161,12 +167,66 @@ def test_burden_profile_reports_high_symbol_and_confusion_debt():
 
     symbol = profile["burdens"]["symbol_inventory"]
     assert symbol["debt"] == DEBT_HIGH
-    assert any("Weakest symbol R at 0.0%" in item for item in symbol["evidence"])
+    assert any("Weakest lifetime symbol R at 0.0%" in item for item in symbol["evidence"])
 
     confusion = profile["burdens"]["confusion"]
     assert confusion["debt"] == DEBT_HIGH
     assert confusion["committed"][0] == {"target": "U", "typed": "R", "count": 6}
     assert confusion["caught"][0] == {"target": "U", "typed": "R", "count": 6}
+
+
+def test_symbol_burden_uses_since_introduction_evidence_not_only_recent_window():
+    early = [
+        _record(
+            f"2026-06-01T10:{minute:02d}:00Z",
+            _exercise(
+                gear=0,
+                fraction=1.0,
+                slots=[_slot("M")],
+            ),
+            claimed_set_key="K M",
+        )
+        for minute in range(20)
+    ]
+    recent = [
+        _record(
+            "2026-06-01T12:00:00Z",
+            _exercise(
+                gear=0,
+                fraction=0.8,
+                slots=[_slot("M", OUTCOME_SUBSTITUTION)],
+            ),
+            claimed_set_key="K M R U",
+        ),
+        _record(
+            "2026-06-01T12:01:00Z",
+            _exercise(
+                gear=0,
+                fraction=1.0,
+                slots=[_slot("M"), _slot("R"), _slot("U")],
+            ),
+            claimed_set_key="K M R U",
+        ),
+    ]
+
+    profile = load_recognition_burden_profile(
+        [*early, *recent],
+        claimed_set_key="K M R U",
+        window_size=2,
+    )
+
+    symbol = profile["burdens"]["symbol_inventory"]
+    m_row = next(row for row in symbol["symbols"] if row["symbol"] == "M")
+    assert symbol["debt"] == DEBT_LOW
+    assert symbol["confidence"] == "low"
+    assert m_row["lifetime_exposures"] == 22
+    assert m_row["lifetime_correct"] == 21
+    assert m_row["recent_exposures"] == 2
+    assert m_row["recent_correct"] == 1
+    assert m_row["signal"] == "watch"
+    assert any(
+        "Weakest recent symbol M at 50.0% over 2 exposures" in item for item in symbol["evidence"]
+    )
 
 
 def test_burden_profile_filters_claimed_set_key():

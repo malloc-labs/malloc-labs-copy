@@ -196,6 +196,35 @@
     flex: 0 0 auto;
 }
 
+.settings-recognition-section__summary {
+    display: flex;
+    align-items: center;
+    gap: var(--mr-space-2);
+    margin: 0 0 var(--mr-space-2);
+    color: var(--mr-muted);
+    font-family: var(--mr-font-mono);
+    cursor: pointer;
+    list-style-position: outside;
+}
+
+.settings-recognition-section__summary:hover,
+.settings-recognition-section__summary:focus-visible {
+    color: var(--mr-anchor);
+}
+
+.settings-recognition-section__summary .settings-koch-confusion__heading {
+    margin: 0;
+}
+
+.settings-recognition-records {
+    flex: 0 0 auto;
+    margin: 0 0 var(--mr-space-4);
+}
+
+.settings-recognition-records .settings-koch-table-wrap {
+    max-height: none;
+}
+
 /* Calendar popup — narrower than the session-detail dialog because
  * the grid maxes out at seven columns of compact day cells. */
 .settings-calendar-dialog {
@@ -825,6 +854,10 @@
     min-height: 0;
 }
 
+#settings-recognition-timing:not([open]) {
+    max-height: none;
+}
+
 #settings-recognition-timing[hidden] {
     display: none;
 }
@@ -884,14 +917,14 @@
 
 .settings-recognition-burden__table th:nth-child(1),
 .settings-recognition-burden__table td:nth-child(1) {
-    width: 28%;
+    width: 50%;
 }
 
 .settings-recognition-burden__table th:nth-child(2),
 .settings-recognition-burden__table td:nth-child(2),
 .settings-recognition-burden__table th:nth-child(3),
 .settings-recognition-burden__table td:nth-child(3) {
-    width: 7.5rem;
+    width: 25%;
     white-space: nowrap;
 }
 
@@ -914,18 +947,8 @@
     font-weight: 600;
 }
 
-.settings-recognition-burden__confidence,
-.settings-recognition-burden__evidence {
+.settings-recognition-burden__confidence {
     color: var(--mr-muted);
-}
-
-.settings-recognition-burden__evidence {
-    min-width: 0;
-    max-width: 22rem;
-    overflow: hidden;
-    color: var(--mr-muted);
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 .settings-recognition-burden__row[data-debt="low"] .settings-recognition-burden__debt {
@@ -961,6 +984,56 @@
 .settings-recognition-burden-detail__empty {
     margin: 0;
     color: var(--mr-muted);
+}
+
+.settings-recognition-burden-detail__signal {
+    font-weight: 600;
+    color: var(--mr-muted);
+}
+
+.settings-recognition-burden-detail__signal:is(td) {
+    white-space: nowrap;
+}
+
+.settings-recognition-tooltip {
+    position: relative;
+    cursor: help;
+    text-decoration: underline dotted var(--mr-muted);
+    text-underline-offset: 3px;
+}
+
+.settings-recognition-tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + var(--mr-space-1));
+    left: 0;
+    z-index: 6;
+    width: max-content;
+    max-width: min(22rem, 78vw);
+    padding: var(--mr-space-2) var(--mr-space-3);
+    border: var(--mr-border-rule);
+    background: var(--mr-bg);
+    color: var(--mr-text);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    font-weight: 400;
+    line-height: 1.4;
+    text-align: left;
+    text-transform: none;
+    text-decoration: none;
+    letter-spacing: 0;
+    white-space: normal;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-2px);
+    transition: opacity 120ms ease-out, transform 120ms ease-out;
+    box-shadow: 0 6px 18px rgb(0 0 0 / 0.35);
+}
+
+.settings-recognition-tooltip:hover::after,
+.settings-recognition-tooltip:focus-visible::after {
+    opacity: 1;
+    transform: translateY(0);
 }
 
 @media (max-width: 640px) {
