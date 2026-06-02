@@ -32,6 +32,24 @@ const BURDEN_ORDER = [
     "practice_transfer",
 ];
 
+const SYMBOL_TOOLTIPS = {
+    Symbol: "The target Morse symbol being evaluated.",
+    Introduced: "First saved recognition record where this symbol appears as analysed evidence.",
+    Lifetime: "Correct recognitions over all exposures since the symbol was introduced.",
+    "Lifetime %": "Lifetime recognition fraction since introduction.",
+    Recent: "Correct recognitions over exposures in the current recent evidence window.",
+    "Recent %": "Recent recognition fraction for the current evidence window.",
+    Signal: "Conservative comparison of lifetime and recent evidence: stable, watch, recovering, fragile, or undersampled.",
+    Miss: "Lifetime windows where no symbol was heard for this target.",
+    "Subst.": "Lifetime substitutions and caught substitutions for this target.",
+};
+
+const BURDEN_META_TOOLTIPS = {
+    Debt: "Current burden debt estimate. Low is settled; moderate/high means this burden needs attention.",
+    Confidence: "How much evidence supports the debt estimate.",
+    Evidence: "Number of evidence statements listed below for this burden.",
+};
+
 function formatKey(value) {
     if (BURDEN_LABELS[value]) return BURDEN_LABELS[value];
     return String(value || "")
@@ -59,12 +77,6 @@ function burdenKeys(burdens) {
     return [...ordered, ...extra];
 }
 
-function evidenceText(burden) {
-    const evidence = Array.isArray(burden?.evidence) ? burden.evidence : [];
-    if (evidence.length === 0) return "-";
-    return evidence[0];
-}
-
 function evidenceCountText(burden) {
     const evidence = Array.isArray(burden?.evidence) ? burden.evidence : [];
     if (evidence.length === 1) return "1 item";
@@ -76,6 +88,16 @@ function appendCell(row, className, text, tagName = "td") {
     cell.className = className;
     cell.textContent = text;
     row.appendChild(cell);
+    return cell;
+}
+
+function addTooltip(element, text) {
+    if (!text) return;
+    element.classList.add("settings-recognition-tooltip");
+    element.dataset.tooltip = text;
+    if (element.tabIndex < 0) {
+        element.tabIndex = 0;
+    }
 }
 
 function appendEvidenceList(parent, burden) {
@@ -123,8 +145,19 @@ function appendSymbolTable(parent, burden) {
     table.className = "settings-recognition-burden-detail__table";
     const thead = document.createElement("thead");
     const header = document.createElement("tr");
-    ["Symbol", "Exposure", "Correct", "Fraction", "Miss", "Subst."].forEach((label) => {
-        appendCell(header, "", label, "th");
+    [
+        "Symbol",
+        "Introduced",
+        "Lifetime",
+        "Lifetime %",
+        "Recent",
+        "Recent %",
+        "Signal",
+        "Miss",
+        "Subst.",
+    ].forEach((label) => {
+        const th = appendCell(header, "", label, "th");
+        addTooltip(th, SYMBOL_TOOLTIPS[label]);
     });
     thead.appendChild(header);
     table.appendChild(thead);
@@ -133,11 +166,18 @@ function appendSymbolTable(parent, burden) {
     symbols.forEach((symbol) => {
         const row = document.createElement("tr");
         appendCell(row, "", symbol.symbol || "-");
-        appendCell(row, "", String(symbol.exposures ?? 0));
-        appendCell(row, "", String(symbol.correct ?? 0));
-        appendCell(row, "", formatPercent(symbol.fraction));
-        appendCell(row, "", String(symbol.misses ?? 0));
-        appendCell(row, "", String(symbol.substitutions ?? 0));
+        appendCell(row, "", formatDate(symbol.introduced_at));
+        appendCell(row, "", countPair(symbol.lifetime_correct, symbol.lifetime_exposures));
+        appendCell(row, "", formatPercent(symbol.lifetime_fraction));
+        appendCell(row, "", countPair(symbol.recent_correct, symbol.recent_exposures));
+        appendCell(row, "", formatPercent(symbol.recent_fraction));
+        appendCell(row, `settings-recognition-burden-detail__signal`, symbol.signal || "-");
+        appendCell(row, "", String(symbol.lifetime_misses ?? symbol.misses ?? 0));
+        appendCell(
+            row,
+            "",
+            String(symbol.lifetime_substitutions ?? symbol.substitutions ?? 0),
+        );
         body.appendChild(row);
     });
     table.appendChild(body);
@@ -183,6 +223,22 @@ function formatPercent(value) {
     return `${Math.round(numeric * 100)}%`;
 }
 
+function countPair(correct, total) {
+    const correctNumber = Number(correct);
+    const totalNumber = Number(total);
+    if (!Number.isFinite(correctNumber) || !Number.isFinite(totalNumber) || totalNumber <= 0) {
+        return "-";
+    }
+    return `${correctNumber}/${totalNumber}`;
+}
+
+function formatDate(value) {
+    if (typeof value !== "string" || value.length === 0) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString();
+}
+
 function showBurdenDetail(key, burden) {
     if (!detailDialog || !detailTitle || !detailBody) return;
     detailTitle.textContent = `${formatKey(key)} burden`;
@@ -197,6 +253,7 @@ function showBurdenDetail(key, burden) {
     ].forEach(([label, value]) => {
         const dt = document.createElement("dt");
         dt.textContent = label;
+        addTooltip(dt, BURDEN_META_TOOLTIPS[label]);
         const dd = document.createElement("dd");
         dd.textContent = value;
         metaGrid.append(dt, dd);
@@ -232,7 +289,6 @@ function renderBurden(key, burden) {
         "settings-recognition-burden__confidence",
         formatConfidence(burden?.confidence),
     );
-    appendCell(row, "settings-recognition-burden__evidence", evidenceText(burden));
     tbody.appendChild(row);
 }
 
@@ -253,7 +309,8 @@ function renderProfile(profile) {
     const windowSize = Number(profile.window_size) || used;
     const claimed = profile.claimed_set_key || "current set";
     meta.textContent =
-        `${claimed} · ${used} of ${total} records in the recent ` +
+        `${claimed} · symbols measured since introduction; ` +
+        `other burdens use ${used} of ${total} records in the recent ` +
         `${windowSize}-record evidence window`;
 
     keys.forEach((key) => renderBurden(key, burdens[key]));
