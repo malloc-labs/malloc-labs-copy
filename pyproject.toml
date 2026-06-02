@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "copy-653"
-version = "0.12.0"
+version = "0.13.0"
 description = "Copy — a CW listening environment with deferred verification and a structurally absent mentor."
 readme = "README.md"
 requires-python = ">=3.11"
