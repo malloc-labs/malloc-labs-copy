@@ -19,6 +19,26 @@
 
         <section class="settings-panel settings-review-panel"
                  id="settings-panel-recognition">
+            <section class="settings-koch-confusion settings-recognition-burden"
+                     id="settings-recognition-burden"
+                     hidden>
+                <h3 class="settings-koch-confusion__heading">Recognition burden debt</h3>
+                <p class="settings-recognition-burden__meta"
+                   id="settings-recognition-burden-meta">Loading burden profile…</p>
+                <div class="settings-recognition-burden__table-wrap">
+                    <table class="settings-recognition-burden__table">
+                        <thead>
+                            <tr>
+                                <th scope="col">Burden</th>
+                                <th scope="col">Debt</th>
+                                <th scope="col">Confidence</th>
+                                <th scope="col">Evidence</th>
+                            </tr>
+                        </thead>
+                        <tbody id="settings-recognition-burden-tbody"></tbody>
+                    </table>
+                </div>
+            </section>
             <section class="settings-koch-confusion" id="settings-recognition-committed" hidden>
                 <h3 class="settings-koch-confusion__heading">Committed confusions</h3>
                 <ul class="settings-koch-confusion__list"
@@ -118,12 +138,25 @@
                             title="Next session (Right arrow, L, or >)">&gt;</button>
                 </div>
             </dialog>
+            <dialog class="settings-koch-dialog settings-recognition-burden-dialog"
+                    id="settings-recognition-burden-dialog">
+                <form method="dialog" class="settings-koch-dialog__bar">
+                    <h2 class="settings-koch-dialog__title"
+                        id="settings-recognition-burden-dialog-title">Burden debt</h2>
+                    <button type="submit"
+                            class="settings-koch-dialog__close"
+                            aria-label="Close burden detail">Close</button>
+                </form>
+                <div class="settings-koch-dialog__body"
+                     id="settings-recognition-burden-dialog-body"></div>
+            </dialog>
         </section>
 
 
     </main>
     <script type="module" src="../js/partials/landing-header.js"></script>
     <script type="module" src="../js/partials/theme-btn.js"></script>
+    <script type="module" src="../js/settings-recognition-burden.js"></script>
     <script type="module" src="../js/settings-recognition-confusion.js"></script>
     <script type="module" src="../js/settings-recognition-table.js"></script>
     <script type="module" src="../js/settings-calendar.js"></script>

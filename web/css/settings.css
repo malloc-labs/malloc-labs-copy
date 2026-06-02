@@ -100,6 +100,12 @@
     box-sizing: border-box;
 }
 
+.settings-review-body:has(#settings-panel-recognition) {
+    height: auto;
+    min-height: 100dvh;
+    overflow: auto;
+}
+
 .settings-review-body .landing-shell {
     display: flex;
     flex-direction: column;
@@ -109,6 +115,15 @@
         - var(--settings-page-footer-space)
     );
     min-height: 0;
+}
+
+.settings-review-body:has(#settings-panel-recognition) .landing-shell {
+    height: auto;
+    min-height: calc(
+        100dvh
+        - var(--settings-page-top-space)
+        - var(--settings-page-footer-space)
+    );
 }
 
 .settings-review-body .landing-header {
@@ -828,6 +843,126 @@
     background: var(--mr-surface, var(--mr-bg));
 }
 
+.settings-recognition-burden__meta {
+    margin: 0 0 var(--mr-space-2);
+    color: var(--mr-muted);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+}
+
+.settings-recognition-burden__table-wrap {
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--mr-muted) transparent;
+}
+
+.settings-recognition-burden__table,
+.settings-recognition-burden-detail__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+}
+
+.settings-recognition-burden__table th,
+.settings-recognition-burden__table td,
+.settings-recognition-burden-detail__table th,
+.settings-recognition-burden-detail__table td {
+    border-top: var(--mr-border-rule);
+    padding: var(--mr-space-2) var(--mr-space-2) var(--mr-space-2) 0;
+    text-align: left;
+    vertical-align: top;
+}
+
+.settings-recognition-burden__table th,
+.settings-recognition-burden-detail__table th {
+    color: var(--mr-muted);
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.settings-recognition-burden__table th:nth-child(1),
+.settings-recognition-burden__table td:nth-child(1) {
+    width: 28%;
+}
+
+.settings-recognition-burden__table th:nth-child(2),
+.settings-recognition-burden__table td:nth-child(2),
+.settings-recognition-burden__table th:nth-child(3),
+.settings-recognition-burden__table td:nth-child(3) {
+    width: 7.5rem;
+    white-space: nowrap;
+}
+
+.settings-recognition-burden__row {
+    cursor: pointer;
+}
+
+.settings-recognition-burden__row:hover td,
+.settings-recognition-burden__row:focus-visible td {
+    color: var(--mr-anchor);
+}
+
+.settings-recognition-burden__row:focus-visible {
+    outline: var(--mr-border-rule);
+    outline-offset: -2px;
+}
+
+.settings-recognition-burden__debt,
+.settings-recognition-burden__confidence {
+    font-weight: 600;
+}
+
+.settings-recognition-burden__confidence,
+.settings-recognition-burden__evidence {
+    color: var(--mr-muted);
+}
+
+.settings-recognition-burden__evidence {
+    min-width: 0;
+    max-width: 22rem;
+    overflow: hidden;
+    color: var(--mr-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.settings-recognition-burden__row[data-debt="low"] .settings-recognition-burden__debt {
+    color: var(--mr-anchor);
+}
+
+.settings-recognition-burden__row[data-debt="moderate"] .settings-recognition-burden__debt {
+    color: #b3a35e;
+}
+
+.settings-recognition-burden__row[data-debt="high"] .settings-recognition-burden__debt {
+    color: var(--mr-warning);
+}
+
+.settings-recognition-burden-dialog {
+    width: min(96vw, 760px);
+}
+
+.settings-recognition-burden-detail__section {
+    margin-top: var(--mr-space-4);
+}
+
+.settings-recognition-burden-detail__evidence {
+    margin: 0;
+    padding-left: 1.2rem;
+    color: var(--mr-text);
+}
+
+.settings-recognition-burden-detail__evidence li {
+    margin-bottom: var(--mr-space-2);
+}
+
+.settings-recognition-burden-detail__empty {
+    margin: 0;
+    color: var(--mr-muted);
+}
+
 @media (max-width: 640px) {
     #settings-panel-recognition .settings-koch-confusion__pair {
         grid-template-columns: 1fr 4rem 4.5rem;
@@ -836,6 +971,10 @@
     #settings-panel-recognition .settings-koch-confusion__pair > :nth-child(4),
     #settings-panel-recognition .settings-koch-confusion__pair > :nth-child(5) {
         grid-column: 2 / span 2;
+    }
+
+    .settings-recognition-burden__table {
+        min-width: 34rem;
     }
 }
 
