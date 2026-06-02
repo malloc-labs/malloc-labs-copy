@@ -455,7 +455,7 @@ def test_confusion_empty_when_no_matching_records():
     assert result == {
         "claimed_set_key": "K M R U",
         "exercises_used": 0,
-        "trend_window_size": 5,
+        "trend_window_size": 20,
         "recent_exercises_used": 0,
         "previous_exercises_used": 0,
         "committed_substitutions": [],
