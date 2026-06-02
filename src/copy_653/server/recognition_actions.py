@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import threading
 import time
 from dataclasses import dataclass, field
 from dataclasses import replace
@@ -57,6 +58,7 @@ GAP_BETWEEN_MORSE_REPEATS_SECONDS = 0.6
 GAP_BETWEEN_SYMBOLS_SECONDS = 0.8
 GAP_BETWEEN_EXERCISES_SECONDS = 2.0
 DIAGNOSTIC_TAIL_AFTER_FINAL_COMPLETION_SECONDS = 3.0
+RECOGNITION_FLOOR_BUFFER_SECONDS = 30.0
 
 
 @dataclass
@@ -105,6 +107,69 @@ def _play_samples(samples, sample_rate_hz: int, output_device: int | str | None)
     import sounddevice as sd
 
     sd.play(samples, samplerate=sample_rate_hz, device=output_device, blocking=True)
+
+
+def _recognition_floor_samples(params: AudioParameters):
+    import numpy as np
+
+    frame_count = max(1, int(params.sample_rate_hz * RECOGNITION_FLOOR_BUFFER_SECONDS))
+    silence = np.zeros(frame_count, dtype=np.float32)
+    return texture.add_receiver_bed(
+        silence,
+        params,
+        context="recognition:page-floor",
+    )
+
+
+def _play_recognition_receiver_bed_loop(
+    params: AudioParameters,
+    stop_event: threading.Event,
+) -> None:
+    if params.receiver_bed == 0:
+        return
+
+    import numpy as np
+    import sounddevice as sd
+
+    samples = _recognition_floor_samples(params)
+    if len(samples) == 0:
+        return
+
+    position = 0
+
+    def callback(outdata, frames, _time_info, _status):
+        nonlocal position
+        remaining = frames
+        offset = 0
+        while remaining > 0:
+            take = min(remaining, len(samples) - position)
+            outdata[offset : offset + take, 0] = samples[position : position + take]
+            position = (position + take) % len(samples)
+            offset += take
+            remaining -= take
+
+    with sd.OutputStream(
+        samplerate=params.sample_rate_hz,
+        device=params.output_device,
+        channels=1,
+        dtype=np.float32,
+        callback=callback,
+    ):
+        stop_event.wait()
+
+
+async def _run_recognition_receiver_bed_loop(config_path: Path) -> None:
+    params = load_audio_parameters(config_path)
+    if params.receiver_bed == 0:
+        return
+    stop_event = threading.Event()
+    try:
+        await asyncio.to_thread(_play_recognition_receiver_bed_loop, params, stop_event)
+    except asyncio.CancelledError:
+        stop_event.set()
+        raise
+    except Exception:
+        logger.exception("recognition receiver bed playback failed")
 
 
 def _generate_recognition_exercises(
@@ -329,11 +394,6 @@ async def _play_recognition_exercise(
                 await asyncio.sleep(GAP_AFTER_SAY_SECONDS)
 
         morse_samples = synth.synthesize_words([word], word_audio_params)
-        morse_samples = texture.add_receiver_bed(
-            morse_samples,
-            word_audio_params,
-            context=f"recognition:g{session.gear}:{word}",
-        )
         morse_rate = word_audio_params.sample_rate_hz
 
         t_on = time.monotonic() - session.start_mono

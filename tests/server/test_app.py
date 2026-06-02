@@ -1028,6 +1028,7 @@ async def test_api_recognition_burden_profile_returns_debt_profile(tmp_path):
         payload = json.loads(response.read())
         assert payload["version"] == "burden-profile-v1"
         assert payload["claimed_set_key"] == "K M R U"
+        assert payload["window_size"] == 20
         assert payload["records_used"] == 1
         assert payload["burdens"]["unit_length"]["debt"] == "moderate"
         assert payload["burdens"]["confusion"]["committed"] == [
