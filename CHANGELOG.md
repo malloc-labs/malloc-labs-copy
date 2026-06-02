@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.13.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.12.0...v0.13.0) (2026-06-02)
+
+
+### Features
+
+* add Left-Alt symbol preview to recognition page ([#180](https://github.com/malloc-labs/malloc-labs-copy/issues/180)) ([ae72d91](https://github.com/malloc-labs/malloc-labs-copy/commit/ae72d9101d55ab8c0381d34309e3c16fbca56bcc))
+* add Recognition tab to settings (layer A3) ([#183](https://github.com/malloc-labs/malloc-labs-copy/issues/183)) ([884e200](https://github.com/malloc-labs/malloc-labs-copy/commit/884e200b24c1e63b7338e275a5258bc81dc934ca))
+* add recognition windowing + self-correction classification ([#181](https://github.com/malloc-labs/malloc-labs-copy/issues/181)) ([9022485](https://github.com/malloc-labs/malloc-labs-copy/commit/9022485d812b5318ae2356a234e7bea1995afc4e))
+* add records table, calendar, and backup to Recognition settings tab ([#184](https://github.com/malloc-labs/malloc-labs-copy/issues/184)) ([d4fe130](https://github.com/malloc-labs/malloc-labs-copy/commit/d4fe130b126ef628e0e40ee8824419a161d0bdc7))
+* add Symbol Recognition page and settings ([1d5d9a3](https://github.com/malloc-labs/malloc-labs-copy/commit/1d5d9a3b65366cb607478c6684da28ffbf52158a))
+* add Symbol Recognition page and settings ([8d92387](https://github.com/malloc-labs/malloc-labs-copy/commit/8d9238728d5eb097c090b536eca4a8aff0c9a397))
+* add Symbol Recognition session engine ([04f299c](https://github.com/malloc-labs/malloc-labs-copy/commit/04f299ce5317cc3bbdc3db664d81850ab4090e59))
+* add Symbol Recognition session engine ([5c3cd06](https://github.com/malloc-labs/malloc-labs-copy/commit/5c3cd06d131d58b2771cfe8374ffa51522d6874e))
+* recognition evidence pipeline — analysis at save + confusion API (layer A) ([#182](https://github.com/malloc-labs/malloc-labs-copy/issues/182)) ([b6e7740](https://github.com/malloc-labs/malloc-labs-copy/commit/b6e774053bfa2097667178c8375c2ef7571e43a5))
+* signal texture preview player and S/T axis redesign ([0f895f6](https://github.com/malloc-labs/malloc-labs-copy/commit/0f895f681426b724a83ab34ca299977fded82302))
+* signal texture preview player and S/T axis redesign ([a97d327](https://github.com/malloc-labs/malloc-labs-copy/commit/a97d3279a5e5038ca7e2bfb80d495b46c7927492))
+* **voice:** add lexicon + grammar (phase 1, data + validation only) ([26b81f7](https://github.com/malloc-labs/malloc-labs-copy/commit/26b81f71f864bb44bf89e54a4e64c34e00338634))
+* **voice:** add lexicon + grammar (phase 1, data + validation only) ([512a18e](https://github.com/malloc-labs/malloc-labs-copy/commit/512a18e4bd99584563ded1b84d070feb7baa0968))
+* **voice:** add Vosk recogniser + /voice/ws endpoint (phase 2) ([89cc0cf](https://github.com/malloc-labs/malloc-labs-copy/commit/89cc0cf6826773895389425a2d71fe28c608ca40))
+* **voice:** add Vosk recogniser + /voice/ws endpoint (phase 2) ([729d883](https://github.com/malloc-labs/malloc-labs-copy/commit/729d883c4a280987189c327e30a0c2bc771ccba2))
+* **voice:** batch-utterance tokenisation (phase 4) ([46c71e7](https://github.com/malloc-labs/malloc-labs-copy/commit/46c71e719e355d8fa147c3454f61b2916a218fb8))
+* **voice:** batch-utterance tokenisation (phase 4) ([49cf5ff](https://github.com/malloc-labs/malloc-labs-copy/commit/49cf5ff4220ed3425589a02ba3fe8ea27cf6ed00))
+* **voice:** live voice copy on recognition page (phase 5 MVP) ([45c96ec](https://github.com/malloc-labs/malloc-labs-copy/commit/45c96ecd6749d75d9ee27331862ab7640bf8bfbb))
+* **voice:** live voice copy on recognition page (phase 5 MVP) ([d36f33a](https://github.com/malloc-labs/malloc-labs-copy/commit/d36f33ac587f6059874d70d714eb0ab40b161c9c))
+* **voice:** per-exercise voice_capture + timeline markers (phase 5.1) ([5140aba](https://github.com/malloc-labs/malloc-labs-copy/commit/5140aba341cb69913506bc8869560a770afd1113))
+* **voice:** per-exercise voice_capture + timeline markers (phase 5.1) ([574d49b](https://github.com/malloc-labs/malloc-labs-copy/commit/574d49b8280a389d38fa5619199f607da820211d))
+* **voice:** settings Voice tab with live recogniser test (phase 3) ([7ccec63](https://github.com/malloc-labs/malloc-labs-copy/commit/7ccec6367e7cd5ee56dd916b0238641137426885))
+* **voice:** settings Voice tab with live recogniser test (phase 3) ([46777d2](https://github.com/malloc-labs/malloc-labs-copy/commit/46777d20e77bfa8e564bf837a1b7dd646e11d0e3))
+
+
+### Bug Fixes
+
+* show last Trinkey sync timestamp and change summary ([de8a958](https://github.com/malloc-labs/malloc-labs-copy/commit/de8a9580fa8f00e7a0b85d0d77cf315ebec1a296))
+* show last Trinkey sync timestamp and change summary in Key Input ([fea6313](https://github.com/malloc-labs/malloc-labs-copy/commit/fea63133fe274dcceac16457be732857bcfb21e8))
+* **voice:** page scroll, save surface, dialog race (review fixes) ([55b5dc9](https://github.com/malloc-labs/malloc-labs-copy/commit/55b5dc9b6777d4510715c1e01ad7c53736e81e10))
+* **voice:** placeholder mistaken for filled value (review fix) ([f6881e0](https://github.com/malloc-labs/malloc-labs-copy/commit/f6881e084895b8b892a22d9211a02c3826e72190))
+
+
+### Documentation
+
+* **voice:** document voice subsystem in CLAUDE.md + README ([03be4ed](https://github.com/malloc-labs/malloc-labs-copy/commit/03be4edad9d21b2a8588ea789532130da9f8c62d))
+* **voice:** document voice subsystem in CLAUDE.md + README ([3294c0b](https://github.com/malloc-labs/malloc-labs-copy/commit/3294c0b97125f798bc93240fe05ef8a465f24585))
+
 ## [0.12.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.11.1...v0.12.0) (2026-05-25)
 
 
