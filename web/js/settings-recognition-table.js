@@ -103,7 +103,7 @@ const EXERCISES_COLUMNS = [
     {
         label: "Caught",
         tooltip:
-            "Self-corrections — false starts superseded before the final committed symbol.",
+            "Self-corrections or recovered substitutions seen in review evidence.",
     },
     {
         label: "Miss",
@@ -113,7 +113,7 @@ const EXERCISES_COLUMNS = [
         label: "Confusions",
         tooltip:
             "Committed confusions and caught false starts, kept separate. 'caught' means " +
-            "the learner superseded the false start before committing.",
+            "the learner superseded or recovered from the false start.",
     },
     {
         label: "State",
@@ -262,6 +262,13 @@ function countsForExercise(analysis) {
     return { correct, substitution, caught, miss, total };
 }
 
+function analysisForExercise(exercise) {
+    if (exercise?.review_analysis && typeof exercise.review_analysis === "object") {
+        return exercise.review_analysis;
+    }
+    return exercise?.analysis || {};
+}
+
 function finiteCount(value) {
     return Number.isFinite(value) ? value : 0;
 }
@@ -292,25 +299,30 @@ function summariseConfusions(analysis) {
     const committed = summarisePairs(analysis.committed_confusions);
     const caught = summarisePairs(analysis.caught_confusions).map((item) => `caught ${item}`);
     const parts = committed.concat(caught);
+    if (analysis.recovery_softened === true) parts.push("recovered");
     if (analysis.ambiguous_lag === true) parts.push("lag?");
     return parts.length ? parts.join(", ") : "-";
 }
 
 function recognitionState(exercise) {
-    return exercise?.analysis?.recognition_state || exercise?.analysis?.band_state || "-";
+    const analysis = analysisForExercise(exercise);
+    return analysis?.recognition_state || analysis?.band_state || "-";
 }
 
 function recognitionGear(exercise) {
+    const analysis = analysisForExercise(exercise);
     const gear =
-        exercise?.analysis?.recognition_gear
-        ?? exercise?.analysis?.gear
+        analysis?.recognition_gear
+        ?? analysis?.gear
         ?? exercise?.recognition_gear
         ?? exercise?.gear;
     return Number.isFinite(gear) ? gear : "-";
 }
 
 function buildSummaryRow(exercises) {
-    const analysed = exercises.filter((exercise) => exercise?.analysis?.has_evidence === true);
+    const analysed = exercises.filter(
+        (exercise) => analysisForExercise(exercise).has_evidence === true,
+    );
     if (analysed.length === 0) return null;
 
     let correct = 0;
@@ -320,7 +332,7 @@ function buildSummaryRow(exercises) {
     let total = 0;
 
     analysed.forEach((exercise) => {
-        const counts = countsForExercise(exercise.analysis);
+        const counts = countsForExercise(analysisForExercise(exercise));
         correct += counts.correct;
         substitution += counts.substitution;
         caught += counts.caught;
@@ -368,7 +380,7 @@ function buildExercisesTable(record) {
 
     const body = document.createElement("tbody");
     exercises.forEach((exercise, idx) => {
-        const analysis = exercise.analysis || {};
+        const analysis = analysisForExercise(exercise);
         const counts = countsForExercise(analysis);
         const row = document.createElement("tr");
         appendCell(row, exercise.index || idx + 1);
