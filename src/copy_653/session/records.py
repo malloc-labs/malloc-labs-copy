@@ -23,7 +23,7 @@ them uniformly.
 Files live in per-mode subdirectories under the configured save
 directory::
 
-    <save_directory>/koch-exercise/2026/05/koch-exercise-20260515T193045Z.json
+    <save_directory>/koch-exercise/2026/05/set-20260515T193045Z/session-03.json
     <save_directory>/cadence-send/2026/05/cadence-send-20260515T193045Z.json
     <save_directory>/recognition/2026/05/set-20260515T193045Z/session-01.json
 
@@ -91,6 +91,22 @@ def _safe_filename_component(value: object, fallback: str) -> str:
 
 
 def _recognition_filename_parts(record: RecognitionRecord, stamp: str) -> tuple[str, str]:
+    generation = record.generation or {}
+    set_id = _safe_filename_component(generation.get("set_id"), stamp)
+    set_session = generation.get("set_session")
+    if isinstance(set_session, bool):
+        session_number = 0
+    elif isinstance(set_session, int):
+        session_number = set_session
+    else:
+        try:
+            session_number = int(str(set_session))
+        except (TypeError, ValueError):
+            session_number = 0
+    return f"set-{set_id}", f"session-{max(0, session_number):02d}"
+
+
+def _koch_filename_parts(record: KochExerciseRecord, stamp: str) -> tuple[str, str]:
     generation = record.generation or {}
     set_id = _safe_filename_component(generation.get("set_id"), stamp)
     set_session = generation.get("set_session")
@@ -411,6 +427,9 @@ def write_record(
     base = f"{record.mode}-{stamp}"
     if isinstance(record, RecognitionRecord):
         set_dir, base = _recognition_filename_parts(record, stamp)
+        target_dir = target_dir / set_dir
+    elif isinstance(record, KochExerciseRecord):
+        set_dir, base = _koch_filename_parts(record, stamp)
         target_dir = target_dir / set_dir
     target_dir.mkdir(parents=True, exist_ok=True)
 

@@ -21,6 +21,8 @@ const prevButton = document.getElementById("settings-koch-dialog-prev");
 const nextButton = document.getElementById("settings-koch-dialog-next");
 const countEl = document.getElementById("settings-koch-dialog-count");
 
+const SET_SIZE = 8;
+
 let openFilename = null;
 let currentRecords = [];
 const detailCache = new Map();
@@ -423,6 +425,33 @@ function updateNavButtons() {
     }
 }
 
+function detailTitle(record) {
+    const parts = [formatStartedAt(record.started_at)];
+    const setIndex = groupedSetIndex(record);
+    const setSession = record?.generation?.set_session ?? record?.set_session;
+    if (Number.isInteger(setIndex) && Number.isInteger(setSession)) {
+        parts.push(`Set ${setIndex}`);
+        parts.push(`Session ${setSession} of ${SET_SIZE}`);
+    } else if (Number.isInteger(setIndex)) {
+        parts.push(`Set ${setIndex}`);
+    } else if (Number.isInteger(setSession)) {
+        parts.push(`Session ${setSession} of ${SET_SIZE}`);
+    }
+    return parts.join(" · ");
+}
+
+function groupedSetIndex(record) {
+    const setId = record?.generation?.set_id ?? record?.set_id;
+    if (!setId) return null;
+    const groups = groupBySet(currentRecords).filter((group) => group.set_id);
+    let setIndex = groups.length;
+    for (const group of groups) {
+        if (group.set_id === setId) return setIndex;
+        setIndex -= 1;
+    }
+    return null;
+}
+
 function cssEscape(value) {
     if (window.CSS && typeof window.CSS.escape === "function") {
         return window.CSS.escape(value);
@@ -448,7 +477,7 @@ async function openDetail(filename, summaryRow) {
     try {
         const record = await loadRecord(filename);
         if (openFilename !== filename) return; // user closed/switched while fetching
-        detailDialogTitle.textContent = formatStartedAt(record.started_at);
+        detailDialogTitle.textContent = detailTitle(record);
         renderDetailContent(detailDialogBody, record);
         updateNavButtons();
     } catch (err) {
@@ -574,7 +603,7 @@ function renderSetHeader(group, setIndex) {
     arrow.className = "settings-koch-set-header__arrow";
     arrow.textContent = "▶";
     const label = document.createTextNode(
-        ` Session ${setIndex} · ${total} of 8${complete ? " · complete" : ""} · ${dateStr}`,
+        ` Set ${setIndex} · ${total} of ${SET_SIZE}${complete ? " · complete" : ""} · ${dateStr}`,
     );
     cell.append(arrow, label);
     tr.appendChild(cell);
@@ -584,7 +613,7 @@ function renderSetHeader(group, setIndex) {
         tr.dataset.expanded = expanded ? "false" : "true";
         tr.setAttribute("aria-expanded", expanded ? "false" : "true");
         arrow.textContent = expanded ? "▶" : "▼";
-        const rows = tbody.querySelectorAll(`tr[data-set-member="${CSS.escape(group.set_id)}"]`);
+        const rows = tbody.querySelectorAll(`tr[data-set-member="${cssEscape(group.set_id)}"]`);
         rows.forEach((row) => {
             row.hidden = expanded;
         });

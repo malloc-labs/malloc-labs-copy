@@ -32,17 +32,20 @@ def _audio() -> AudioParameters:
 def _koch_record(started_at: datetime | None = None) -> KochExerciseRecord:
     started = started_at or datetime(2026, 5, 15, 19, 30, 45, 123_000, tzinfo=timezone.utc)
     ended = datetime(2026, 5, 15, 19, 31, 15, 456_000, tzinfo=timezone.utc)
+    generation = build_generation_profile(
+        claimed_set=("K", "M", "U"),
+        candidate_count=20,
+        exercise_count=2,
+    )
+    generation["set_id"] = "20260515T193045Z"
+    generation["set_session"] = 3
     return KochExerciseRecord(
         started_at=started,
         ended_at=ended,
         audio=_audio(),
         claimed_set=("K", "M", "U"),
         seed=12345,
-        generation=build_generation_profile(
-            claimed_set=("K", "M", "U"),
-            candidate_count=20,
-            exercise_count=2,
-        ),
+        generation=generation,
         exercises=build_exercise_entries(["DE MK", "DE KMU"], scores=[32, 45]),
         symbols=[
             {
@@ -267,9 +270,9 @@ def test_write_record_uses_per_mode_subdirectory(tmp_path: Path):
     koch_path = write_record(_koch_record(), tmp_path)
     cadence_path = write_record(_cadence_record(), tmp_path)
 
-    assert koch_path.parent == tmp_path / "koch-exercise" / "2026" / "05"
+    assert koch_path.parent == tmp_path / "koch-exercise" / "2026" / "05" / "set-20260515T193045Z"
     assert cadence_path.parent == tmp_path / "cadence-send" / "2026" / "05"
-    assert koch_path.name == "koch-exercise-20260515T193045Z.json"
+    assert koch_path.name == "session-03.json"
     assert cadence_path.name == "cadence-send-20260515T193045Z.json"
 
 
@@ -285,9 +288,9 @@ def test_write_record_suffixes_on_collision(tmp_path: Path):
     second = write_record(_koch_record(), tmp_path)
     third = write_record(_koch_record(), tmp_path)
 
-    assert first.name == "koch-exercise-20260515T193045Z.json"
-    assert second.name == "koch-exercise-20260515T193045Z-1.json"
-    assert third.name == "koch-exercise-20260515T193045Z-2.json"
+    assert first.name == "session-03.json"
+    assert second.name == "session-03-1.json"
+    assert third.name == "session-03-2.json"
 
 
 def test_write_record_creates_save_directory_lazily(tmp_path: Path):
@@ -297,7 +300,7 @@ def test_write_record_creates_save_directory_lazily(tmp_path: Path):
     path = write_record(_koch_record(), fresh)
 
     assert path.exists()
-    assert path.parent == fresh / "koch-exercise" / "2026" / "05"
+    assert path.parent == fresh / "koch-exercise" / "2026" / "05" / "set-20260515T193045Z"
 
 
 def test_write_record_does_not_leave_temp_files_on_success(tmp_path: Path):

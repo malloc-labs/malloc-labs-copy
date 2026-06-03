@@ -332,7 +332,7 @@ def _iter_koch_records(save_directory: Path) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     if not target_dir.is_dir():
         return records
-    for entry in target_dir.rglob("koch-exercise-*.json"):
+    for entry in target_dir.rglob("*.json"):
         try:
             data = json.loads(entry.read_text())
         except (OSError, ValueError):

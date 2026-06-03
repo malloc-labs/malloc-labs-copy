@@ -407,7 +407,7 @@ def _json_response(payload: dict[str, Any]) -> tuple[HTTPStatus, list[tuple[str,
 # Filename validation patterns
 # ---------------------------------------------------------------------------
 
-_KOCH_FILENAME_RE = re.compile(r"^koch-exercise-[0-9A-Za-z-]+\.json$")
+_KOCH_FILENAME_RE = re.compile(r"^[0-9A-Za-z._/-]+\.json$")
 _CADENCE_FILENAME_RE = re.compile(r"^cadence-send-[0-9A-Za-z-]+\.json$")
 _COPY_KEY_FILENAME_RE = re.compile(r"^copy-key-[0-9A-Za-z-]+\.json$")
 _RECOGNITION_FILENAME_RE = re.compile(r"^[0-9A-Za-z._/-]+\.json$")
@@ -668,7 +668,7 @@ def _build_records_backup(
         return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"could not resolve save directory")
 
     target_dir = save_directory / subdir
-    pattern = "*.json" if kind == "recognition" else f"{subdir}-*.json"
+    pattern = "*.json" if kind in ("koch-exercise", "recognition") else f"{subdir}-*.json"
 
     buffer = io.BytesIO()
     file_count = 0
@@ -722,6 +722,8 @@ def _list_koch_exercises(config_path: Path | None) -> dict[str, Any]:
         subdirectory="koch-exercise",
         mode="koch-exercise",
         enrich=_enrich_koch_record,
+        glob_pattern="*.json",
+        relative_filenames=True,
     )
 
 
@@ -734,6 +736,7 @@ def _read_koch_exercise(
         filename_re=_KOCH_FILENAME_RE,
         subdirectory="koch-exercise",
         mode="koch-exercise",
+        allow_relative_filename=True,
     )
 
 
@@ -746,6 +749,7 @@ def _delete_koch_exercise(
         filename_re=_KOCH_FILENAME_RE,
         subdirectory="koch-exercise",
         mode="koch-exercise",
+        allow_relative_filename=True,
     )
 
 

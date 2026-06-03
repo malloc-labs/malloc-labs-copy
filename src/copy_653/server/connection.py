@@ -94,6 +94,7 @@ from copy_653.server.records import (
     _koch_readiness_state,
     _next_send_symbol_readiness,
     _resolve_recognition_session_gears,
+    _resolve_session_gears_and_rst,
 )
 from copy_653.server.validation import (
     _browser_midi_note_event,
@@ -389,6 +390,45 @@ def _next_recognition_profile(state: ConnectionState, claimed: tuple[str, ...]) 
     }
 
 
+def _next_koch_profile(state: ConnectionState, claimed: tuple[str, ...]) -> dict[str, Any]:
+    if not claimed:
+        return {}
+    if state.warmup_remaining > 0:
+        return {
+            **_next_koch_set_position(state),
+            "koch_gears": [0] * 5,
+        }
+    try:
+        save_directory = load_save_directory(state.config_path)
+        gears, _rst = _resolve_session_gears_and_rst(
+            save_directory,
+            " ".join(sorted(claimed)),
+            exercise_count=5,
+        )
+    except Exception:
+        logger.exception("could not resolve next Koch exercise profile")
+        return {
+            "koch_set_session": state.main_session_next,
+            "koch_warm_up": False,
+        }
+    return {
+        **_next_koch_set_position(state),
+        "koch_gears": gears,
+    }
+
+
+def _next_koch_set_position(state: ConnectionState) -> dict[str, Any]:
+    if state.warmup_remaining > 0:
+        return {
+            "koch_set_session": 3 - state.warmup_remaining,
+            "koch_warm_up": True,
+        }
+    return {
+        "koch_set_session": state.main_session_next,
+        "koch_warm_up": False,
+    }
+
+
 async def _run_start_recognition_session(state: ConnectionState) -> None:
     """Wrap a recognition ``start-recognition`` with the set state machine."""
     try:
@@ -432,12 +472,14 @@ _BARE_HANDLERS: dict[str, Callable[[ConnectionState, dict[str, Any]], Awaitable[
         msg.get("symbol", ""),
         state.config_path,
         set_is_fresh=state.is_fresh_set,
+        **_next_koch_set_position(state),
     ),
     "unclaim-symbol": lambda state, msg: _unclaim_symbol_action(
         state.ws,
         msg.get("symbol", ""),
         state.config_path,
         set_is_fresh=state.is_fresh_set,
+        **_next_koch_set_position(state),
     ),
     "get-audio-settings": lambda state, msg: _get_audio_settings_action(
         state.ws, state.config_path
@@ -497,6 +539,7 @@ async def handler(
             ready_for_next=ready_for_next,
             ready_for_next_send=ready_for_next_send,
             set_is_fresh=state.is_fresh_set,
+            **_next_koch_profile(state, claimed),
             **_next_recognition_profile(state, claimed),
         ),
     )

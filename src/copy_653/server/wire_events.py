@@ -52,6 +52,9 @@ def _claimed_symbols_event(
     ready_for_next: bool = False,
     ready_for_next_send: bool = False,
     set_is_fresh: bool = True,
+    koch_set_session: int | None = None,
+    koch_gears: list[int] | None = None,
+    koch_warm_up: bool | None = None,
     recognition_set_session: int | None = None,
     recognition_gear: int | None = None,
     recognition_kind: str | None = None,
@@ -104,6 +107,12 @@ def _claimed_symbols_event(
         event["recognition_gear"] = recognition_gear
     if recognition_kind is not None:
         event["recognition_kind"] = recognition_kind
+    if koch_set_session is not None:
+        event["koch_set_session"] = koch_set_session
+    if koch_gears is not None:
+        event["koch_gears"] = list(koch_gears)
+    if koch_warm_up is not None:
+        event["koch_warm_up"] = koch_warm_up
     return event
 
 
