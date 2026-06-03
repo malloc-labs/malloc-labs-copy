@@ -773,6 +773,7 @@ async def test_api_koch_band_evidence_returns_recent_per_band_rollup(tmp_path):
         assert payload["session_count"] == 2
         assert payload["sessions_used"] == 2
         assert payload["bands"][0]["burden_band"] == 1
+        assert payload["bands"][0]["current_gear"] == 0
         assert payload["bands"][0]["recent_fractions"] == [1.0, 1.0]
         assert payload["bands"][0]["strong_streak"] == 2
     finally:

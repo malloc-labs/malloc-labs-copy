@@ -529,6 +529,7 @@ def load_band_evidence(
         bands.append(
             {
                 "burden_band": band_index,
+                "current_gear": entries[0][2],
                 "recent_fractions": [round(f, 6) for f in fractions],
                 "recent_band_states": states,
                 "strong_streak": _streak_at_current_gear(entries, lambda v: v >= STRONG_FRACTION),

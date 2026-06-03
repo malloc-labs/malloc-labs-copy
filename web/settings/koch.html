@@ -19,6 +19,29 @@
 
         <section class="settings-panel settings-review-panel"
                  id="settings-panel-koch">
+            <details class="settings-koch-confusion settings-recognition-burden"
+                     id="settings-koch-burden"
+                     open
+                     hidden>
+                <summary class="settings-recognition-section__summary">
+                    <span class="settings-koch-confusion__heading">Koch burden debt</span>
+                </summary>
+                <p class="settings-recognition-burden__meta"
+                   id="settings-koch-burden-meta">Loading burden profile…</p>
+                <div class="settings-recognition-burden__table-wrap">
+                    <table class="settings-recognition-burden__table">
+                        <thead>
+                            <tr>
+                                <th scope="col">Burden</th>
+                                <th scope="col">Gear</th>
+                                <th scope="col">Debt</th>
+                                <th scope="col">Confidence</th>
+                            </tr>
+                        </thead>
+                        <tbody id="settings-koch-burden-tbody"></tbody>
+                    </table>
+                </div>
+            </details>
             <section class="settings-koch-rollup" id="settings-koch-rollup" hidden>
                 <h3 class="settings-koch-rollup__heading">
                     Recent band evidence
@@ -144,6 +167,7 @@
     </main>
     <script type="module" src="../js/partials/landing-header.js"></script>
     <script type="module" src="../js/partials/theme-btn.js"></script>
+    <script type="module" src="../js/settings-koch-burden.js"></script>
     <script type="module" src="../js/settings-koch-table.js"></script>
     <script type="module" src="../js/settings-koch-rollup.js"></script>
     <script type="module" src="../js/settings-koch-confusion.js"></script>
