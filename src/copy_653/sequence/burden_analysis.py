@@ -11,8 +11,13 @@ from collections import Counter
 from collections import defaultdict
 from typing import Any
 
-from copy_653.sequence.exercise_analysis import LOW_FRACTION, STRONG_FRACTION
-from copy_653.sequence.exercise_analysis import record_claimed_set_key
+from copy_653.sequence.exercise_analysis import (
+    DEFAULT_EVIDENCE_WINDOW_SIZE as DEFAULT_KOCH_BURDEN_WINDOW_SIZE,
+    LOW_FRACTION,
+    STRONG_FRACTION,
+    load_confusion_pairs,
+    record_claimed_set_key,
+)
 
 BURDEN_PROFILE_VERSION = "burden-profile-v1"
 DEFAULT_RECOGNITION_BURDEN_WINDOW_SIZE = 20
@@ -84,6 +89,45 @@ def load_recognition_burden_profile(
     }
 
 
+def load_koch_burden_profile(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+    window_size: int = DEFAULT_KOCH_BURDEN_WINDOW_SIZE,
+) -> dict[str, Any]:
+    """Build a burden-axis profile from saved Koch Exercise evidence.
+
+    Koch generation still runs on bands and gears, but the settings
+    burden table should describe the listening burdens those mechanisms
+    probe. Band and gear remain provenance inside the evidence strings.
+    """
+    matching = _matching_koch_records(records, claimed_set_key)
+    matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
+    recent = matching[: max(0, window_size)]
+    stats = _collect_koch_stats(recent)
+    confusions = load_confusion_pairs(records, claimed_set_key=claimed_set_key)
+
+    return {
+        "version": BURDEN_PROFILE_VERSION,
+        "claimed_set_key": claimed_set_key,
+        "record_count": len(matching),
+        "window_size": max(0, window_size),
+        "records_used": len(recent),
+        "burdens": {
+            "symbol_inventory": _koch_symbol_inventory_burden(stats),
+            "grouping": _koch_grouping_burden(stats),
+            "unit_length": _koch_unit_length_burden(stats),
+            "confusion": _koch_confusion_burden(confusions),
+            "signal": _unknown_burden("No Koch receiver-bed contrast probes yet."),
+            "rhythm": _unknown_burden("No Koch cadence-variation contrast probes yet."),
+            "anchor": _unknown_burden("No Koch anchor-removal contrast probes yet."),
+            "practice_transfer": _unknown_burden(
+                "No linked Symbol Recognition to Koch Exercise transfer evidence yet."
+            ),
+        },
+    }
+
+
 def _recognition_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         record
@@ -101,6 +145,20 @@ def _matching_recognition_records(
         for record in records
         if isinstance(record, dict)
         and record.get("mode") == "recognition"
+        and record_claimed_set_key(record) == claimed_set_key
+    ]
+
+
+def _matching_koch_records(
+    records: list[dict[str, Any]],
+    claimed_set_key: str,
+) -> list[dict[str, Any]]:
+    return [
+        record
+        for record in records
+        if isinstance(record, dict)
+        and record.get("mode") == "koch-exercise"
+        and record.get("warm_up") is not True
         and record_claimed_set_key(record) == claimed_set_key
     ]
 
@@ -150,6 +208,183 @@ def _collect_stats(records: list[dict[str, Any]]) -> dict[str, Any]:
         "unit_attempts": unit_attempts,
         "committed_confusions": committed_confusions,
         "caught_confusions": caught_confusions,
+    }
+
+
+def _collect_koch_stats(records: list[dict[str, Any]]) -> dict[str, Any]:
+    symbol_correct = 0
+    symbol_available = 0
+    spacing_correct = 0
+    spacing_available = 0
+    band_attempts: dict[int, list[tuple[float, int]]] = defaultdict(list)
+    exercise_count = 0
+
+    for record in records:
+        session_gears = _koch_gears_from_generation(record.get("generation"))
+        exercises = record.get("exercises")
+        if not isinstance(exercises, list):
+            continue
+        for exercise in exercises:
+            if not isinstance(exercise, dict):
+                continue
+            analysis = exercise.get("analysis")
+            if not isinstance(analysis, dict) or analysis.get("saved") is not True:
+                continue
+            fraction = analysis.get("combined_fraction")
+            if not isinstance(fraction, (int, float)) or isinstance(fraction, bool):
+                continue
+
+            symbol_correct += _coerce_int(analysis.get("symbol_correct_units"), 0)
+            symbol_available += _coerce_int(analysis.get("symbol_available_units"), 0)
+            spacing_correct += _coerce_int(analysis.get("spacing_correct_units"), 0)
+            spacing_available += _coerce_int(analysis.get("spacing_available_units"), 0)
+
+            band = _coerce_int(exercise.get("burden_band"), 0)
+            gear = session_gears.get(band, _coerce_int(exercise.get("gear"), 0))
+            if band > 0:
+                band_attempts[band].append((float(fraction), gear))
+            exercise_count += 1
+
+    return {
+        "symbol_correct": symbol_correct,
+        "symbol_available": symbol_available,
+        "spacing_correct": spacing_correct,
+        "spacing_available": spacing_available,
+        "band_attempts": band_attempts,
+        "exercise_count": exercise_count,
+    }
+
+
+def _koch_symbol_inventory_burden(stats: dict[str, Any]) -> dict[str, Any]:
+    total = int(stats["symbol_available"])
+    if total <= 0:
+        return _unknown_burden("No Koch symbol-copy evidence in the recent window.")
+
+    correct = int(stats["symbol_correct"])
+    fraction = _fraction(correct, total)
+    return {
+        "debt": _debt_from_fraction(fraction),
+        "confidence": _confidence_from_count(
+            total,
+            medium=MIN_SYMBOL_EXPOSURES_MEDIUM_CONFIDENCE,
+            high=MIN_SYMBOL_EXPOSURES_HIGH_CONFIDENCE,
+        ),
+        "evidence": [
+            f"Koch symbol stream copied at {_percent(fraction)} "
+            f"over {total} symbol units in the recent window."
+        ],
+        "symbol_correct_units": correct,
+        "symbol_available_units": total,
+        "fraction": round(fraction, 6),
+    }
+
+
+def _koch_grouping_burden(stats: dict[str, Any]) -> dict[str, Any]:
+    total = int(stats["spacing_available"])
+    if total <= 0:
+        return _unknown_burden("No Koch word-boundary evidence in the recent window.")
+
+    correct = int(stats["spacing_correct"])
+    fraction = _fraction(correct, total)
+    return {
+        "debt": _debt_from_fraction(fraction),
+        "confidence": _confidence_from_count(
+            total,
+            medium=MIN_UNIT_EXERCISES_MEDIUM_CONFIDENCE,
+            high=MIN_UNIT_EXERCISES_HIGH_CONFIDENCE,
+        ),
+        "evidence": [
+            f"Koch grouping copied at {_percent(fraction)} "
+            f"over {total} word-boundary units in the recent window."
+        ],
+        "spacing_correct_units": correct,
+        "spacing_available_units": total,
+        "fraction": round(fraction, 6),
+    }
+
+
+def _koch_unit_length_burden(stats: dict[str, Any]) -> dict[str, Any]:
+    band_attempts: dict[int, list[tuple[float, int]]] = stats["band_attempts"]
+    if not band_attempts:
+        return _unknown_burden("No Koch band evidence in the recent window.")
+
+    rows = []
+    for band, entries in sorted(band_attempts.items()):
+        fractions = [fraction for fraction, _gear in entries]
+        average = sum(fractions) / len(fractions)
+        rows.append(
+            {
+                "band": band,
+                "average_fraction": average,
+                "exercise_count": len(entries),
+                "current_gear": entries[0][1],
+            }
+        )
+    weakest = min(rows, key=lambda row: (row["average_fraction"], -row["band"]))
+    all_fractions = [fraction for entries in band_attempts.values() for fraction, _gear in entries]
+    average = sum(all_fractions) / len(all_fractions)
+
+    return {
+        "debt": _debt_from_fraction(float(weakest["average_fraction"])),
+        "confidence": _confidence_from_count(
+            len(all_fractions),
+            medium=MIN_UNIT_EXERCISES_MEDIUM_CONFIDENCE,
+            high=MIN_UNIT_EXERCISES_HIGH_CONFIDENCE,
+        ),
+        "evidence": [
+            f"Weakest Koch unit-length band {weakest['band']} averaged "
+            f"{_percent(float(weakest['average_fraction']))} over "
+            f"{weakest['exercise_count']} exercises at gear {weakest['current_gear']}.",
+            f"All Koch bands averaged {_percent(average)} over "
+            f"{len(all_fractions)} exercises in the recent window.",
+        ],
+        "bands": [
+            {
+                **row,
+                "average_fraction": round(float(row["average_fraction"]), 6),
+            }
+            for row in rows
+        ],
+        "average_fraction": round(average, 6),
+    }
+
+
+def _koch_confusion_burden(confusions: dict[str, Any]) -> dict[str, Any]:
+    substitutions = confusions.get("substitutions")
+    pairs = substitutions if isinstance(substitutions, list) else []
+    exercises_used = _coerce_int(confusions.get("exercises_used"), 0)
+    if exercises_used <= 0:
+        return _unknown_burden("No saved Koch answers available for confusion evidence.")
+
+    confidence = _confidence_from_count(
+        exercises_used,
+        medium=MIN_UNIT_EXERCISES_MEDIUM_CONFIDENCE,
+        high=MIN_UNIT_EXERCISES_HIGH_CONFIDENCE,
+    )
+    if not pairs:
+        return {
+            "debt": DEBT_LOW,
+            "confidence": confidence,
+            "evidence": [f"No Koch symbol substitutions across {exercises_used} exercises."],
+            "committed": [],
+        }
+
+    top = pairs[0]
+    top_count = _coerce_int(top.get("count") if isinstance(top, dict) else None, 0)
+    if top_count >= HIGH_CONFUSION_COUNT:
+        debt = DEBT_HIGH
+    elif top_count >= MODERATE_CONFUSION_COUNT:
+        debt = DEBT_MODERATE
+    else:
+        debt = DEBT_LOW
+
+    target = top.get("target", "?") if isinstance(top, dict) else "?"
+    typed = top.get("typed", "?") if isinstance(top, dict) else "?"
+    return {
+        "debt": debt,
+        "confidence": confidence,
+        "evidence": [f"Top Koch symbol confusion {target} -> {typed} occurred {top_count} times."],
+        "committed": pairs,
     }
 
 
@@ -429,6 +664,28 @@ def _record_gear(record: dict[str, Any]) -> int:
     if not isinstance(generation, dict):
         return 0
     return _coerce_int(generation.get("gear"), 0)
+
+
+def _koch_gears_from_generation(generation: Any) -> dict[int, int]:
+    if not isinstance(generation, dict):
+        return {}
+    bands = generation.get("bands")
+    if not isinstance(bands, list):
+        return {}
+    out: dict[int, int] = {}
+    for entry in bands:
+        if not isinstance(entry, dict):
+            continue
+        idx = entry.get("index")
+        gear = entry.get("gear")
+        if (
+            isinstance(idx, int)
+            and not isinstance(idx, bool)
+            and isinstance(gear, int)
+            and not isinstance(gear, bool)
+        ):
+            out[idx] = gear
+    return out
 
 
 def _coerce_int(value: Any, default: int) -> int:
