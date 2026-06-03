@@ -1,6 +1,6 @@
 // Settings -> Koch Exercises tab: read-only burden debt summary.
 //
-// This is a presentational layer over /api/koch-band-evidence. It keeps
+// This is a presentational layer over /api/koch-burden-profile. It keeps
 // the exercise surface free of scores while making the current practice
 // burden profile inspectable after the listening act.
 
@@ -8,17 +8,31 @@ const root = document.getElementById("settings-koch-burden");
 const meta = document.getElementById("settings-koch-burden-meta");
 const tbody = document.getElementById("settings-koch-burden-tbody");
 
-const STRONG_FRACTION = 0.95;
-const LOW_FRACTION = 0.70;
-const STRONG_STREAK_FOR_LOW_DEBT = 3;
-const LOW_STREAK_FOR_HIGH_DEBT = 2;
-const MEDIUM_CONFIDENCE_EVIDENCE = 2;
-const HIGH_CONFIDENCE_EVIDENCE = 5;
+const BURDEN_LABELS = {
+    symbol_inventory: "Symbols",
+    grouping: "Grouping",
+    unit_length: "Unit length",
+    confusion: "Confusions",
+    signal: "Signal",
+    rhythm: "Rhythm",
+    anchor: "Anchor",
+    practice_transfer: "Practice transfer",
+};
+
+const BURDEN_ORDER = [
+    "symbol_inventory",
+    "grouping",
+    "unit_length",
+    "confusion",
+    "signal",
+    "rhythm",
+    "anchor",
+    "practice_transfer",
+];
 
 const TOOLTIP_TEXT = {
-    Burden: "The Koch exercise band. Higher bands carry heavier unit-length and stream-retention load.",
-    Gear: "Current generated task gear for this band.",
-    Debt: "Current unresolved instability estimate for this band. Low is settled; moderate/high needs service.",
+    Burden: "The listening burden being estimated from Koch exercise evidence.",
+    Debt: "Current unresolved instability estimate for this burden. Low is settled; moderate/high needs service.",
     Confidence: "How much recent evidence supports the debt estimate.",
 };
 
@@ -39,54 +53,36 @@ function addTooltip(element, text) {
     }
 }
 
-function latestFraction(band) {
-    const fractions = Array.isArray(band?.recent_fractions) ? band.recent_fractions : [];
-    const value = Number(fractions[0]);
-    return Number.isFinite(value) ? value : null;
+function formatKey(value) {
+    if (BURDEN_LABELS[value]) return BURDEN_LABELS[value];
+    return String(value || "")
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function evidenceCount(band) {
-    const fractions = Array.isArray(band?.recent_fractions) ? band.recent_fractions : [];
-    return fractions.filter((value) => Number.isFinite(Number(value))).length;
+function formatDebt(value) {
+    if (value === "low") return "low";
+    if (value === "moderate") return "moderate";
+    if (value === "high") return "high";
+    return "unknown";
 }
 
-function formatGear(value) {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return "-";
-    return String(numeric);
-}
-
-function confidenceForBand(band) {
-    const count = evidenceCount(band);
-    if (count >= HIGH_CONFIDENCE_EVIDENCE) return "high";
-    if (count >= MEDIUM_CONFIDENCE_EVIDENCE) return "medium";
+function formatConfidence(value) {
+    if (value === "high") return "high";
+    if (value === "medium") return "medium";
     return "low";
 }
 
-function debtForBand(band) {
-    const count = evidenceCount(band);
-    if (count === 0) return "unknown";
-
-    const latest = latestFraction(band);
-    const strongStreak = Number(band?.strong_streak) || 0;
-    const lowStreak = Number(band?.low_streak) || 0;
-    const currentGear = Number(band?.current_gear);
-
-    if (lowStreak >= LOW_STREAK_FOR_HIGH_DEBT) return "high";
-    if (latest !== null && latest < LOW_FRACTION) return "high";
-    if (strongStreak >= STRONG_STREAK_FOR_LOW_DEBT) return "low";
-    if (latest !== null && latest >= STRONG_FRACTION && Number.isFinite(currentGear) && currentGear >= 3) {
-        return "low";
-    }
-    return "moderate";
+function burdenKeys(burdens) {
+    const known = new Set(Object.keys(burdens || {}));
+    const ordered = BURDEN_ORDER.filter((key) => known.has(key));
+    const extra = [...known].filter((key) => !BURDEN_ORDER.includes(key)).sort();
+    return [...ordered, ...extra];
 }
 
-function evidenceText(band) {
-    const latest = latestFraction(band);
-    const latestText = latest === null ? "no recent fraction" : `latest ${latest.toFixed(3)}`;
-    const strong = Number(band?.strong_streak) || 0;
-    const low = Number(band?.low_streak) || 0;
-    return `${latestText}; strong streak ${strong}; low streak ${low}`;
+function evidenceText(burden) {
+    const evidence = Array.isArray(burden?.evidence) ? burden.evidence : [];
+    return evidence.join(" ");
 }
 
 function renderHeaders() {
@@ -94,45 +90,51 @@ function renderHeaders() {
     headers.forEach((header) => addTooltip(header, TOOLTIP_TEXT[header.textContent]));
 }
 
-function renderBand(band) {
+function renderBurden(key, burden) {
     const row = document.createElement("tr");
     row.className = "settings-recognition-burden__row";
-    const debt = debtForBand(band);
+    const debt = formatDebt(burden?.debt);
     row.dataset.debt = debt;
-    row.title = evidenceText(band);
+    row.title = evidenceText(burden);
 
-    appendCell(row, "settings-koch-confusion__label", `Band ${band.burden_band ?? "-"}`);
-    appendCell(row, "settings-koch-burden__gear", formatGear(band.current_gear));
+    appendCell(row, "settings-koch-confusion__label", formatKey(key));
     appendCell(row, "settings-recognition-burden__debt", debt);
-    appendCell(row, "settings-recognition-burden__confidence", confidenceForBand(band));
+    appendCell(
+        row,
+        "settings-recognition-burden__confidence",
+        formatConfidence(burden?.confidence),
+    );
     tbody.appendChild(row);
 }
 
 function renderProfile(profile) {
-    const bands = Array.isArray(profile?.bands) ? profile.bands : [];
+    const burdens = profile?.burdens && typeof profile.burdens === "object"
+        ? profile.burdens
+        : {};
+    const keys = burdenKeys(burdens);
     tbody.replaceChildren();
 
-    if (!bands.length || Number(profile?.sessions_used || 0) <= 0) {
+    if (!keys.length || Number(profile?.records_used || 0) <= 0) {
         root.hidden = true;
         return;
     }
 
-    const sessionsUsed = Number(profile.sessions_used) || 0;
-    const totalSessions = Number(profile.session_count) || sessionsUsed;
-    const windowSize = Number(profile.window_size) || sessionsUsed;
+    const recordsUsed = Number(profile.records_used) || 0;
+    const totalRecords = Number(profile.record_count) || recordsUsed;
+    const windowSize = Number(profile.window_size) || recordsUsed;
     const claimed = profile.claimed_set_key || "current set";
     meta.textContent =
-        `${claimed} · band debt from ${sessionsUsed}/${totalSessions} session` +
-        `${totalSessions === 1 ? "" : "s"} in the recent ${windowSize}-session evidence window`;
+        `${claimed} · burden debt from ${recordsUsed}/${totalRecords} session` +
+        `${totalRecords === 1 ? "" : "s"} in the recent ${windowSize}-session evidence window`;
 
-    bands.forEach((band) => renderBand(band));
+    keys.forEach((key) => renderBurden(key, burdens[key]));
     root.hidden = false;
 }
 
 async function loadBurdenProfile() {
     if (!root || !meta || !tbody) return;
     try {
-        const res = await fetch("/api/koch-band-evidence", { cache: "no-store" });
+        const res = await fetch("/api/koch-burden-profile", { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         renderProfile(await res.json());
     } catch {

@@ -959,25 +959,6 @@
     color: var(--mr-warning);
 }
 
-#settings-koch-burden .settings-recognition-burden__table th:nth-child(1),
-#settings-koch-burden .settings-recognition-burden__table td:nth-child(1) {
-    width: 34%;
-}
-
-#settings-koch-burden .settings-recognition-burden__table th:nth-child(2),
-#settings-koch-burden .settings-recognition-burden__table td:nth-child(2) {
-    width: 16%;
-    white-space: nowrap;
-}
-
-#settings-koch-burden .settings-recognition-burden__table th:nth-child(3),
-#settings-koch-burden .settings-recognition-burden__table td:nth-child(3),
-#settings-koch-burden .settings-recognition-burden__table th:nth-child(4),
-#settings-koch-burden .settings-recognition-burden__table td:nth-child(4) {
-    width: 25%;
-    white-space: nowrap;
-}
-
 .settings-recognition-burden-dialog {
     width: min(96vw, 760px);
 }

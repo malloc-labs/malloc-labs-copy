@@ -4,6 +4,7 @@ from copy_653.sequence.burden_analysis import (
     DEBT_MODERATE,
     DEBT_UNKNOWN,
     DEFAULT_RECOGNITION_BURDEN_WINDOW_SIZE,
+    load_koch_burden_profile,
     load_recognition_burden_profile,
 )
 from copy_653.sequence.recognition_analysis import (
@@ -264,3 +265,114 @@ def test_burden_profile_default_window_is_longer_than_progression_window():
 
     assert profile["window_size"] == DEFAULT_RECOGNITION_BURDEN_WINDOW_SIZE
     assert profile["records_used"] == DEFAULT_RECOGNITION_BURDEN_WINDOW_SIZE
+
+
+def _koch_exercise(
+    *,
+    band: int,
+    gear: int,
+    played: str,
+    answer: str,
+    fraction: float,
+    symbol_correct: int,
+    symbol_available: int,
+    spacing_correct: int,
+    spacing_available: int,
+) -> dict:
+    return {
+        "index": band,
+        "played": played,
+        "answer": answer,
+        "burden_band": band,
+        "gear": gear,
+        "analysis": {
+            "saved": True,
+            "combined_fraction": fraction,
+            "symbol_correct_units": symbol_correct,
+            "symbol_available_units": symbol_available,
+            "spacing_correct_units": spacing_correct,
+            "spacing_available_units": spacing_available,
+        },
+    }
+
+
+def _koch_record(
+    started_at: str,
+    *exercises: dict,
+    claimed_set_key: str = "K M R U",
+) -> dict:
+    return {
+        "mode": "koch-exercise",
+        "started_at": started_at,
+        "claimed_set": claimed_set_key.split(),
+        "generation": {
+            "claimed_set_key": claimed_set_key,
+            "bands": [
+                {"index": exercise["burden_band"], "gear": exercise["gear"]}
+                for exercise in exercises
+            ],
+        },
+        "exercises": list(exercises),
+    }
+
+
+def test_koch_burden_profile_separates_symbols_grouping_and_band_provenance():
+    profile = load_koch_burden_profile(
+        [
+            _koch_record(
+                "2026-06-03T18:42:00Z",
+                _koch_exercise(
+                    band=4,
+                    gear=1,
+                    played="DE URU U UM",
+                    answer="DE URU UUM",
+                    fraction=0.875,
+                    symbol_correct=6,
+                    symbol_available=6,
+                    spacing_correct=1,
+                    spacing_available=2,
+                ),
+            )
+        ],
+        claimed_set_key="K M R U",
+        window_size=5,
+    )
+
+    burdens = profile["burdens"]
+    assert burdens["symbol_inventory"]["debt"] == DEBT_LOW
+    assert burdens["symbol_inventory"]["fraction"] == 1.0
+    assert burdens["grouping"]["debt"] == DEBT_HIGH
+    assert burdens["grouping"]["fraction"] == 0.5
+    assert burdens["unit_length"]["debt"] == DEBT_MODERATE
+    assert burdens["unit_length"]["bands"] == [
+        {"band": 4, "average_fraction": 0.875, "exercise_count": 1, "current_gear": 1}
+    ]
+    assert "band 4" in burdens["unit_length"]["evidence"][0]
+    assert "gear 1" in burdens["unit_length"]["evidence"][0]
+
+
+def test_koch_burden_profile_reports_confusion_debt_from_substitutions():
+    records = [
+        _koch_record(
+            f"2026-06-03T18:{minute:02d}:00Z",
+            _koch_exercise(
+                band=3,
+                gear=2,
+                played="DE MKR",
+                answer="DE MKU",
+                fraction=0.8,
+                symbol_correct=2,
+                symbol_available=3,
+                spacing_correct=0,
+                spacing_available=0,
+            ),
+        )
+        for minute in range(4)
+    ]
+
+    profile = load_koch_burden_profile(records, claimed_set_key="K M R U")
+
+    confusion = profile["burdens"]["confusion"]
+    assert confusion["debt"] == DEBT_HIGH
+    assert confusion["committed"][0] == {"target": "R", "typed": "U", "count": 4}
+    assert profile["burdens"]["signal"]["debt"] == DEBT_UNKNOWN
