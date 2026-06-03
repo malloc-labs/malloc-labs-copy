@@ -241,6 +241,7 @@ def find_available_port(
 
     for port in range(start, start + span):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 s.bind((host, port))
             except OSError:
@@ -326,4 +327,8 @@ async def run(
     if bound_port != resolved_port:
         logger.info("requested port %d was in use; bound %d instead", resolved_port, bound_port)
     print(f"Copy engine listening on http://{resolved_host}:{bound_port}")
-    await server.wait_closed()
+    try:
+        await server.wait_closed()
+    finally:
+        server.close()
+        await server.wait_closed()

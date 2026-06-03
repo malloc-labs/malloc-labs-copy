@@ -102,7 +102,9 @@ function recognitionModeLabel(gear, kind) {
     if (!Number.isInteger(gear)) return "";
     if (gear <= 0) return "Gear 0: singles, first confirms";
     if (kind === "words") return `Gear ${gear}: words, no confirm`;
-    if (kind === "pairs") return `Gear ${gear}: pairs, no confirm`;
+    if (kind === "pairs" && gear === 1) return "Gear 1: 1 word, 2 symbols, no confirm";
+    if (kind === "pairs" && gear === 2) return "Gear 2: 2 words, 2 symbols each, no confirm";
+    if (kind === "pairs") return `Gear ${gear}: 2-symbol words, no confirm`;
     return `Gear ${gear}: no confirm`;
 }
 
