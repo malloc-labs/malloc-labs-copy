@@ -100,6 +100,7 @@
     box-sizing: border-box;
 }
 
+.settings-review-body:has(#settings-panel-koch),
 .settings-review-body:has(#settings-panel-recognition) {
     height: auto;
     min-height: 100dvh;
@@ -117,6 +118,7 @@
     min-height: 0;
 }
 
+.settings-review-body:has(#settings-panel-koch) .landing-shell,
 .settings-review-body:has(#settings-panel-recognition) .landing-shell {
     height: auto;
     min-height: calc(
@@ -124,6 +126,11 @@
         - var(--settings-page-top-space)
         - var(--settings-page-footer-space)
     );
+}
+
+.settings-review-body:has(#settings-panel-koch) #settings-panel-koch:not([hidden]) {
+    flex: 0 0 auto;
+    overflow: visible;
 }
 
 .settings-review-body .landing-header {
@@ -957,6 +964,151 @@
 
 #settings-koch-burden .settings-recognition-burden__row[data-debt="high"] .settings-recognition-burden__debt {
     color: var(--mr-warning);
+}
+
+.settings-koch-attention .settings-recognition-burden__table-wrap {
+    overflow-x: visible;
+}
+
+.settings-koch-attention__table {
+    table-layout: fixed;
+}
+
+.settings-koch-attention__table th:nth-child(1),
+.settings-koch-attention__table td:nth-child(1) {
+    width: 46%;
+}
+
+.settings-koch-attention__table th:nth-child(2),
+.settings-koch-attention__table td:nth-child(2) {
+    width: 18%;
+    white-space: nowrap;
+}
+
+.settings-koch-attention__table th:nth-child(3),
+.settings-koch-attention__table td:nth-child(3) {
+    width: 24%;
+    white-space: normal;
+}
+
+.settings-koch-attention__table th:nth-child(4),
+.settings-koch-attention__table td:nth-child(4) {
+    width: 12%;
+    white-space: nowrap;
+}
+
+.settings-koch-attention__table .settings-recognition-tooltip::after {
+    max-width: min(14rem, 42vw);
+}
+
+.settings-koch-attention__table th:nth-child(3).settings-recognition-tooltip::after,
+.settings-koch-attention__table th:nth-child(4).settings-recognition-tooltip::after {
+    right: 0;
+    left: auto;
+}
+
+.settings-koch-attention__row {
+    cursor: default;
+}
+
+.settings-koch-attention__response,
+.settings-koch-attention__st {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.settings-koch-attention__table .settings-koch-attention__st {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.settings-koch-attention__st {
+    color: var(--mr-muted);
+}
+
+.settings-koch-attention__details {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--mr-anchor);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    cursor: pointer;
+}
+
+.settings-koch-attention__details:hover,
+.settings-koch-attention__details:focus-visible {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.settings-koch-attention__response[data-response="helped"] {
+    color: var(--mr-anchor);
+}
+
+.settings-koch-attention__response[data-response="hurt"] {
+    color: var(--mr-warning);
+}
+
+.settings-koch-attention__response[data-response="mixed"] {
+    color: #b3a35e;
+}
+
+.settings-koch-attention__response[data-response="neutral"],
+.settings-koch-attention__response[data-response="unknown"] {
+    color: var(--mr-muted);
+}
+
+.settings-koch-attention-dialog {
+    width: min(96vw, 640px);
+    max-height: min(86vh, 720px);
+    margin: auto;
+    padding: var(--mr-space-4);
+    border: var(--mr-border-rule);
+    background: var(--mr-bg);
+    color: var(--mr-text);
+    font-family: var(--mr-font-mono);
+}
+
+.settings-koch-attention-dialog[open] {
+    display: block;
+}
+
+.settings-koch-attention-dialog::backdrop {
+    background: rgb(0 0 0 / 0.45);
+}
+
+.settings-koch-attention-dialog__title {
+    margin: 0 0 var(--mr-space-2);
+    color: var(--mr-text);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-body);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.settings-koch-attention-dialog__evidence {
+    margin: var(--mr-space-3) 0 0;
+    color: var(--mr-muted);
+    font-size: var(--mr-size-small);
+    line-height: 1.5;
+}
+
+.settings-koch-attention-dialog__actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: var(--mr-space-4);
+}
+
+.settings-koch-attention-dialog .settings-recognition-tooltip::after {
+    max-width: min(18rem, 70vw);
+}
+
+.settings-koch-attention-dialog th:nth-child(3).settings-recognition-tooltip::after,
+.settings-koch-attention-dialog th:nth-child(4).settings-recognition-tooltip::after {
+    right: 0;
+    left: auto;
 }
 
 .settings-recognition-burden-dialog {

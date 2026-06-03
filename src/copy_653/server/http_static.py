@@ -43,6 +43,7 @@ from copy_653.sequence.recognition_analysis import (
 )
 from copy_653.sequence.burden_analysis import (
     DEFAULT_RECOGNITION_BURDEN_WINDOW_SIZE,
+    load_koch_attention_response,
     load_koch_burden_profile,
     load_recognition_burden_profile,
 )
@@ -215,6 +216,18 @@ def _api_koch_burden_profile(
     )
 
 
+def _api_koch_attention_response(
+    params: dict[str, list[str]], config_path: Path | None
+) -> HttpResponse:
+    return _json_response(
+        _read_koch_attention_response(
+            config_path,
+            claimed_set_key=_optional_query_value(params, "claimed_set_key"),
+            window_size_raw=_optional_query_value(params, "window_size"),
+        )
+    )
+
+
 def _api_koch_confusion(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
     return _json_response(
         _read_koch_confusion(
@@ -363,6 +376,7 @@ _API_ROUTES: dict[str, ApiHandler] = {
     "/api/koch-band-evidence": _api_koch_band_evidence,
     "/api/koch-band-history": _api_koch_band_history,
     "/api/koch-burden-profile": _api_koch_burden_profile,
+    "/api/koch-attention-response": _api_koch_attention_response,
     "/api/koch-confusion": _api_koch_confusion,
     "/api/recognition-confusion": _api_recognition_confusion,
     "/api/recognition-timing": _api_recognition_timing,
@@ -874,6 +888,38 @@ def _read_koch_burden_profile(
 
     window_size = _parse_window_size(window_size_raw, DEFAULT_EVIDENCE_WINDOW_SIZE)
     return load_koch_burden_profile(
+        records,
+        claimed_set_key=resolved_key,
+        window_size=window_size,
+    )
+
+
+def _read_koch_attention_response(
+    config_path: Path | None,
+    *,
+    claimed_set_key: str | None,
+    window_size_raw: str | None,
+) -> dict[str, Any]:
+    try:
+        _save_directory, records, resolved_key = _resolve_records_and_key(
+            config_path,
+            iter_records=_iter_koch_records,
+            extract_key=record_claimed_set_key,
+            claimed_set_key=claimed_set_key,
+        )
+    except Exception:
+        logger.exception("could not resolve save_directory for Koch attention response read")
+        return {
+            "version": "attention-response-v1",
+            "claimed_set_key": claimed_set_key or "",
+            "record_count": 0,
+            "records_used": 0,
+            "exercise_count": 0,
+            "conditions": [],
+        }
+
+    window_size = _parse_window_size(window_size_raw, DEFAULT_EVIDENCE_WINDOW_SIZE)
+    return load_koch_attention_response(
         records,
         claimed_set_key=resolved_key,
         window_size=window_size,
