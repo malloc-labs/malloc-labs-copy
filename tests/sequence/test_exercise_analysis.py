@@ -183,6 +183,7 @@ def test_load_band_evidence_filters_by_key_and_orders_newest_first():
     assert evidence["session_count"] == 2
     assert evidence["sessions_used"] == 2
     assert evidence["bands"][0]["burden_band"] == 1
+    assert evidence["bands"][0]["current_gear"] == 0
     # Newest first; the 1.0 from the newer session leads.
     assert evidence["bands"][0]["recent_fractions"] == [1.0, 0.5]
 
@@ -226,6 +227,7 @@ def test_load_band_evidence_strong_streak_resets_when_gear_changes():
     ]
     evidence = load_band_evidence(sessions, claimed_set_key="K M")
     band = evidence["bands"][0]
+    assert band["current_gear"] == 1
     # All four runs are strong, but the streak resets at the gear shift.
     assert band["strong_streak"] == 1
     # The fraction list still surfaces every observation so the rollup
