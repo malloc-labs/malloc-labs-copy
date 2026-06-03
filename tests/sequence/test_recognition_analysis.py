@@ -8,6 +8,8 @@ from copy_653.sequence.recognition_analysis import (
     OUTCOME_CORRECT,
     OUTCOME_MISS,
     OUTCOME_SUBSTITUTION,
+    REVIEW_ANALYSIS_VERSION,
+    attach_recognition_review_analysis,
     analyse_recognition_exercises,
     build_recognition_generation_profile,
     gear_for_recognition_set,
@@ -17,6 +19,7 @@ from copy_653.sequence.recognition_analysis import (
     load_recognition_confusion,
     load_recognition_timing,
     load_set_evidence,
+    recognition_review_analysis,
     resolve_gears,
     resolve_set_gear,
     window_exercise,
@@ -386,6 +389,91 @@ def test_analyse_distributes_word_response_across_grouped_symbols():
     )
 
 
+def test_review_analysis_softens_strict_substitutions_when_timing_shows_recovery():
+    exercise = {
+        "index": 4,
+        "target": "RR KK",
+        "answer": "KKRRK0",
+        "analysis": {
+            "version": ANALYSIS_VERSION,
+            "method": "answer-alignment",
+            "has_evidence": True,
+            "committed_answer": "KKRRK0",
+            "counts": {
+                OUTCOME_CORRECT: 0,
+                OUTCOME_SUBSTITUTION: 4,
+                OUTCOME_CAUGHT_CORRECT: 0,
+                OUTCOME_CAUGHT_SUBSTITUTION: 0,
+                OUTCOME_MISS: 0,
+            },
+            "combined_fraction": 0.0,
+            "recognition_state": "low",
+            "committed_confusions": [["R", "K"], ["R", "K"], ["K", "R"], ["K", "R"]],
+            "caught_confusions": [],
+            "slots": [_slot("R", "K"), _slot("R", "K"), _slot("K", "R"), _slot("K", "R")],
+        },
+        "timing_analysis": {
+            "version": ANALYSIS_VERSION,
+            "method": "onset-window",
+            "has_evidence": True,
+            "counts": {
+                OUTCOME_CORRECT: 0,
+                OUTCOME_SUBSTITUTION: 0,
+                OUTCOME_CAUGHT_CORRECT: 1,
+                OUTCOME_CAUGHT_SUBSTITUTION: 1,
+                OUTCOME_MISS: 2,
+            },
+            "caught_confusions": [["K", "R"], ["K", "R"]],
+            "ambiguous_lag": True,
+        },
+    }
+
+    result = recognition_review_analysis(exercise)
+
+    assert result["review_version"] == REVIEW_ANALYSIS_VERSION
+    assert result["recovery_softened"] is True
+    assert result["softened_substitutions"] == 4
+    assert result["counts"][OUTCOME_SUBSTITUTION] == 0
+    assert result["counts"][OUTCOME_CAUGHT_SUBSTITUTION] == 4
+    assert result["committed_confusions"] == []
+    assert result["softened_committed_confusions"] == [
+        ["R", "K"],
+        ["R", "K"],
+        ["K", "R"],
+        ["K", "R"],
+    ]
+    assert result["caught_confusions"] == [["K", "R"], ["K", "R"]]
+    assert exercise["analysis"]["counts"][OUTCOME_SUBSTITUTION] == 4
+
+
+def test_attach_recognition_review_analysis_adds_derived_blocks_without_mutating_record():
+    record = _record(
+        "K M R U",
+        {
+            "version": ANALYSIS_VERSION,
+            "has_evidence": True,
+            "counts": {
+                OUTCOME_CORRECT: 0,
+                OUTCOME_SUBSTITUTION: 1,
+                OUTCOME_CAUGHT_CORRECT: 0,
+                OUTCOME_CAUGHT_SUBSTITUTION: 0,
+                OUTCOME_MISS: 0,
+            },
+            "committed_confusions": [["U", "R"]],
+            "caught_confusions": [],
+        },
+    )
+    record["exercises"][0]["timing_analysis"] = {
+        "has_evidence": True,
+        "caught_confusions": [["U", "R"]],
+    }
+
+    result = attach_recognition_review_analysis(record)
+
+    assert "review_analysis" not in record["exercises"][0]
+    assert result["exercises"][0]["review_analysis"]["recovery_softened"] is True
+
+
 # ─── load_recognition_confusion (aggregation across records) ─────────────────
 
 
@@ -430,6 +518,45 @@ def test_confusion_keeps_committed_and_caught_separate():
         {"target": item["target"], "typed": item["typed"], "count": item["count"]}
         for item in result["caught_substitutions"]
     ] == [{"target": "U", "typed": "R", "count": 1}]
+
+
+def test_confusion_uses_review_softening_for_recovered_substitutions():
+    record = {
+        "mode": "recognition",
+        "generation": {"claimed_set_key": "K M R U"},
+        "exercises": [
+            {
+                "index": 1,
+                "analysis": {
+                    "version": ANALYSIS_VERSION,
+                    "has_evidence": True,
+                    "counts": {
+                        OUTCOME_CORRECT: 0,
+                        OUTCOME_SUBSTITUTION: 2,
+                        OUTCOME_CAUGHT_CORRECT: 0,
+                        OUTCOME_CAUGHT_SUBSTITUTION: 0,
+                        OUTCOME_MISS: 0,
+                    },
+                    "committed_confusions": [["R", "K"], ["R", "K"]],
+                    "caught_confusions": [],
+                    "slots": [_slot("R", "K"), _slot("R", "K")],
+                },
+                "timing_analysis": {
+                    "has_evidence": True,
+                    "caught_confusions": [["R", "K"], ["R", "K"]],
+                },
+            }
+        ],
+    }
+
+    result = load_recognition_confusion([record], claimed_set_key="K M R U")
+
+    assert result["exercises_used"] == 1
+    assert result["committed_substitutions"] == []
+    assert [
+        {"target": item["target"], "typed": item["typed"], "count": item["count"]}
+        for item in result["caught_substitutions"]
+    ] == [{"target": "R", "typed": "K", "count": 2}]
 
 
 def test_confusion_ignores_other_claimed_sets_and_no_evidence():

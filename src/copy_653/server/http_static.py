@@ -37,6 +37,7 @@ from copy_653.sequence.cadence_analysis import (
     record_claimed_set_key as cadence_record_claimed_set_key,
 )
 from copy_653.sequence.recognition_analysis import (
+    attach_recognition_review_analysis,
     load_recognition_confusion,
     load_recognition_timing,
 )
@@ -943,6 +944,7 @@ def _read_recognition(
         filename_re=_RECOGNITION_FILENAME_RE,
         subdirectory="recognition",
         mode="recognition",
+        transform=attach_recognition_review_analysis,
         allow_relative_filename=True,
     )
 
