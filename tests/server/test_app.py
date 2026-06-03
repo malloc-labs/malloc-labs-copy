@@ -361,6 +361,8 @@ async def test_api_koch_exercise_returns_full_record(tmp_path):
         "generation": {
             "profile_version": "koch-burden-v1",
             "claimed_set_key": "K M",
+            "set_id": "20260515T100000Z",
+            "set_session": 3,
             "candidate_count": 20,
             "bands": [{"index": 1, "gear": 0}, {"index": 2, "gear": 0}],
         },
@@ -388,7 +390,8 @@ async def test_api_koch_exercise_returns_full_record(tmp_path):
         ],
         "symbols": [],
     }
-    filename = "koch-exercise-20260515T100000Z.json"
+    filename = "2026/05/set-20260515T100000Z/session-03.json"
+    (koch_dir / filename).parent.mkdir(parents=True)
     (koch_dir / filename).write_text(json.dumps(record))
 
     server, port = await app.serve_app(
@@ -1146,7 +1149,7 @@ async def test_start_action_writes_koch_record_to_save_directory(tmp_path, patch
             events = await _drain_until(ws, lambda e: e["type"] == "session-end", timeout=25.0)
 
         record_dir = save_dir / "koch-exercise"
-        files = list(record_dir.rglob("koch-exercise-*.json"))
+        files = list(record_dir.rglob("*.json"))
         assert len(files) == 1
 
         record = json.loads(files[0].read_text())
@@ -1208,7 +1211,7 @@ async def test_save_koch_answers_merges_into_record(tmp_path, patched_playback):
         assert ack_event["exercise_count"] == 5
 
         record_dir = save_dir / "koch-exercise"
-        files = list(record_dir.rglob("koch-exercise-*.json"))
+        files = list(record_dir.rglob("*.json"))
         assert len(files) == 1
         record = json.loads(files[0].read_text())
         assert [exercise["answer"] for exercise in record["exercises"]] == answers
@@ -1253,7 +1256,7 @@ async def test_save_koch_answers_rejects_length_mismatch(tmp_path, patched_playb
         # File should still have unsaved exercise entries — the rejected
         # save must not have rewritten anything.
         record_dir = save_dir / "koch-exercise"
-        files = list(record_dir.rglob("koch-exercise-*.json"))
+        files = list(record_dir.rglob("*.json"))
         assert len(files) == 1
         record = json.loads(files[0].read_text())
         assert all(exercise["answer"] == "" for exercise in record["exercises"])

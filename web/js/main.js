@@ -44,6 +44,8 @@ let currentExerciseIndex = 0;
 const EXERCISE_COUNT = 5;
 const SET_SIZE = 8;
 let currentSetSession = 0;
+let currentKochGears = [];
+let currentKochWarmUp = false;
 let sessionActive   = false;
 let sessionStartedAtMs = null;
 
@@ -65,9 +67,36 @@ function renderPrimed() {
     }
     primedTextEl.textContent =
         `Primed: ${EXERCISE_COUNT} exercises of ${claimedState.symbols.join(", ")}`;
-    primedSetEl.textContent = currentSetSession > 0
-        ? `Set ${currentSetSession} of ${SET_SIZE}`
-        : "";
+    primedSetEl.textContent = kochSetNotice();
+}
+
+function kochSetNotice() {
+    if (currentSetSession <= 0) return "";
+    const mode = kochModeLabel(currentKochGears, currentKochWarmUp);
+    return mode
+        ? `Set ${currentSetSession} of ${SET_SIZE} · ${mode}`
+        : `Set ${currentSetSession} of ${SET_SIZE}`;
+}
+
+function kochModeLabel(gears, warmUp) {
+    if (warmUp) return "Warm-up: 2-symbol words";
+    const validGears = (Array.isArray(gears) ? gears : [])
+        .filter((gear) => Number.isInteger(gear) && gear >= 0);
+    if (!validGears.length) return "Koch exercises: 1-3 words, 1-3 symbols each";
+    const uniqueGears = [...new Set(validGears)].sort((a, b) => a - b);
+    const content = "1-3 words, 1-3 symbols each";
+    if (uniqueGears.length === 1) {
+        return `${kochGearLabel(uniqueGears[0])}: ${content}`;
+    }
+    return `Mixed gears ${uniqueGears.join(", ")}: ${content}`;
+}
+
+function kochGearLabel(gear) {
+    if (gear <= 0) return "Gear 0";
+    if (gear === 1) return "Gear 1, upper-band copy";
+    if (gear === 2) return "Gear 2, next-band copy";
+    if (gear === 3) return "Gear 3, scaffold-break copy";
+    return `Gear ${gear}`;
 }
 
 // ─── Timeline disclosure ──────────────────────────────────────────────────────
@@ -264,6 +293,13 @@ function formatSymbolReview(event) {
 
 function appendEvent(event) {
     if (event.type === "claimed-symbols") {
+        currentSetSession = Number.isInteger(event.koch_set_session)
+            ? event.koch_set_session
+            : currentSetSession;
+        currentKochGears = Array.isArray(event.koch_gears)
+            ? event.koch_gears
+            : currentKochGears;
+        currentKochWarmUp = event.koch_warm_up === true;
         renderSequence(event);
         return;
     }
@@ -306,7 +342,9 @@ function appendEvent(event) {
     } else if (event.type === "session-start") {
         currentExercises = Array.isArray(event.exercises) ? event.exercises : [];
         currentExerciseIndex = 0;
-        currentSetSession = event.set_session || 0;
+        currentSetSession = event.koch_set_session || event.set_session || 0;
+        currentKochGears = Array.isArray(event.koch_gears) ? event.koch_gears : currentKochGears;
+        currentKochWarmUp = event.koch_warm_up === true || event.warm_up === true;
         sessionActive   = true;
         sessionStartedAtMs = Date.now();
         claimedState.set_is_fresh = false;
@@ -324,9 +362,7 @@ function appendEvent(event) {
         buildAnswerInputs(currentExercises);
         setSaveState("locked");
         primedTextEl.textContent = `Exercise — of ${currentExercises.length}`;
-        primedSetEl.textContent = currentSetSession > 0
-            ? `Set ${currentSetSession} of ${SET_SIZE}`
-            : "";
+        primedSetEl.textContent = kochSetNotice();
         return;
 
     } else if (event.type === "session-end") {

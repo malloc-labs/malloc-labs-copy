@@ -140,9 +140,24 @@ async def _run_koch_session(
         "exercise_count": len(exercises),
         "seed": seed,
         "set_session": set_session,
+        "koch_set_session": set_session,
     }
+    bands = generation.get("bands")
+    if isinstance(bands, list):
+        koch_gears: list[int] = []
+        for band in bands:
+            if not isinstance(band, dict):
+                continue
+            gear = band.get("gear")
+            if isinstance(gear, int) and not isinstance(gear, bool):
+                koch_gears.append(gear)
+        if koch_gears:
+            session_start["koch_gears"] = koch_gears
     if warm_up:
         session_start["warm_up"] = True
+        session_start["koch_warm_up"] = True
+    else:
+        session_start["koch_warm_up"] = False
     await _send_event(ws, session_start)
 
     audio_task = asyncio.create_task(asyncio.to_thread(playback.play, samples, audio_params))
@@ -561,12 +576,25 @@ async def _broadcast_claimed_state(
     config_path: Path,
     *,
     set_is_fresh: bool,
+    koch_set_session: int | None = None,
+    koch_gears: list[int] | None = None,
+    koch_warm_up: bool | None = None,
 ) -> None:
     """Resolve readiness signals and push the claimed-symbols event."""
     save_directory = load_save_directory(config_path)
     claimed_set_key = " ".join(sorted(claimed))
     evidence_ready_for_next, ready_for_next = _koch_readiness_state(save_directory, claimed_set_key)
     ready_for_next_send = _next_send_symbol_readiness(save_directory, claimed_set_key)
+    if koch_gears is None and koch_set_session is not None:
+        if koch_warm_up:
+            koch_gears = [0] * 5
+        else:
+            try:
+                koch_gears, _rst = _resolve_session_gears_and_rst(
+                    save_directory, claimed_set_key, exercise_count=5
+                )
+            except Exception:
+                logger.exception("could not resolve next Koch exercise profile")
     await _send_event(
         ws,
         _claimed_symbols_event(
@@ -575,6 +603,9 @@ async def _broadcast_claimed_state(
             ready_for_next=ready_for_next,
             ready_for_next_send=ready_for_next_send,
             set_is_fresh=set_is_fresh,
+            koch_set_session=koch_set_session,
+            koch_gears=koch_gears,
+            koch_warm_up=koch_warm_up,
         ),
     )
 
@@ -585,6 +616,9 @@ async def _claim_symbol_action(
     config_path: Path,
     *,
     set_is_fresh: bool = True,
+    koch_set_session: int | None = None,
+    koch_gears: list[int] | None = None,
+    koch_warm_up: bool | None = None,
 ) -> None:
     """Append ``symbol`` to the claimed set and broadcast the new state.
 
@@ -611,7 +645,15 @@ async def _claim_symbol_action(
         save_claimed_symbols(new_claimed, config_path)
         claimed = new_claimed
 
-    await _broadcast_claimed_state(ws, claimed, config_path, set_is_fresh=set_is_fresh)
+    await _broadcast_claimed_state(
+        ws,
+        claimed,
+        config_path,
+        set_is_fresh=set_is_fresh,
+        koch_set_session=koch_set_session,
+        koch_gears=koch_gears,
+        koch_warm_up=koch_warm_up,
+    )
 
 
 async def _unclaim_symbol_action(
@@ -620,6 +662,9 @@ async def _unclaim_symbol_action(
     config_path: Path,
     *,
     set_is_fresh: bool = True,
+    koch_set_session: int | None = None,
+    koch_gears: list[int] | None = None,
+    koch_warm_up: bool | None = None,
 ) -> None:
     """Remove ``symbol`` from the claimed set and broadcast the new state.
 
@@ -647,7 +692,15 @@ async def _unclaim_symbol_action(
         save_claimed_symbols(new_claimed, config_path)
         claimed = new_claimed
 
-    await _broadcast_claimed_state(ws, claimed, config_path, set_is_fresh=set_is_fresh)
+    await _broadcast_claimed_state(
+        ws,
+        claimed,
+        config_path,
+        set_is_fresh=set_is_fresh,
+        koch_set_session=koch_set_session,
+        koch_gears=koch_gears,
+        koch_warm_up=koch_warm_up,
+    )
 
 
 async def _request_copy_exercises_action(
