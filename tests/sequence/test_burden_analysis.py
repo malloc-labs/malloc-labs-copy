@@ -4,6 +4,7 @@ from copy_653.sequence.burden_analysis import (
     DEBT_MODERATE,
     DEBT_UNKNOWN,
     DEFAULT_RECOGNITION_BURDEN_WINDOW_SIZE,
+    load_koch_attention_response,
     load_koch_burden_profile,
     load_recognition_burden_profile,
 )
@@ -278,8 +279,10 @@ def _koch_exercise(
     symbol_available: int,
     spacing_correct: int,
     spacing_available: int,
+    s: int | None = None,
+    t: int | None = None,
 ) -> dict:
-    return {
+    exercise = {
         "index": band,
         "played": played,
         "answer": answer,
@@ -294,6 +297,11 @@ def _koch_exercise(
             "spacing_available_units": spacing_available,
         },
     }
+    if s is not None:
+        exercise["s"] = s
+    if t is not None:
+        exercise["t"] = t
+    return exercise
 
 
 def _koch_record(
@@ -376,3 +384,107 @@ def test_koch_burden_profile_reports_confusion_debt_from_substitutions():
     assert confusion["debt"] == DEBT_HIGH
     assert confusion["committed"][0] == {"target": "R", "typed": "U", "count": 4}
     assert profile["burdens"]["signal"]["debt"] == DEBT_UNKNOWN
+
+
+def test_koch_attention_response_compares_lower_and_higher_s_conditions():
+    records = []
+    for minute in range(4):
+        records.append(
+            _koch_record(
+                f"2026-06-03T18:{minute:02d}:00Z",
+                _koch_exercise(
+                    band=1,
+                    gear=3,
+                    played="DE MKR",
+                    answer="DE MKR",
+                    fraction=1.0,
+                    symbol_correct=3,
+                    symbol_available=3,
+                    spacing_correct=0,
+                    spacing_available=0,
+                    s=5,
+                    t=7,
+                ),
+                _koch_exercise(
+                    band=2,
+                    gear=3,
+                    played="DE M KR",
+                    answer="DE MKR",
+                    fraction=0.75,
+                    symbol_correct=3,
+                    symbol_available=3,
+                    spacing_correct=0,
+                    spacing_available=1,
+                    s=8,
+                    t=9,
+                ),
+                _koch_exercise(
+                    band=3,
+                    gear=3,
+                    played="DE MKR",
+                    answer="DE MKR",
+                    fraction=1.0,
+                    symbol_correct=3,
+                    symbol_available=3,
+                    spacing_correct=0,
+                    spacing_available=0,
+                    s=5,
+                    t=7,
+                ),
+                _koch_exercise(
+                    band=3,
+                    gear=3,
+                    played="DE RKM",
+                    answer="DE RKM",
+                    fraction=0.75,
+                    symbol_correct=3,
+                    symbol_available=3,
+                    spacing_correct=0,
+                    spacing_available=0,
+                    s=8,
+                    t=9,
+                ),
+            )
+        )
+
+    profile = load_koch_attention_response(records, claimed_set_key="K M R U")
+
+    lower, higher = profile["conditions"]
+    assert profile["version"] == "attention-response-v1"
+    assert profile["exercise_count"] == 16
+    assert lower["label"] == "Lower S / more texture"
+    assert lower["st_range"] == "S5 / T7"
+    assert lower["axes"]["symbols"]["response"] == "neutral"
+    assert lower["axes"]["grouping"]["response"] == "unknown"
+    assert lower["axes"]["unit_length"]["response"] == "helped"
+    assert lower["axes"]["overall"]["response"] == "helped"
+    assert lower["metrics"]["perfect_exercises"] == 8
+    assert higher["label"] == "Higher S / cleaner signal"
+    assert higher["st_range"] == "S8 / T9"
+    assert higher["axes"]["overall"]["response"] == "hurt"
+
+
+def test_koch_attention_response_requires_per_exercise_st_evidence():
+    profile = load_koch_attention_response(
+        [
+            _koch_record(
+                "2026-06-03T18:00:00Z",
+                _koch_exercise(
+                    band=1,
+                    gear=3,
+                    played="DE MKR",
+                    answer="DE MKR",
+                    fraction=1.0,
+                    symbol_correct=3,
+                    symbol_available=3,
+                    spacing_correct=0,
+                    spacing_available=0,
+                ),
+            )
+        ],
+        claimed_set_key="K M R U",
+    )
+
+    assert profile["exercise_count"] == 0
+    assert profile["conditions"][0]["st_range"] == "not observed"
+    assert profile["conditions"][0]["axes"]["overall"]["response"] == "unknown"

@@ -855,6 +855,78 @@ async def test_api_koch_band_history_returns_chronological_grid(tmp_path):
         await server.wait_closed()
 
 
+async def test_api_koch_attention_response_returns_st_condition_grid(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M", "U", "R"])
+    save_dir = tmp_path / "data"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    koch_dir = save_dir / "koch-exercise"
+    koch_dir.mkdir(parents=True)
+
+    def _exercise(index: int, s: int, t: int, fraction: float) -> dict:
+        return {
+            "index": index,
+            "burden_band": index,
+            "gear": 3,
+            "s": s,
+            "t": t,
+            "analysis": {
+                "version": "koch-analysis-v1",
+                "saved": True,
+                "combined_fraction": fraction,
+                "symbol_correct_units": 3 if fraction >= 1.0 else 2,
+                "symbol_available_units": 3,
+                "spacing_correct_units": 1 if fraction >= 1.0 else 0,
+                "spacing_available_units": 1,
+            },
+        }
+
+    records = []
+    for minute in range(4):
+        records.append(
+            {
+                "schema_version": "2.1",
+                "mode": "koch-exercise",
+                "started_at": f"2026-06-03T18:{minute:02d}:00.000Z",
+                "claimed_set": ["K", "M", "U", "R"],
+                "generation": {"claimed_set_key": "K M R U"},
+                "exercises": [
+                    _exercise(1, 5, 7, 1.0),
+                    _exercise(2, 8, 9, 0.75),
+                ],
+                "symbols": [],
+            }
+        )
+    for index, record in enumerate(records, start=1):
+        (koch_dir / f"koch-exercise-20260603T18000{index}Z.json").write_text(json.dumps(record))
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        response = await asyncio.to_thread(
+            urllib.request.urlopen,
+            f"http://127.0.0.1:{port}/api/koch-attention-response" "?claimed_set_key=K%20M%20R%20U",
+        )
+        payload = json.loads(response.read())
+        assert payload["version"] == "attention-response-v1"
+        assert payload["claimed_set_key"] == "K M R U"
+        assert payload["exercise_count"] == 8
+        assert payload["conditions"][0]["st_range"] == "S5 / T7"
+        assert payload["conditions"][0]["axes"]["overall"]["response"] == "helped"
+        assert payload["conditions"][1]["st_range"] == "S8 / T9"
+        assert payload["conditions"][1]["axes"]["overall"]["response"] == "hurt"
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
 async def test_api_koch_band_evidence_empty_when_no_records(tmp_path):
     config_path = _write_test_config(tmp_path, ["K", "M"])
     save_dir = tmp_path / "data"
