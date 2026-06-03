@@ -31,6 +31,28 @@ def test_find_available_port_returns_starting_port_when_free():
     assert app.find_available_port(free_port, span=1) == free_port
 
 
+def test_find_available_port_uses_reusable_probe_socket(monkeypatch):
+    calls = []
+
+    class ProbeSocket:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def setsockopt(self, level, option, value):
+            calls.append((level, option, value))
+
+        def bind(self, address):
+            self.address = address
+
+    monkeypatch.setattr(app.socket, "socket", lambda *args: ProbeSocket())
+
+    assert app.find_available_port(8653, span=1) == 8653
+    assert (socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) in calls
+
+
 def test_find_available_port_skips_busy_port():
     busy_port = _grab_free_port()
     blocker = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

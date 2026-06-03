@@ -204,7 +204,7 @@ function recognitionLatencyBand(latencyMs) {
     return "hesitant";
 }
 
-function buildRecognitionTimingBlock(record, exercise) {
+function buildRecognitionHeardBlock(record, exercise) {
     const played = symbolsForExercise(record, exercise);
     if (!played.length) return null;
     const heard = heardEventsForExercise(exercise);
@@ -221,49 +221,32 @@ function buildRecognitionTimingBlock(record, exercise) {
     if (!responses.some(Boolean)) return null;
 
     const block = document.createElement("div");
-    block.className = "settings-recognition-latency";
-    const cols = document.createElement("div");
-    cols.className = "settings-recognition-latency__cols";
+    block.className = "settings-recognition-heard";
     played.forEach((target, idx) => {
-        const col = document.createElement("div");
-        col.className = "settings-recognition-latency__item";
-
-        const symbol = document.createElement("span");
-        symbol.className = "settings-recognition-latency__target";
-        symbol.textContent = target.symbol || "?";
-
-        const responseWrap = document.createElement("span");
         const response = responses[idx];
+        const responseWrap = document.createElement("span");
         if (response) {
+            const band = recognitionLatencyBand(response.latencyMs);
             responseWrap.className =
-                `settings-recognition-latency__response ` +
-                `settings-recognition-latency__response--${recognitionLatencyBand(response.latencyMs)}`;
+                `settings-recognition-heard__symbol ` +
+                `settings-recognition-heard__symbol--${band}`;
             responseWrap.title =
-                `${response.symbol} ${recognitionLatencyBand(response.latencyMs)} ` +
+                `Target ${target.symbol || "?"}; heard ${response.symbol} ${band} ` +
                 `(${response.source || "heard"}): ` +
                 `${(response.latencyMs / 1000).toFixed(2)}s after symbol end`;
-
-            const heardSymbol = document.createElement("span");
-            heardSymbol.className = "settings-recognition-latency__heard";
-            heardSymbol.textContent = response.symbol;
-
-            const delay = document.createElement("span");
-            delay.className = "settings-recognition-latency__delay";
-            delay.textContent = `+${(response.latencyMs / 1000).toFixed(2)}s`;
-
-            responseWrap.append(heardSymbol, delay);
+            responseWrap.setAttribute("aria-label", responseWrap.title);
+            responseWrap.textContent = response.symbol;
         } else {
             responseWrap.className =
-                "settings-recognition-latency__response " +
-                "settings-recognition-latency__response--missing";
-            responseWrap.title = "No timed voice response for this symbol";
+                "settings-recognition-heard__symbol " +
+                "settings-recognition-heard__symbol--missing";
+            responseWrap.title = `Target ${target.symbol || "?"}; no timed voice response`;
+            responseWrap.setAttribute("aria-label", responseWrap.title);
             responseWrap.textContent = "-";
         }
 
-        col.append(symbol, responseWrap);
-        cols.appendChild(col);
+        block.appendChild(responseWrap);
     });
-    block.appendChild(cols);
     return block;
 }
 
@@ -391,9 +374,9 @@ function buildExercisesTable(record) {
         appendCell(row, exercise.index || idx + 1);
         appendCell(row, formatSymbolSequence(exercise.target));
         const heardCell = document.createElement("td");
-        const timingBlock = buildRecognitionTimingBlock(record, exercise);
-        if (timingBlock) {
-            heardCell.appendChild(timingBlock);
+        const heardBlock = buildRecognitionHeardBlock(record, exercise);
+        if (heardBlock) {
+            heardCell.appendChild(heardBlock);
         } else {
             heardCell.textContent = formatSymbolSequence(analysis.committed_answer);
         }
