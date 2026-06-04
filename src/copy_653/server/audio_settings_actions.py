@@ -10,6 +10,7 @@ from websockets.server import WebSocketServerProtocol
 
 from copy_653.audio import texture
 from copy_653.audio import synth
+from copy_653.audio import playback
 from copy_653.config import (
     load_audio_parameters,
     load_developer_settings,
@@ -160,15 +161,12 @@ async def _play_audio_output_test_action(
         output_device = _coerce_output_device(message.get("output_device"))
         params = load_audio_parameters(config_path)
         samples = synth.synthesize_sequence(["K"], params)
-        import sounddevice as sd
-
         await _send_event(ws, {"type": "audio-output-test-start", "output_device": output_device})
         await asyncio.to_thread(
-            sd.play,
+            playback.play_samples,
             samples,
-            samplerate=params.sample_rate_hz,
-            device=output_device,
-            blocking=True,
+            params.sample_rate_hz,
+            output_device,
         )
     except Exception as exc:
         await _send_event(

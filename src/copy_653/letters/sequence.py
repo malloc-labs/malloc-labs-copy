@@ -33,6 +33,7 @@ import numpy as np
 
 from copy_653.audio import synth, texture
 from copy_653.audio.parameters import AudioParameters
+from copy_653.audio.playback import play_samples
 from copy_653.letters.wav import load_wav
 
 # NATO phonetic alphabet, ITU/ICAO. Maps each letter to the spoken
@@ -342,14 +343,4 @@ def _play_samples(
     can both be played without coercing one to the other. ``sounddevice``
     happily streams either at its native rate.
     """
-    # Lazy import — see playback.py for the rationale (PortAudio is
-    # optional at module import time; only required when audio is
-    # actually requested).
-    import sounddevice as sd
-
-    sd.play(
-        samples,
-        samplerate=sample_rate_hz,
-        device=output_device,
-        blocking=True,
-    )
+    play_samples(samples, sample_rate_hz, output_device)

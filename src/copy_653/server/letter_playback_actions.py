@@ -41,7 +41,7 @@ async def _run_morse_repeat(
                 "detail": str(exc),
             },
         )
-        raise
+        return
     await _send_event(ws, {"type": "morse-repeat-end", "symbol": symbol})
 
 
