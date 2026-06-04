@@ -41,8 +41,22 @@ def _exercise(
         "index": 1,
         "gear": gear,
         "analysis": {
+            "saved": True,
             "has_evidence": True,
             "combined_fraction": fraction,
+            "counts": {
+                OUTCOME_CORRECT: sum(1 for slot in slots if slot.get("outcome") == OUTCOME_CORRECT),
+                OUTCOME_SUBSTITUTION: sum(
+                    1 for slot in slots if slot.get("outcome") == OUTCOME_SUBSTITUTION
+                ),
+                OUTCOME_CAUGHT_CORRECT: sum(
+                    1 for slot in slots if slot.get("outcome") == OUTCOME_CAUGHT_CORRECT
+                ),
+                OUTCOME_CAUGHT_SUBSTITUTION: sum(
+                    1 for slot in slots if slot.get("outcome") == OUTCOME_CAUGHT_SUBSTITUTION
+                ),
+                OUTCOME_MISS: sum(1 for slot in slots if slot.get("outcome") == OUTCOME_MISS),
+            },
             "slots": slots,
             "committed_confusions": [list(pair) for pair in committed],
         },
@@ -63,6 +77,19 @@ def _record(started_at: str, *exercises: dict, claimed_set_key: str = "K M R U")
         },
         "exercises": list(exercises),
     }
+
+
+def _tag_listening_probe(record: dict, conditions: list[str]) -> dict:
+    record["generation"]["listening_probe"] = {
+        "version": "recognition-listening-conditions-v1",
+        "conditions": ["default", "textured"],
+    }
+    for exercise, condition in zip(record["exercises"], conditions, strict=False):
+        exercise["listening_probe"] = "recognition-listening-conditions-v1"
+        exercise["listening_condition"] = condition
+        exercise["s"] = 7 if condition == "default" else 5
+        exercise["t"] = 3 if condition == "default" else 5
+    return record
 
 
 def test_burden_profile_reports_low_symbol_debt_with_unknown_probe_axes():
@@ -103,6 +130,47 @@ def test_burden_profile_reports_low_symbol_debt_with_unknown_probe_axes():
     assert profile["burdens"]["signal"]["debt"] == DEBT_UNKNOWN
     assert profile["burdens"]["rhythm"]["debt"] == DEBT_UNKNOWN
     assert profile["burdens"]["anchor"]["debt"] == DEBT_UNKNOWN
+
+
+def test_burden_profile_ignores_untagged_st_history_for_listening_conditions():
+    exercise = _exercise(
+        gear=0,
+        fraction=1.0,
+        slots=[_slot("K"), _slot("M")],
+    )
+    exercise["s"] = 5
+    exercise["t"] = 5
+    record = _record("2026-06-01T12:00:00Z", exercise)
+
+    profile = load_recognition_burden_profile([record], claimed_set_key="K M R U")
+
+    listening = profile["burdens"]["signal"]
+    assert listening["debt"] == DEBT_UNKNOWN
+    assert "No controlled default-vs-textured recognition probe yet." in listening["evidence"]
+
+
+def test_burden_profile_reports_listening_conditions_from_tagged_probe():
+    record = _tag_listening_probe(
+        _record(
+            "2026-06-01T12:00:00Z",
+            _exercise(gear=0, fraction=0.80, slots=[_slot("K"), _slot("M")]),
+            _exercise(gear=0, fraction=0.90, slots=[_slot("K"), _slot("M")]),
+            _exercise(gear=0, fraction=0.80, slots=[_slot("R"), _slot("U")]),
+            _exercise(gear=0, fraction=0.90, slots=[_slot("R"), _slot("U")]),
+        ),
+        ["default", "textured", "default", "textured"],
+    )
+
+    profile = load_recognition_burden_profile([record], claimed_set_key="K M R U")
+
+    listening = profile["burdens"]["signal"]
+    assert listening["debt"] == DEBT_MODERATE
+    assert listening["confidence"] == "medium"
+    assert listening["response"] == "texture_helped"
+    assert listening["delta"] == 0.1
+    assert (
+        "More textured signal performed better than the default signal" in listening["evidence"][0]
+    )
 
 
 def test_burden_profile_detects_unit_length_debt_separate_from_singles():

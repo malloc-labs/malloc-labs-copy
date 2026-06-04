@@ -47,6 +47,12 @@ HIGH_CONFUSION_COUNT = 4
 ATTENTION_MIN_EXERCISES_PER_CONDITION = 4
 ATTENTION_HELPED_DELTA = 0.05
 ATTENTION_NEUTRAL_DELTA = 0.02
+LISTENING_PROBE_VERSION = "recognition-listening-conditions-v1"
+LISTENING_CONDITION_DEFAULT = "default"
+LISTENING_CONDITION_TEXTURED = "textured"
+LISTENING_MIN_EXERCISES_PER_CONDITION = 2
+LISTENING_MODERATE_DELTA = 0.05
+LISTENING_HIGH_DELTA = 0.12
 
 
 def load_recognition_burden_profile(
@@ -64,14 +70,16 @@ def load_recognition_burden_profile(
     * unit length
     * confusion pressure
 
-    Signal, rhythm, anchor, and practice-transfer debt remain unknown
-    until first-class probes or comparable condition evidence exist.
+    Listening-condition debt uses only controlled probe evidence. Rhythm,
+    anchor, and practice-transfer debt remain unknown until first-class
+    probes or comparable condition evidence exist.
     """
     matching = _matching_recognition_records(records, claimed_set_key)
     matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
     recent = matching[: max(0, window_size)]
     claimed_symbols = set(claimed_set_key.split())
     stats = _collect_stats(recent)
+    listening_probe_rows = _collect_recognition_listening_probe_exercises(recent)
     symbol_stats = _collect_symbol_stats(records, symbols=claimed_symbols)
     recent_symbol_stats = _collect_symbol_stats(recent, symbols=claimed_symbols)
 
@@ -85,7 +93,7 @@ def load_recognition_burden_profile(
             "symbol_inventory": _symbol_inventory_burden(symbol_stats, recent_symbol_stats),
             "unit_length": _unit_length_burden(stats),
             "confusion": _confusion_burden(stats),
-            "signal": _unknown_burden("No signal probes or receiver-bed contrast evidence yet."),
+            "signal": _recognition_listening_conditions_burden(listening_probe_rows),
             "rhythm": _unknown_burden("No cadence-variation probes or contrast evidence yet."),
             "anchor": _unknown_burden("No anchor-removal probes or contrast evidence yet."),
             "practice_transfer": _unknown_burden(
@@ -426,6 +434,56 @@ def _collect_recognition_attention_exercises(records: list[dict[str, Any]]) -> l
     return rows
 
 
+def _collect_recognition_listening_probe_exercises(
+    records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    rows = []
+    for record in records:
+        generation = record.get("generation")
+        probe = generation.get("listening_probe") if isinstance(generation, dict) else None
+        if not isinstance(probe, dict) or probe.get("version") != LISTENING_PROBE_VERSION:
+            continue
+        exercises = record.get("exercises")
+        if not isinstance(exercises, list):
+            continue
+        for exercise in exercises:
+            if not isinstance(exercise, dict):
+                continue
+            if exercise.get("listening_probe") != LISTENING_PROBE_VERSION:
+                continue
+            condition = exercise.get("listening_condition")
+            if condition not in {LISTENING_CONDITION_DEFAULT, LISTENING_CONDITION_TEXTURED}:
+                continue
+            analysis = exercise.get("analysis")
+            if (
+                not isinstance(analysis, dict)
+                or analysis.get("saved") is not True
+                or analysis.get("has_evidence") is not True
+            ):
+                continue
+            fraction = analysis.get("combined_fraction")
+            if not isinstance(fraction, (int, float)) or isinstance(fraction, bool):
+                continue
+            counts = analysis.get("counts")
+            if not isinstance(counts, dict):
+                counts = {}
+            rows.append(
+                {
+                    "condition": condition,
+                    "s": _coerce_int(exercise.get("s"), 0),
+                    "t": _coerce_int(exercise.get("t"), 0),
+                    "combined_fraction": float(fraction),
+                    "correct": _coerce_int(counts.get("correct"), 0)
+                    + _coerce_int(counts.get("caught_correct"), 0),
+                    "substitutions": _coerce_int(counts.get("substitution"), 0)
+                    + _coerce_int(counts.get("caught_substitution"), 0),
+                    "misses": _coerce_int(counts.get("miss"), 0),
+                    "slot_count": sum(_coerce_int(value, 0) for value in counts.values()),
+                }
+            )
+    return rows
+
+
 def _koch_attention_condition(
     *,
     key: str,
@@ -691,6 +749,78 @@ def _recognition_attention_evidence(
         f"{label} ({st_range}) averaged {percent} over {len(rows)} exercises, "
         f"compared with {len(reference_rows)} exercises in the opposite S condition."
     )
+
+
+def _recognition_listening_conditions_burden(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    default = [row for row in rows if row["condition"] == LISTENING_CONDITION_DEFAULT]
+    textured = [row for row in rows if row["condition"] == LISTENING_CONDITION_TEXTURED]
+    if not default or not textured:
+        return _unknown_burden("No controlled default-vs-textured recognition probe yet.")
+
+    default_metrics = _recognition_attention_metrics(default)
+    textured_metrics = _recognition_attention_metrics(textured)
+    default_overall = default_metrics.get("overall_fraction")
+    textured_overall = textured_metrics.get("overall_fraction")
+    confidence = _confidence_from_count(
+        min(len(default), len(textured)),
+        medium=LISTENING_MIN_EXERCISES_PER_CONDITION,
+        high=ATTENTION_MIN_EXERCISES_PER_CONDITION,
+    )
+
+    if (
+        default_overall is None
+        or textured_overall is None
+        or len(default) < LISTENING_MIN_EXERCISES_PER_CONDITION
+        or len(textured) < LISTENING_MIN_EXERCISES_PER_CONDITION
+    ):
+        return {
+            "debt": DEBT_UNKNOWN,
+            "confidence": confidence,
+            "evidence": [
+                (
+                    "Listening-condition probe needs at least "
+                    f"{LISTENING_MIN_EXERCISES_PER_CONDITION} default and "
+                    f"{LISTENING_MIN_EXERCISES_PER_CONDITION} textured exercises."
+                )
+            ],
+            "default": default_metrics,
+            "textured": textured_metrics,
+        }
+
+    delta = float(textured_overall) - float(default_overall)
+    magnitude = abs(delta)
+    if magnitude >= LISTENING_HIGH_DELTA:
+        debt = DEBT_HIGH
+    elif magnitude >= LISTENING_MODERATE_DELTA:
+        debt = DEBT_MODERATE
+    else:
+        debt = DEBT_LOW
+
+    if delta >= LISTENING_MODERATE_DELTA:
+        response = "texture_helped"
+        summary = "More textured signal performed better than the default signal"
+    elif delta <= -LISTENING_MODERATE_DELTA:
+        response = "texture_hurt"
+        summary = "More textured signal performed worse than the default signal"
+    else:
+        response = "neutral"
+        summary = "Default and more textured signal performance were similar"
+
+    return {
+        "debt": debt,
+        "confidence": confidence,
+        "evidence": [
+            (
+                f"{summary}: {_percent(float(textured_overall))} over {len(textured)} "
+                f"textured exercises vs {_percent(float(default_overall))} over "
+                f"{len(default)} default exercises."
+            )
+        ],
+        "response": response,
+        "delta": round(delta, 6),
+        "default": default_metrics,
+        "textured": textured_metrics,
+    }
 
 
 def _koch_symbol_inventory_burden(stats: dict[str, Any]) -> dict[str, Any]:
