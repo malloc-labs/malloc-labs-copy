@@ -53,6 +53,10 @@ GEAR_1_WORDS_PER_EXERCISE = 1
 GEAR_2_WORDS_PER_EXERCISE = 2
 GEAR_3_WORDS_PER_EXERCISE = 1
 GEAR_3_MIN_RECEIVER_BED = 2
+LISTENING_PROBE_VERSION = "recognition-listening-conditions-v1"
+LISTENING_CONDITION_DEFAULT = "default"
+LISTENING_CONDITION_TEXTURED = "textured"
+LISTENING_TEXTURED_RST_TONE = 5
 
 GAP_AFTER_SAY_SECONDS = 0.5
 GAP_BETWEEN_MORSE_REPEATS_SECONDS = 0.6
@@ -248,6 +252,35 @@ def _audio_params_for_gear(params: AudioParameters, gear: int) -> AudioParameter
     return replace(params, receiver_bed=GEAR_3_MIN_RECEIVER_BED)
 
 
+def _listening_condition_for_session(set_session: int) -> str:
+    if set_session % 2 == 1:
+        return LISTENING_CONDITION_DEFAULT
+    return LISTENING_CONDITION_TEXTURED
+
+
+def _audio_params_for_listening_condition(
+    params: AudioParameters,
+    condition: str,
+) -> AudioParameters:
+    if condition == LISTENING_CONDITION_TEXTURED:
+        return replace(
+            params,
+            envelope_ramp_seconds=max(
+                params.envelope_ramp_seconds,
+                texture.envelope_seconds_for_rst_tone(LISTENING_TEXTURED_RST_TONE),
+            ),
+            tone_distortion=max(
+                params.tone_distortion,
+                texture.distortion_for_rst_tone(LISTENING_TEXTURED_RST_TONE),
+            ),
+            tone_ripple=max(
+                params.tone_ripple,
+                texture.ripple_for_rst_tone(LISTENING_TEXTURED_RST_TONE),
+            ),
+        )
+    return params
+
+
 def _recognition_answer_matches_target(answer: str, target: str) -> bool:
     return _compact_symbols(answer) == _compact_symbols(target)
 
@@ -267,11 +300,17 @@ async def _run_recognition_session(session: ActiveRecognitionSession) -> Path | 
             "set_session": session.set_session,
             "gear": session.gear,
             "recognition_kind": _recognition_kind_for_gear(session.gear),
+            "listening_condition": _listening_condition_for_session(session.set_session),
         },
     )
 
     try:
         next_exercise: list[str] | None = None
+        listening_condition = _listening_condition_for_session(session.set_session)
+        session_audio_params = _audio_params_for_listening_condition(
+            _audio_params_for_gear(session.audio_params, session.gear),
+            listening_condition,
+        )
         for ex_idx in range(1, EXERCISE_COUNT + 1):
             if ex_idx > 1:
                 await asyncio.sleep(GAP_BETWEEN_EXERCISES_SECONDS)
@@ -285,7 +324,8 @@ async def _run_recognition_session(session: ActiveRecognitionSession) -> Path | 
                 ex_idx,
                 exercise,
                 session.gear,
-                audio_params=_audio_params_for_gear(session.audio_params, session.gear),
+                audio_params=session_audio_params,
+                listening_condition=listening_condition,
             )
             session.exercises.append(exercise_entry)
             await _send_event(
@@ -296,7 +336,12 @@ async def _run_recognition_session(session: ActiveRecognitionSession) -> Path | 
                     "exercise_count": EXERCISE_COUNT,
                 },
             )
-            await _play_recognition_exercise(session, exercise=exercise, exercise_index=ex_idx)
+            await _play_recognition_exercise(
+                session,
+                exercise=exercise,
+                exercise_index=ex_idx,
+                audio_params=session_audio_params,
+            )
             await _send_event(
                 session.ws,
                 {"type": "recognition-exercise-end", "exercise_index": ex_idx},
@@ -332,6 +377,13 @@ async def _run_recognition_session(session: ActiveRecognitionSession) -> Path | 
                     "recognition_time_ms": session.recognition_settings.recognition_time_ms,
                     "say_after": session.recognition_settings.say_after,
                 },
+                "listening_probe": {
+                    "version": LISTENING_PROBE_VERSION,
+                    "conditions": [
+                        LISTENING_CONDITION_DEFAULT,
+                        LISTENING_CONDITION_TEXTURED,
+                    ],
+                },
             }
         )
 
@@ -364,6 +416,7 @@ def _recognition_exercise_entry(
     gear: int,
     *,
     audio_params: AudioParameters | None = None,
+    listening_condition: str | None = None,
 ) -> dict[str, Any]:
     entry = {
         "index": index,
@@ -374,6 +427,9 @@ def _recognition_exercise_entry(
     }
     if audio_params is not None:
         entry.update(_rst_fields_for_audio_params(audio_params))
+    if listening_condition:
+        entry["listening_probe"] = LISTENING_PROBE_VERSION
+        entry["listening_condition"] = listening_condition
     return entry
 
 
@@ -389,9 +445,10 @@ async def _play_recognition_exercise(
     *,
     exercise: list[str],
     exercise_index: int,
+    audio_params: AudioParameters | None = None,
 ) -> None:
     output_device = session.audio_params.output_device
-    word_audio_params = _audio_params_for_gear(session.audio_params, session.gear)
+    word_audio_params = audio_params or _audio_params_for_gear(session.audio_params, session.gear)
     for word_index, raw_word in enumerate(exercise, start=1):
         word = raw_word.upper()
         symbols_in_word = list(word)

@@ -7,9 +7,11 @@ import pytest
 from copy_653.server.recognition_actions import (
     ActiveRecognitionSession,
     _audio_params_for_gear,
+    _audio_params_for_listening_condition,
     _coerce_recognition_diagnostic,
     _coerce_recognition_exercise_completion,
     _generate_recognition_exercise,
+    _listening_condition_for_session,
     _play_recognition_exercise,
     _recognition_floor_samples,
     _recognition_exercise_entry,
@@ -99,6 +101,49 @@ def test_recognition_exercise_entry_stores_effective_rst_fields():
     assert entry["t"] == 3
 
 
+def test_recognition_exercise_entry_stores_listening_probe_metadata():
+    params = _audio_params_for_listening_condition(
+        AudioParameters(receiver_bed=2, envelope_ramp_seconds=0.005),
+        _listening_condition_for_session(2),
+    )
+    entry = _recognition_exercise_entry(
+        2,
+        ["K", "M"],
+        0,
+        audio_params=params,
+        listening_condition="textured",
+    )
+
+    assert entry["listening_probe"] == "recognition-listening-conditions-v1"
+    assert entry["listening_condition"] == "textured"
+    assert entry["s"] == 7
+    assert entry["t"] == 5
+
+
+def test_recognition_listening_condition_is_session_level():
+    assert _listening_condition_for_session(1) == "default"
+    assert _listening_condition_for_session(2) == "textured"
+    assert _listening_condition_for_session(3) == "default"
+
+
+def test_default_recognition_probe_keeps_configured_texture():
+    params = _audio_params_for_listening_condition(
+        AudioParameters(receiver_bed=2, envelope_ramp_seconds=0.007),
+        _listening_condition_for_session(1),
+    )
+    entry = _recognition_exercise_entry(
+        1,
+        ["K", "M"],
+        0,
+        audio_params=params,
+        listening_condition="default",
+    )
+
+    assert entry["listening_condition"] == "default"
+    assert entry["s"] == 7
+    assert entry["t"] == 3
+
+
 def test_recognition_rst_fields_reflect_gear_floor_override():
     base = AudioParameters(receiver_bed=0, envelope_ramp_seconds=0.005)
 
@@ -148,6 +193,108 @@ def test_recognition_exercise_playback_leaves_floor_to_page_loop(tmp_path, monke
 
     assert len(played) == 1
     assert any(event["type"] == "symbol" and event["symbol"] == "K" for event in ws.events)
+
+
+def test_textured_recognition_probe_uses_page_floor_without_extra_bed(tmp_path, monkeypatch):
+    ws = _CaptureWs()
+    session = ActiveRecognitionSession(
+        ws=ws,  # type: ignore[arg-type]
+        config_path=tmp_path / "config.toml",
+        audio_params=AudioParameters(receiver_bed=2),
+        claimed=("K", "M"),
+        recognition_settings=RecognitionSettings(
+            say_before=False,
+            morse_count=1,
+            recognition_time_ms=0,
+            say_after=False,
+        ),
+        anchors_dir=tmp_path,
+        seed=1,
+        set_session=1,
+        set_id="test",
+        gears=[0],
+        rng=random.Random(1),
+    )
+
+    def fail_if_textured_adds_receiver_bed(*_args, **_kwargs):
+        raise AssertionError("textured listening probe should keep the loaded page floor")
+
+    monkeypatch.setattr(
+        "copy_653.server.recognition_actions.texture.add_receiver_bed",
+        fail_if_textured_adds_receiver_bed,
+    )
+    monkeypatch.setattr(
+        "copy_653.server.recognition_actions._play_samples",
+        lambda _samples, _sample_rate_hz, _output_device: None,
+    )
+    monkeypatch.setattr(
+        "copy_653.server.recognition_actions.GAP_BETWEEN_SYMBOLS_SECONDS",
+        0,
+    )
+
+    params = _audio_params_for_listening_condition(
+        AudioParameters(receiver_bed=2),
+        "textured",
+    )
+    asyncio.run(
+        _play_recognition_exercise(
+            session,
+            exercise=["K"],
+            exercise_index=2,
+            audio_params=params,
+        )
+    )
+
+
+def test_default_recognition_probe_does_not_add_extra_exercise_bed(tmp_path, monkeypatch):
+    ws = _CaptureWs()
+    session = ActiveRecognitionSession(
+        ws=ws,  # type: ignore[arg-type]
+        config_path=tmp_path / "config.toml",
+        audio_params=AudioParameters(receiver_bed=2),
+        claimed=("K", "M"),
+        recognition_settings=RecognitionSettings(
+            say_before=False,
+            morse_count=1,
+            recognition_time_ms=0,
+            say_after=False,
+        ),
+        anchors_dir=tmp_path,
+        seed=1,
+        set_session=1,
+        set_id="test",
+        gears=[0],
+        rng=random.Random(1),
+    )
+
+    def fail_if_default_adds_receiver_bed(*_args, **_kwargs):
+        raise AssertionError("default listening probe should use the page floor only")
+
+    monkeypatch.setattr(
+        "copy_653.server.recognition_actions.texture.add_receiver_bed",
+        fail_if_default_adds_receiver_bed,
+    )
+    monkeypatch.setattr(
+        "copy_653.server.recognition_actions._play_samples",
+        lambda _samples, _sample_rate_hz, _output_device: None,
+    )
+    monkeypatch.setattr(
+        "copy_653.server.recognition_actions.GAP_BETWEEN_SYMBOLS_SECONDS",
+        0,
+    )
+
+    params = _audio_params_for_listening_condition(
+        AudioParameters(receiver_bed=2),
+        "default",
+    )
+    asyncio.run(
+        _play_recognition_exercise(
+            session,
+            exercise=["K"],
+            exercise_index=1,
+            audio_params=params,
+        )
+    )
 
 
 def test_complete_recognition_exercise_payload_is_strict():
@@ -268,3 +415,4 @@ def test_recognition_session_start_announces_gear_and_kind(tmp_path, monkeypatch
     assert ws.events[0]["type"] == "session-start"
     assert ws.events[0]["gear"] == 1
     assert ws.events[0]["recognition_kind"] == "pairs"
+    assert ws.events[0]["listening_condition"] == "default"
