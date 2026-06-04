@@ -1,8 +1,8 @@
-// Settings -> Recognition tab: read-only burden debt profile.
+// Settings -> Recognition tab: read-only practice-needs profile.
 //
 // The profile is backend evidence, not a learner-facing score. It makes
-// the first progression concept visible: burdens with known debt, burdens
-// with low debt, and burdens that still need probes before Copy should
+// the first progression concept visible: areas with known practice needs,
+// settled areas, and areas that still need probes before Copy should
 // claim to understand them.
 
 const root = document.getElementById("settings-recognition-burden");
@@ -32,22 +32,34 @@ const BURDEN_ORDER = [
     "practice_transfer",
 ];
 
+const PROFILE_TOOLTIPS = {
+    Area: "The part of practice being checked.",
+    "Practice need": "How much this area still needs practice.",
+    Confidence: "How sure the app is about that estimate.",
+};
+
 const SYMBOL_TOOLTIPS = {
-    Symbol: "The target Morse symbol being evaluated.",
-    Introduced: "First saved recognition record where this symbol appears as analysed evidence.",
-    Lifetime: "Correct recognitions over all exposures since the symbol was introduced.",
-    "Lifetime %": "Lifetime recognition fraction since introduction.",
-    Recent: "Correct recognitions over exposures in the current recent evidence window.",
-    "Recent %": "Recent recognition fraction for the current evidence window.",
-    Signal: "Conservative comparison of lifetime and recent evidence: stable, watch, recovering, fragile, or undersampled.",
-    Miss: "Lifetime windows where no symbol was heard for this target.",
-    "Subst.": "Lifetime substitutions and caught substitutions for this target.",
+    Symbol: "The character being tracked.",
+    Introduced: "When this character first appeared in your saved practice.",
+    Overall: "How often you have recognised this character correctly overall.",
+    "Overall %": "Your overall recognition rate for this character.",
+    Recent: "How often you recognised this character correctly in recent practice.",
+    "Recent %": "Your recent recognition rate for this character.",
+    Status: "Whether this character looks settled, improving, or needs more attention.",
+    Miss: "Times you gave no answer for this character.",
+    "Mix-ups": "Times this character was heard as another one, including near-misses you corrected.",
 };
 
 const BURDEN_META_TOOLTIPS = {
-    Debt: "Current burden debt estimate. Low is settled; moderate/high means this burden needs attention.",
-    Confidence: "How much evidence supports the debt estimate.",
-    Evidence: "Number of evidence statements listed below for this burden.",
+    "Practice need": "How much this area still needs practice.",
+    Confidence: "How sure the app is about that estimate.",
+    "Based on": "The observations behind this estimate.",
+};
+
+const MIXUP_TOOLTIPS = {
+    Target: "The character that was played.",
+    "Read as": "The character you answered with instead.",
+    Count: "How many times this mix-up has appeared.",
 };
 
 function formatKey(value) {
@@ -100,6 +112,11 @@ function addTooltip(element, text) {
     }
 }
 
+function renderHeaders() {
+    const headers = root?.querySelectorAll("th") || [];
+    headers.forEach((header) => addTooltip(header, PROFILE_TOOLTIPS[header.textContent]));
+}
+
 function appendEvidenceList(parent, burden) {
     const evidence = Array.isArray(burden?.evidence) ? burden.evidence : [];
     const section = document.createElement("section");
@@ -107,13 +124,13 @@ function appendEvidenceList(parent, burden) {
 
     const heading = document.createElement("h3");
     heading.className = "settings-koch-detail__heading";
-    heading.textContent = "Evidence";
+    heading.textContent = "What this is based on";
     section.appendChild(heading);
 
     if (evidence.length === 0) {
         const empty = document.createElement("p");
         empty.className = "settings-recognition-burden-detail__empty";
-        empty.textContent = "No evidence recorded for this burden yet.";
+        empty.textContent = "No saved practice observations for this area yet.";
         section.appendChild(empty);
         parent.appendChild(section);
         return;
@@ -148,13 +165,13 @@ function appendSymbolTable(parent, burden) {
     [
         "Symbol",
         "Introduced",
-        "Lifetime",
-        "Lifetime %",
+        "Overall",
+        "Overall %",
         "Recent",
         "Recent %",
-        "Signal",
+        "Status",
         "Miss",
-        "Subst.",
+        "Mix-ups",
     ].forEach((label) => {
         const th = appendCell(header, "", label, "th");
         addTooltip(th, SYMBOL_TOOLTIPS[label]);
@@ -200,7 +217,10 @@ function appendConfusionTable(parent, title, rows) {
     table.className = "settings-recognition-burden-detail__table";
     const thead = document.createElement("thead");
     const header = document.createElement("tr");
-    ["Target", "Read as", "Count"].forEach((label) => appendCell(header, "", label, "th"));
+    ["Target", "Read as", "Count"].forEach((label) => {
+        const th = appendCell(header, "", label, "th");
+        addTooltip(th, MIXUP_TOOLTIPS[label]);
+    });
     thead.appendChild(header);
     table.appendChild(thead);
 
@@ -241,15 +261,15 @@ function formatDate(value) {
 
 function showBurdenDetail(key, burden) {
     if (!detailDialog || !detailTitle || !detailBody) return;
-    detailTitle.textContent = `${formatKey(key)} burden`;
+    detailTitle.textContent = `${formatKey(key)} practice need`;
     detailBody.replaceChildren();
 
     const metaGrid = document.createElement("dl");
     metaGrid.className = "settings-koch-detail__meta";
     [
-        ["Debt", formatDebt(burden?.debt)],
+        ["Practice need", formatDebt(burden?.debt)],
         ["Confidence", formatConfidence(burden?.confidence)],
-        ["Evidence", evidenceCountText(burden)],
+        ["Based on", evidenceCountText(burden)],
     ].forEach(([label, value]) => {
         const dt = document.createElement("dt");
         dt.textContent = label;
@@ -262,8 +282,8 @@ function showBurdenDetail(key, burden) {
 
     appendEvidenceList(detailBody, burden);
     appendSymbolTable(detailBody, burden);
-    appendConfusionTable(detailBody, "Committed confusions", burden?.committed);
-    appendConfusionTable(detailBody, "Caught confusions", burden?.caught);
+    appendConfusionTable(detailBody, "Committed mix-ups", burden?.committed);
+    appendConfusionTable(detailBody, "Caught mix-ups", burden?.caught);
     detailDialog.showModal();
 }
 
@@ -273,7 +293,7 @@ function renderBurden(key, burden) {
     row.dataset.debt = formatDebt(burden?.debt);
     row.tabIndex = 0;
     row.setAttribute("role", "button");
-    row.setAttribute("aria-label", `Open ${formatKey(key)} burden details`);
+    row.setAttribute("aria-label", `Open ${formatKey(key)} practice need details`);
     row.addEventListener("click", () => showBurdenDetail(key, burden));
     row.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -309,9 +329,9 @@ function renderProfile(profile) {
     const windowSize = Number(profile.window_size) || used;
     const claimed = profile.claimed_set_key || "current set";
     meta.textContent =
-        `${claimed} · symbols measured since introduction; ` +
-        `other burdens use ${used} of ${total} records in the recent ` +
-        `${windowSize}-record evidence window`;
+        `${claimed} · symbols use all saved practice since introduction; ` +
+        `other areas use ${used} of ${total} records from the recent ` +
+        `${windowSize}-record window`;
 
     keys.forEach((key) => renderBurden(key, burdens[key]));
     root.hidden = false;
@@ -329,6 +349,7 @@ async function loadBurdenProfile() {
     }
 }
 
+renderHeaders();
 loadBurdenProfile();
 
 window.addEventListener("copy-settings-records-changed", (event) => {

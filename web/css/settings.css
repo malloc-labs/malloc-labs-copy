@@ -1126,6 +1126,15 @@
     width: min(96vw, 760px);
 }
 
+.settings-recognition-burden-dialog .settings-recognition-tooltip::after {
+    max-width: min(18rem, 70vw);
+}
+
+.settings-recognition-burden-detail__table th:nth-last-child(-n+2).settings-recognition-tooltip::after {
+    right: 0;
+    left: auto;
+}
+
 .settings-recognition-burden-detail__section {
     margin-top: var(--mr-space-4);
 }
