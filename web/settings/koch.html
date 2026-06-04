@@ -64,15 +64,15 @@
                     </table>
                 </div>
             </details>
-            <section class="settings-koch-rollup" id="settings-koch-rollup" hidden>
-                <h3 class="settings-koch-rollup__heading">
+            <details class="settings-koch-rollup" id="settings-koch-rollup" hidden>
+                <summary class="settings-koch-rollup__heading">
                     Recent band evidence
                     <span class="settings-koch-rollup__meta" id="settings-koch-rollup-meta"></span>
-                    <button type="button"
-                            class="settings-koch-rollup__history-link"
-                            id="settings-koch-history-link"
-                            hidden>Full history →</button>
-                </h3>
+                </summary>
+                <button type="button"
+                        class="settings-koch-rollup__history-link"
+                        id="settings-koch-history-link"
+                        hidden>Full history →</button>
                 <table class="settings-koch-rollup__table">
                     <thead>
                         <tr>
@@ -84,11 +84,13 @@
                     </thead>
                     <tbody id="settings-koch-rollup-tbody"></tbody>
                 </table>
-            </section>
-            <section class="settings-koch-confusion" id="settings-koch-confusion" hidden>
-                <h3 class="settings-koch-confusion__heading">Symbol confusions</h3>
+            </details>
+            <details class="settings-koch-confusion" id="settings-koch-confusion" hidden>
+                <summary class="settings-recognition-section__summary">
+                    <span class="settings-koch-confusion__heading">Symbol confusions</span>
+                </summary>
                 <ul class="settings-koch-confusion__list" id="settings-koch-confusion-list"></ul>
-            </section>
+            </details>
             <div class="settings-records-meta">
                 <p class="settings-koch-meta" id="settings-koch-meta">Loading saved sessions…</p>
                 <div class="settings-records-meta__actions">
