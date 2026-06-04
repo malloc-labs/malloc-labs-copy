@@ -6,14 +6,17 @@ import pytest
 
 from copy_653.server.recognition_actions import (
     ActiveRecognitionSession,
+    _audio_params_for_gear,
     _coerce_recognition_diagnostic,
     _coerce_recognition_exercise_completion,
     _generate_recognition_exercise,
     _play_recognition_exercise,
     _recognition_floor_samples,
+    _recognition_exercise_entry,
     _run_recognition_session,
     _recognition_answer_matches_target,
     _recognition_kind_for_gear,
+    _rst_fields_for_audio_params,
     _say_after_for_slot,
 )
 from copy_653.audio.parameters import AudioParameters
@@ -82,6 +85,25 @@ def test_recognition_page_floor_generates_non_silent_bed():
 
     assert len(samples) == 3000
     assert samples.any()
+
+
+def test_recognition_exercise_entry_stores_effective_rst_fields():
+    entry = _recognition_exercise_entry(
+        1,
+        ["K", "M"],
+        3,
+        audio_params=AudioParameters(receiver_bed=2, envelope_ramp_seconds=0.005),
+    )
+
+    assert entry["s"] == 7
+    assert entry["t"] == 3
+
+
+def test_recognition_rst_fields_reflect_gear_floor_override():
+    base = AudioParameters(receiver_bed=0, envelope_ramp_seconds=0.005)
+
+    assert _rst_fields_for_audio_params(base)["s"] == 9
+    assert _rst_fields_for_audio_params(_audio_params_for_gear(base, 3))["s"] == 7
 
 
 def test_recognition_exercise_playback_leaves_floor_to_page_loop(tmp_path, monkeypatch):

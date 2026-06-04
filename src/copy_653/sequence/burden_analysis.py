@@ -175,6 +175,44 @@ def load_koch_attention_response(
     }
 
 
+def load_recognition_attention_response(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+    window_size: int = DEFAULT_RECOGNITION_BURDEN_WINDOW_SIZE,
+) -> dict[str, Any]:
+    """Compare recognition stability across saved per-exercise S/T conditions."""
+    matching = _matching_recognition_records(records, claimed_set_key)
+    matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
+    recent = matching[: max(0, window_size)]
+    exercises = _collect_recognition_attention_exercises(recent)
+    lower = [row for row in exercises if 2 <= row["s"] <= 6]
+    higher = [row for row in exercises if 7 <= row["s"] <= 9]
+
+    return {
+        "version": ATTENTION_RESPONSE_VERSION,
+        "claimed_set_key": claimed_set_key,
+        "record_count": len(matching),
+        "window_size": max(0, window_size),
+        "records_used": len(recent),
+        "exercise_count": len(exercises),
+        "conditions": [
+            _recognition_attention_condition(
+                key="lower_s",
+                label="Lower S / more texture",
+                rows=lower,
+                reference_rows=higher,
+            ),
+            _recognition_attention_condition(
+                key="higher_s",
+                label="Higher S / cleaner signal",
+                rows=higher,
+                reference_rows=lower,
+            ),
+        ],
+    }
+
+
 def _recognition_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         record
@@ -336,6 +374,48 @@ def _collect_koch_attention_exercises(records: list[dict[str, Any]]) -> list[dic
     return rows
 
 
+def _collect_recognition_attention_exercises(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for record in records:
+        exercises = record.get("exercises")
+        if not isinstance(exercises, list):
+            continue
+        for exercise in exercises:
+            if not isinstance(exercise, dict):
+                continue
+            s = _coerce_int(exercise.get("s"), 0)
+            t = _coerce_int(exercise.get("t"), 0)
+            if not (2 <= s <= 9 and 1 <= t <= 9):
+                continue
+            analysis = exercise.get("analysis")
+            if (
+                not isinstance(analysis, dict)
+                or analysis.get("saved") is not True
+                or analysis.get("has_evidence") is not True
+            ):
+                continue
+            fraction = analysis.get("combined_fraction")
+            if not isinstance(fraction, (int, float)) or isinstance(fraction, bool):
+                continue
+            counts = analysis.get("counts")
+            if not isinstance(counts, dict):
+                counts = {}
+            rows.append(
+                {
+                    "s": s,
+                    "t": t,
+                    "combined_fraction": float(fraction),
+                    "correct": _coerce_int(counts.get("correct"), 0)
+                    + _coerce_int(counts.get("caught_correct"), 0),
+                    "substitutions": _coerce_int(counts.get("substitution"), 0)
+                    + _coerce_int(counts.get("caught_substitution"), 0),
+                    "misses": _coerce_int(counts.get("miss"), 0),
+                    "slot_count": sum(_coerce_int(value, 0) for value in counts.values()),
+                }
+            )
+    return rows
+
+
 def _koch_attention_condition(
     *,
     key: str,
@@ -393,6 +473,63 @@ def _koch_attention_condition(
     }
 
 
+def _recognition_attention_condition(
+    *,
+    key: str,
+    label: str,
+    rows: list[dict[str, Any]],
+    reference_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    metrics = _recognition_attention_metrics(rows)
+    reference = _recognition_attention_metrics(reference_rows)
+    confidence = _confidence_from_count(
+        len(rows),
+        medium=ATTENTION_MIN_EXERCISES_PER_CONDITION,
+        high=MIN_UNIT_EXERCISES_HIGH_CONFIDENCE,
+    )
+    axes = {
+        "accuracy": _koch_attention_axis(
+            metrics,
+            reference,
+            "accuracy_fraction",
+            "exercise_count",
+        ),
+        "misses": _koch_attention_axis(
+            metrics,
+            reference,
+            "miss_avoidance_fraction",
+            "slot_count",
+        ),
+        "confusions": _koch_attention_axis(
+            metrics,
+            reference,
+            "confusion_avoidance_fraction",
+            "slot_count",
+        ),
+        "overall": _koch_attention_axis(
+            metrics,
+            reference,
+            "overall_fraction",
+            "exercise_count",
+        ),
+    }
+    st_range = _format_st_range(rows)
+    return {
+        "key": key,
+        "label": label,
+        "st_range": st_range,
+        "confidence": confidence,
+        "exercise_count": len(rows),
+        "reference_count": len(reference_rows),
+        "axes": axes,
+        "metrics": metrics,
+        "reference_metrics": reference,
+        "evidence": [
+            _recognition_attention_evidence(label, st_range, metrics, rows, reference_rows),
+        ],
+    }
+
+
 def _koch_attention_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     symbol_correct = sum(int(row["symbol_correct"]) for row in rows)
     symbol_available = sum(int(row["symbol_available"]) for row in rows)
@@ -426,6 +563,31 @@ def _koch_attention_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "spacing_correct_units": spacing_correct,
         "spacing_available_units": spacing_available,
         "perfect_exercises": sum(1 for row in rows if float(row["combined_fraction"]) == 1.0),
+    }
+
+
+def _recognition_attention_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    slot_count = sum(int(row["slot_count"]) for row in rows)
+    correct = sum(int(row["correct"]) for row in rows)
+    substitutions = sum(int(row["substitutions"]) for row in rows)
+    misses = sum(int(row["misses"]) for row in rows)
+    fractions = [float(row["combined_fraction"]) for row in rows]
+    return {
+        "exercise_count": len(rows),
+        "slot_count": slot_count,
+        "accuracy_fraction": _round_or_none(_fraction(correct, slot_count)) if slot_count else None,
+        "miss_avoidance_fraction": (
+            _round_or_none(_fraction(slot_count - misses, slot_count)) if slot_count else None
+        ),
+        "confusion_avoidance_fraction": (
+            _round_or_none(_fraction(slot_count - substitutions, slot_count))
+            if slot_count
+            else None
+        ),
+        "overall_fraction": _round_or_none(sum(fractions) / len(fractions)) if fractions else None,
+        "correct_units": correct,
+        "substitution_units": substitutions,
+        "miss_units": misses,
     }
 
 
@@ -496,6 +658,23 @@ def _koch_attention_evidence(
 ) -> str:
     if not rows:
         return f"{label}: no saved Koch exercises with per-exercise S/T evidence."
+    overall = metrics.get("overall_fraction")
+    percent = _percent(float(overall)) if isinstance(overall, (int, float)) else "unknown"
+    return (
+        f"{label} ({st_range}) averaged {percent} over {len(rows)} exercises, "
+        f"compared with {len(reference_rows)} exercises in the opposite S condition."
+    )
+
+
+def _recognition_attention_evidence(
+    label: str,
+    st_range: str,
+    metrics: dict[str, Any],
+    rows: list[dict[str, Any]],
+    reference_rows: list[dict[str, Any]],
+) -> str:
+    if not rows:
+        return f"{label}: no saved recognition exercises with per-exercise S/T evidence."
     overall = metrics.get("overall_fraction")
     percent = _percent(float(overall)) if isinstance(overall, (int, float)) else "unknown"
     return (
