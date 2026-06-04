@@ -1,12 +1,15 @@
-// Settings -> Koch Exercises tab: read-only burden debt summary.
+// Settings -> Koch Exercises tab: read-only practice-needs summary.
 //
 // This is a presentational layer over /api/koch-burden-profile. It keeps
 // the exercise surface free of scores while making the current practice
-// burden profile inspectable after the listening act.
+// practice-needs profile inspectable after the listening act.
 
 const root = document.getElementById("settings-koch-burden");
 const meta = document.getElementById("settings-koch-burden-meta");
 const tbody = document.getElementById("settings-koch-burden-tbody");
+const detailDialog = document.getElementById("settings-koch-burden-dialog");
+const detailTitle = document.getElementById("settings-koch-burden-dialog-title");
+const detailBody = document.getElementById("settings-koch-burden-dialog-body");
 
 const BURDEN_LABELS = {
     symbol_inventory: "Symbols",
@@ -30,10 +33,29 @@ const BURDEN_ORDER = [
     "practice_transfer",
 ];
 
-const TOOLTIP_TEXT = {
-    Burden: "The listening burden being estimated from Koch exercise evidence.",
-    Debt: "Current unresolved instability estimate for this burden. Low is settled; moderate/high needs service.",
-    Confidence: "How much recent evidence supports the debt estimate.",
+const PROFILE_TOOLTIPS = {
+    Area: "The part of practice being checked.",
+    "Practice need": "How much this area still needs practice.",
+    Confidence: "How sure the app is about that estimate.",
+};
+
+const BURDEN_META_TOOLTIPS = {
+    "Practice need": "How much this area still needs practice.",
+    Confidence: "How sure the app is about that estimate.",
+    "Based on": "The observations behind this estimate.",
+};
+
+const BAND_TOOLTIPS = {
+    Band: "The exercise group being tracked.",
+    Average: "How often you copied this group correctly in recent practice.",
+    Exercises: "How many recent exercises are included.",
+    Gear: "The current difficulty step for this group.",
+};
+
+const MIXUP_TOOLTIPS = {
+    Target: "The character that was played.",
+    "Read as": "The character you entered instead.",
+    Count: "How many times this mix-up has appeared.",
 };
 
 function appendCell(row, className, text, tagName = "td") {
@@ -80,14 +102,149 @@ function burdenKeys(burdens) {
     return [...ordered, ...extra];
 }
 
-function evidenceText(burden) {
+function evidenceCountText(burden) {
     const evidence = Array.isArray(burden?.evidence) ? burden.evidence : [];
-    return evidence.join(" ");
+    if (evidence.length === 1) return "1 item";
+    return `${evidence.length} items`;
+}
+
+function appendEvidenceList(parent, burden) {
+    const evidence = Array.isArray(burden?.evidence) ? burden.evidence : [];
+    const section = document.createElement("section");
+    section.className = "settings-recognition-burden-detail__section";
+
+    const heading = document.createElement("h3");
+    heading.className = "settings-koch-detail__heading";
+    heading.textContent = "What this is based on";
+    section.appendChild(heading);
+
+    if (evidence.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "settings-recognition-burden-detail__empty";
+        empty.textContent = "No saved practice observations for this area yet.";
+        section.appendChild(empty);
+        parent.appendChild(section);
+        return;
+    }
+
+    const list = document.createElement("ul");
+    list.className = "settings-recognition-burden-detail__evidence";
+    evidence.forEach((item) => {
+        const li = document.createElement("li");
+        li.textContent = item;
+        list.appendChild(li);
+    });
+    section.appendChild(list);
+    parent.appendChild(section);
+}
+
+function appendBandTable(parent, burden) {
+    const bands = Array.isArray(burden?.bands) ? burden.bands : [];
+    if (!bands.length) return;
+
+    const section = document.createElement("section");
+    section.className = "settings-recognition-burden-detail__section";
+    const heading = document.createElement("h3");
+    heading.className = "settings-koch-detail__heading";
+    heading.textContent = "Exercise groups";
+    section.appendChild(heading);
+
+    const table = document.createElement("table");
+    table.className = "settings-recognition-burden-detail__table";
+    const thead = document.createElement("thead");
+    const header = document.createElement("tr");
+    ["Band", "Average", "Exercises", "Gear"].forEach((label) => {
+        const th = appendCell(header, "", label, "th");
+        addTooltip(th, BAND_TOOLTIPS[label]);
+    });
+    thead.appendChild(header);
+    table.appendChild(thead);
+
+    const body = document.createElement("tbody");
+    bands.forEach((band) => {
+        const row = document.createElement("tr");
+        appendCell(row, "", String(band.band ?? "-"));
+        appendCell(row, "", formatPercent(band.average_fraction));
+        appendCell(row, "", String(band.exercise_count ?? 0));
+        appendCell(row, "", String(band.current_gear ?? "-"));
+        body.appendChild(row);
+    });
+    table.appendChild(body);
+    section.appendChild(table);
+    parent.appendChild(section);
+}
+
+function appendMixupTable(parent, title, rows) {
+    const pairs = Array.isArray(rows) ? rows : [];
+    if (!pairs.length) return;
+
+    const section = document.createElement("section");
+    section.className = "settings-recognition-burden-detail__section";
+    const heading = document.createElement("h3");
+    heading.className = "settings-koch-detail__heading";
+    heading.textContent = title;
+    section.appendChild(heading);
+
+    const table = document.createElement("table");
+    table.className = "settings-recognition-burden-detail__table";
+    const thead = document.createElement("thead");
+    const header = document.createElement("tr");
+    ["Target", "Read as", "Count"].forEach((label) => {
+        const th = appendCell(header, "", label, "th");
+        addTooltip(th, MIXUP_TOOLTIPS[label]);
+    });
+    thead.appendChild(header);
+    table.appendChild(thead);
+
+    const body = document.createElement("tbody");
+    pairs.forEach((pair) => {
+        const row = document.createElement("tr");
+        appendCell(row, "", pair.target || "-");
+        appendCell(row, "", pair.typed || "-");
+        appendCell(row, "", String(pair.count ?? 0));
+        body.appendChild(row);
+    });
+    table.appendChild(body);
+    section.appendChild(table);
+    parent.appendChild(section);
+}
+
+function formatPercent(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return "-";
+    return `${Math.round(numeric * 100)}%`;
 }
 
 function renderHeaders() {
     const headers = root?.querySelectorAll("th") || [];
-    headers.forEach((header) => addTooltip(header, TOOLTIP_TEXT[header.textContent]));
+    headers.forEach((header) => addTooltip(header, PROFILE_TOOLTIPS[header.textContent]));
+}
+
+function showBurdenDetail(key, burden) {
+    if (!detailDialog || !detailTitle || !detailBody) return;
+    detailTitle.textContent = `${formatKey(key)} practice need`;
+    detailBody.replaceChildren();
+
+    const metaGrid = document.createElement("dl");
+    metaGrid.className = "settings-koch-detail__meta";
+    [
+        ["Practice need", formatDebt(burden?.debt)],
+        ["Confidence", formatConfidence(burden?.confidence)],
+        ["Based on", evidenceCountText(burden)],
+    ].forEach(([label, value]) => {
+        const dt = document.createElement("dt");
+        dt.textContent = label;
+        addTooltip(dt, BURDEN_META_TOOLTIPS[label]);
+        const dd = document.createElement("dd");
+        dd.textContent = value;
+        metaGrid.append(dt, dd);
+    });
+    detailBody.appendChild(metaGrid);
+
+    appendEvidenceList(detailBody, burden);
+    appendBandTable(detailBody, burden);
+    appendMixupTable(detailBody, "Mix-ups", burden?.committed);
+    detailDialog.showModal();
 }
 
 function renderBurden(key, burden) {
@@ -95,7 +252,16 @@ function renderBurden(key, burden) {
     row.className = "settings-recognition-burden__row";
     const debt = formatDebt(burden?.debt);
     row.dataset.debt = debt;
-    row.title = evidenceText(burden);
+    row.tabIndex = 0;
+    row.setAttribute("role", "button");
+    row.setAttribute("aria-label", `Open ${formatKey(key)} practice need details`);
+    row.addEventListener("click", () => showBurdenDetail(key, burden));
+    row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            showBurdenDetail(key, burden);
+        }
+    });
 
     appendCell(row, "settings-koch-confusion__label", formatKey(key));
     appendCell(row, "settings-recognition-burden__debt", debt);
@@ -124,8 +290,8 @@ function renderProfile(profile) {
     const windowSize = Number(profile.window_size) || recordsUsed;
     const claimed = profile.claimed_set_key || "current set";
     meta.textContent =
-        `${claimed} · burden debt from ${recordsUsed}/${totalRecords} session` +
-        `${totalRecords === 1 ? "" : "s"} in the recent ${windowSize}-session evidence window`;
+        `${claimed} · based on ${recordsUsed}/${totalRecords} saved session` +
+        `${totalRecords === 1 ? "" : "s"} from the recent ${windowSize}-session window`;
 
     keys.forEach((key) => renderBurden(key, burdens[key]));
     root.hidden = false;
