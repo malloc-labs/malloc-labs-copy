@@ -656,6 +656,9 @@
 }
 
 .settings-koch-rollup__heading {
+    display: flex;
+    align-items: center;
+    gap: var(--mr-space-2);
     margin: 0 0 var(--mr-space-2);
     color: var(--mr-muted);
     font-family: var(--mr-font-mono);
@@ -663,6 +666,13 @@
     font-weight: 400;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    cursor: pointer;
+    list-style-position: outside;
+}
+
+.settings-koch-rollup__heading:hover,
+.settings-koch-rollup__heading:focus-visible {
+    color: var(--mr-anchor);
 }
 
 .settings-koch-rollup__meta {
@@ -732,7 +742,8 @@
 }
 
 .settings-koch-rollup__history-link {
-    margin-left: auto;
+    display: block;
+    margin: 0 0 var(--mr-space-2) auto;
     font-family: var(--mr-font-mono);
     font-size: var(--mr-size-small);
     text-transform: none;
