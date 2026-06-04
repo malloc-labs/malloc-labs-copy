@@ -159,6 +159,15 @@ def test_bed_level_for_rst_strength_inverts_strength():
     assert texture.bed_level_for_rst_strength(7) == 2.5
 
 
+def test_rst_inverse_helpers_match_settings_ui_mapping():
+    assert texture.rst_strength_for_bed_level(0) == 9
+    assert texture.rst_strength_for_bed_level(10) == 1
+    assert texture.rst_strength_for_bed_level(2) == 7
+    assert texture.rst_tone_for_tone_shape(0) == 1
+    assert texture.rst_tone_for_tone_shape(10) == 9
+    assert texture.rst_tone_for_envelope_seconds(0.005) == 3
+
+
 def test_add_receiver_bed_level_schedule_applies_dB_ramp_through_gap():
     sample_rate = 48_000
     params = AudioParameters(sample_rate_hz=sample_rate, receiver_bed=5)

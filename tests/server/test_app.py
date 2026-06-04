@@ -927,6 +927,88 @@ async def test_api_koch_attention_response_returns_st_condition_grid(tmp_path):
         await server.wait_closed()
 
 
+async def test_api_recognition_attention_response_returns_st_condition_grid(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M", "U", "R"])
+    save_dir = tmp_path / "data"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    recognition_dir = save_dir / "recognition"
+    recognition_dir.mkdir(parents=True)
+
+    def _exercise(index: int, s: int, t: int, fraction: float) -> dict:
+        correct = 2 if fraction >= 1.0 else 1
+        substitutions = 0 if fraction >= 1.0 else 1
+        return {
+            "index": index,
+            "target": "K M",
+            "burden_band": index,
+            "gear": 1,
+            "s": s,
+            "t": t,
+            "analysis": {
+                "version": "recognition-analysis-v1",
+                "saved": True,
+                "has_evidence": True,
+                "combined_fraction": fraction,
+                "counts": {
+                    "correct": correct,
+                    "substitution": substitutions,
+                    "caught_correct": 0,
+                    "caught_substitution": 0,
+                    "miss": 0,
+                },
+            },
+        }
+
+    records = []
+    for minute in range(4):
+        records.append(
+            {
+                "schema_version": "2.1",
+                "mode": "recognition",
+                "started_at": f"2026-06-03T19:{minute:02d}:00.000Z",
+                "claimed_set": ["K", "M", "U", "R"],
+                "generation": {"claimed_set_key": "K M R U"},
+                "exercises": [
+                    _exercise(1, 5, 7, 1.0),
+                    _exercise(2, 8, 9, 0.5),
+                ],
+                "symbols": [],
+            }
+        )
+    for index, record in enumerate(records, start=1):
+        (recognition_dir / f"recognition-20260603T19000{index}Z.json").write_text(
+            json.dumps(record)
+        )
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        response = await asyncio.to_thread(
+            urllib.request.urlopen,
+            f"http://127.0.0.1:{port}/api/recognition-attention-response"
+            "?claimed_set_key=K%20M%20R%20U",
+        )
+        payload = json.loads(response.read())
+        assert payload["version"] == "attention-response-v1"
+        assert payload["claimed_set_key"] == "K M R U"
+        assert payload["exercise_count"] == 8
+        assert payload["conditions"][0]["st_range"] == "S5 / T7"
+        assert payload["conditions"][0]["axes"]["overall"]["response"] == "helped"
+        assert payload["conditions"][1]["st_range"] == "S8 / T9"
+        assert payload["conditions"][1]["axes"]["overall"]["response"] == "hurt"
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
 async def test_api_koch_band_evidence_empty_when_no_records(tmp_path):
     config_path = _write_test_config(tmp_path, ["K", "M"])
     save_dir = tmp_path / "data"

@@ -76,6 +76,17 @@ def tone_shape_for_envelope_seconds(seconds: float) -> int:
     return distances.index(min(distances))
 
 
+def rst_tone_for_tone_shape(level: int) -> int:
+    """Map learner-facing Tone Shape ``0..10`` back to an RST Tone value."""
+    _validate_int_range(level, "tone_shape", MIN_TONE_SHAPE, MAX_TONE_SHAPE)
+    return max(1, min(9, round(1 + (8 * level) / 10)))
+
+
+def rst_tone_for_envelope_seconds(seconds: float) -> int:
+    """Return the nearest RST Tone value for an envelope ramp duration."""
+    return rst_tone_for_tone_shape(tone_shape_for_envelope_seconds(seconds))
+
+
 def envelope_seconds_for_rst_tone(t: int) -> float:
     """Map an RST Tone value (1..9) to envelope ramp seconds.
 
@@ -126,6 +137,12 @@ def bed_level_for_rst_strength(s: int | float) -> float:
     """
     s_clamped = max(1.0, min(9.0, float(s)))
     return (9.0 - s_clamped) * 10.0 / 8.0
+
+
+def rst_strength_for_bed_level(level: int | float) -> int:
+    """Map learner-facing receiver bed ``0..10`` back to an RST Strength."""
+    level_clamped = max(0.0, min(10.0, float(level)))
+    return max(1, min(9, round(9 - (8 * level_clamped) / 10)))
 
 
 def cadence_gap_seconds(

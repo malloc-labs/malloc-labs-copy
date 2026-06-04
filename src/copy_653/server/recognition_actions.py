@@ -282,7 +282,12 @@ async def _run_recognition_session(session: ActiveRecognitionSession) -> Path | 
                 gear=session.gear,
                 rng=session.rng,
             )
-            exercise_entry = _recognition_exercise_entry(ex_idx, exercise, session.gear)
+            exercise_entry = _recognition_exercise_entry(
+                ex_idx,
+                exercise,
+                session.gear,
+                audio_params=_audio_params_for_gear(session.audio_params, session.gear),
+            )
             session.exercises.append(exercise_entry)
             await _send_event(
                 session.ws,
@@ -354,13 +359,29 @@ async def _run_recognition_session(session: ActiveRecognitionSession) -> Path | 
         raise
 
 
-def _recognition_exercise_entry(index: int, exercise: list[str], gear: int) -> dict[str, Any]:
-    return {
+def _recognition_exercise_entry(
+    index: int,
+    exercise: list[str],
+    gear: int,
+    *,
+    audio_params: AudioParameters | None = None,
+) -> dict[str, Any]:
+    entry = {
         "index": index,
         "target": " ".join(exercise),
         "burden_band": index,
         "gear": gear,
         "recognition_kind": _recognition_kind_for_gear(gear),
+    }
+    if audio_params is not None:
+        entry.update(_rst_fields_for_audio_params(audio_params))
+    return entry
+
+
+def _rst_fields_for_audio_params(params: AudioParameters) -> dict[str, int]:
+    return {
+        "s": texture.rst_strength_for_bed_level(params.receiver_bed),
+        "t": texture.rst_tone_for_envelope_seconds(params.envelope_ramp_seconds),
     }
 
 
