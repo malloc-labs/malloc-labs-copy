@@ -9,6 +9,8 @@ from copy_653.sequence.burden_analysis import (
     load_recognition_burden_profile,
 )
 from copy_653.sequence.recognition_analysis import (
+    OUTCOME_CAUGHT_CORRECT,
+    OUTCOME_CAUGHT_SUBSTITUTION,
     OUTCOME_CORRECT,
     OUTCOME_MISS,
     OUTCOME_SUBSTITUTION,
@@ -156,7 +158,6 @@ def test_burden_profile_reports_high_symbol_and_confusion_debt():
                     _slot("U", OUTCOME_SUBSTITUTION),
                 ],
                 committed=[("U", "R")],
-                caught=[("U", "R")],
             ),
         )
         for minute in range(6)
@@ -175,7 +176,49 @@ def test_burden_profile_reports_high_symbol_and_confusion_debt():
     confusion = profile["burdens"]["confusion"]
     assert confusion["debt"] == DEBT_HIGH
     assert confusion["committed"][0] == {"target": "U", "typed": "R", "count": 6}
-    assert confusion["caught"][0] == {"target": "U", "typed": "R", "count": 6}
+    assert confusion["caught"] == []
+
+
+def test_burden_profile_uses_review_softening_for_confusion_debt():
+    record = _record(
+        "2026-06-01T12:00:00Z",
+        {
+            "index": 1,
+            "gear": 0,
+            "analysis": {
+                "has_evidence": True,
+                "combined_fraction": 0.0,
+                "counts": {
+                    OUTCOME_CORRECT: 0,
+                    OUTCOME_SUBSTITUTION: 2,
+                    OUTCOME_CAUGHT_CORRECT: 0,
+                    OUTCOME_CAUGHT_SUBSTITUTION: 0,
+                    OUTCOME_MISS: 0,
+                },
+                "slots": [
+                    _slot("R", OUTCOME_SUBSTITUTION),
+                    _slot("R", OUTCOME_SUBSTITUTION),
+                ],
+                "committed_confusions": [["R", "K"], ["R", "K"]],
+                "caught_confusions": [],
+            },
+            "timing_analysis": {
+                "has_evidence": True,
+                "caught_confusions": [["R", "K"], ["R", "K"]],
+            },
+        },
+    )
+
+    profile = load_recognition_burden_profile(
+        [record],
+        claimed_set_key="K M R U",
+        window_size=1,
+    )
+
+    confusion = profile["burdens"]["confusion"]
+    assert confusion["debt"] == DEBT_LOW
+    assert confusion["committed"] == []
+    assert confusion["caught"] == [{"target": "R", "typed": "K", "count": 2}]
 
 
 def test_symbol_burden_uses_since_introduction_evidence_not_only_recent_window():

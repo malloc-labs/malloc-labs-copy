@@ -18,6 +18,7 @@ from copy_653.sequence.exercise_analysis import (
     load_confusion_pairs,
     record_claimed_set_key,
 )
+from copy_653.sequence.recognition_analysis import recognition_review_analysis
 
 BURDEN_PROFILE_VERSION = "burden-profile-v1"
 ATTENTION_RESPONSE_VERSION = "attention-response-v1"
@@ -280,13 +281,15 @@ def _collect_stats(records: list[dict[str, Any]]) -> dict[str, Any]:
                     if isinstance(truth, str) and truth and isinstance(outcome, str):
                         symbol_slots[truth.upper()][outcome] += 1
 
-            for pair in analysis.get("committed_confusions") or []:
+            # Confusion debt is a Settings/reporting view, so use the same
+            # recovery-softened stream as the standalone Recognition
+            # Confusions panel. Symbol and unit-length debt above still use
+            # the strict saved analysis.
+            confusion_analysis = _review_analysis_for_exercise(exercise)
+            for pair in confusion_analysis.get("committed_confusions") or []:
                 _tally_pair(committed_confusions, pair)
-
-            timing = exercise.get("timing_analysis")
-            if isinstance(timing, dict):
-                for pair in timing.get("caught_confusions") or []:
-                    _tally_pair(caught_confusions, pair)
+            for pair in confusion_analysis.get("caught_confusions") or []:
+                _tally_pair(caught_confusions, pair)
 
     return {
         "symbol_slots": symbol_slots,
@@ -294,6 +297,13 @@ def _collect_stats(records: list[dict[str, Any]]) -> dict[str, Any]:
         "committed_confusions": committed_confusions,
         "caught_confusions": caught_confusions,
     }
+
+
+def _review_analysis_for_exercise(exercise: dict[str, Any]) -> dict[str, Any]:
+    review = exercise.get("review_analysis")
+    if isinstance(review, dict):
+        return review
+    return recognition_review_analysis(exercise)
 
 
 def _collect_koch_stats(records: list[dict[str, Any]]) -> dict[str, Any]:
