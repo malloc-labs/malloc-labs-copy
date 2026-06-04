@@ -65,6 +65,7 @@ import {
     startBrowserMidi,
 } from "./key-timing/midi-input.js";
 import { initTrinkeySyncIndicator } from "./key-timing/trinkey-sync-indicator.js";
+import { hideSymbolPreview, showSymbolPreview, symbolForPreviewCode } from "./symbol-preview.js";
 
 const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
 const wsUrl = `${wsProtocol}//${location.host}/ws`;
@@ -366,6 +367,7 @@ function connect() {
             setSequenceTokenPlaying(event.symbol, true);
         } else if (event.type === "morse-repeat-end") {
             setSequenceTokenPlaying(event.symbol, false);
+            hideSymbolPreview();
         } else if (event.type === "error") {
             renderError(event);
         }
@@ -374,6 +376,7 @@ function connect() {
     socket.addEventListener("close", () => {
         recordDiagnostic("websocket", { state: "close", url: wsUrl });
         setSequenceTokenPlaying(null, false);
+        hideSymbolPreview();
         sidetone.mute();
         clearBrowserMidiInput();
         if (activeSocket === socket) {
@@ -441,26 +444,8 @@ startBtn.addEventListener("click", () => {
     beginCountdownThenStart();
 });
 
-// Preview: Left Alt + symbol key plays the symbol's Morse three times.
-const PREVIEW_CODE_TO_SYMBOL = (() => {
-    const map = new Map();
-    for (let i = 0; i < 26; i++) {
-        map.set(`Key${String.fromCharCode(65 + i)}`, String.fromCharCode(65 + i));
-    }
-    for (let i = 0; i <= 9; i++) {
-        map.set(`Digit${i}`, String(i));
-    }
-    map.set("Period", ".");
-    map.set("Comma", ",");
-    map.set("Equal", "=");
-    return map;
-})();
-
-function symbolForPreviewCode(code, shiftKey) {
-    if (code === "Slash") return shiftKey ? "?" : "/";
-    return PREVIEW_CODE_TO_SYMBOL.get(code) || null;
-}
-
+// Preview: Left Alt + symbol key plays the symbol's Morse three times
+// and shows its dit/dah pattern.
 window.addEventListener("keydown", (event) => {
     if (event.code === "AltLeft") {
         leftAltDown = true;
@@ -479,6 +464,7 @@ window.addEventListener("keydown", (event) => {
     if (!claimedSymbolHas(symbol)) return;
     event.preventDefault();
     if (event.repeat) return;
+    showSymbolPreview(symbol);
     activeSocket.send(JSON.stringify({ action: "play-morse-repeat", symbol }));
 });
 
@@ -490,6 +476,7 @@ window.addEventListener("keyup", (event) => {
 
 window.addEventListener("blur", () => {
     leftAltDown = false;
+    hideSymbolPreview();
 });
 
 window.addEventListener("keydown", (event) => {

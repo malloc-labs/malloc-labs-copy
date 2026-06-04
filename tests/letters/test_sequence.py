@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 from copy_653.audio.parameters import AudioParameters
-from copy_653.letters import LettersConfig, play_letter_sequence
+from copy_653.letters import LettersConfig, play_letter_sequence, play_morse_sequence
 from copy_653.letters.sequence import wav_path_for
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -161,6 +161,54 @@ def test_wav_played_at_native_rate_morse_at_synth_rate():
     assert rates[0] == ("wav", 48_000)
     assert rates[1] == ("morse", 44_100)
     assert rates[2] == ("morse", 44_100)
+
+
+def test_morse_preview_assembles_repeats_into_one_lead_in_buffer():
+    """Alt-preview opens one audio stream with pre-roll before the first tone."""
+    played = []
+    params = AudioParameters(
+        character_speed_wpm=20,
+        effective_speed_wpm=20,
+        sample_rate_hz=1_000,
+        envelope_ramp_seconds=0.0,
+        receiver_bed=0,
+        cadence_variation=0,
+    )
+
+    asyncio.run(
+        play_morse_sequence(
+            "E",
+            audio_params=params,
+            repeats=3,
+            gap_seconds=0.2,
+            lead_in_seconds=0.2,
+            play_fn=lambda samples, sample_rate_hz, output_device: played.append(
+                (samples, sample_rate_hz, output_device)
+            ),
+        )
+    )
+
+    assert len(played) == 1
+    samples, sample_rate_hz, output_device = played[0]
+    # E is one dit: 60 ms at 20 WPM. Total = 200 ms lead-in +
+    # 3 × 60 ms tone + 2 × 200 ms gaps.
+    assert sample_rate_hz == 1_000
+    assert output_device is None
+    assert samples.size == 780
+    assert np.all(samples[:200] == 0.0)
+    assert np.any(samples[200:] != 0.0)
+
+
+def test_morse_preview_rejects_negative_lead_in():
+    with pytest.raises(ValueError, match="lead_in_seconds"):
+        asyncio.run(
+            play_morse_sequence(
+                "E",
+                audio_params=AudioParameters(),
+                lead_in_seconds=-0.1,
+                play_fn=lambda *args: None,
+            )
+        )
 
 
 def test_unknown_symbol_raises_keyerror():
