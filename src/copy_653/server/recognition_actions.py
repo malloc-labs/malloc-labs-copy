@@ -27,6 +27,7 @@ from websockets.server import WebSocketServerProtocol
 
 from copy_653.audio import synth, texture
 from copy_653.audio.parameters import AudioParameters
+from copy_653.audio.playback import play_samples, resolve_output_device
 from copy_653.config import (
     RecognitionSettings,
     load_audio_parameters,
@@ -104,9 +105,7 @@ class ActiveRecognitionSession:
 
 
 def _play_samples(samples, sample_rate_hz: int, output_device: int | str | None) -> None:
-    import sounddevice as sd
-
-    sd.play(samples, samplerate=sample_rate_hz, device=output_device, blocking=True)
+    play_samples(samples, sample_rate_hz, output_device)
 
 
 def _recognition_floor_samples(params: AudioParameters):
@@ -150,7 +149,7 @@ def _play_recognition_receiver_bed_loop(
 
     with sd.OutputStream(
         samplerate=params.sample_rate_hz,
-        device=params.output_device,
+        device=resolve_output_device(sd, params.output_device),
         channels=1,
         dtype=np.float32,
         callback=callback,
