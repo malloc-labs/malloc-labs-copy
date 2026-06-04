@@ -13,6 +13,7 @@ import {
     setSequenceTokenPlaying,
     startCountdown,
 } from "./koch-core.js";
+import { hideSymbolPreview, showSymbolPreview, symbolForPreviewCode } from "./symbol-preview.js";
 import { voiceInputAudioConstraints } from "./voice-input-device.js";
 
 const sequenceRow  = document.getElementById("sequence-row");
@@ -945,25 +946,6 @@ window.addEventListener("keydown", (event) => {
 // LeftAlt is tracked separately because ``event.altKey`` does not
 // distinguish left from right.
 
-const PREVIEW_CODE_TO_SYMBOL = (() => {
-    const map = new Map();
-    for (let i = 0; i < 26; i++) {
-        map.set(`Key${String.fromCharCode(65 + i)}`, String.fromCharCode(65 + i));
-    }
-    for (let i = 0; i <= 9; i++) {
-        map.set(`Digit${i}`, String(i));
-    }
-    map.set("Period", ".");
-    map.set("Comma", ",");
-    map.set("Equal", "=");
-    return map;
-})();
-
-function symbolForPreviewCode(code, shiftKey) {
-    if (code === "Slash") return shiftKey ? "?" : "/";
-    return PREVIEW_CODE_TO_SYMBOL.get(code) || null;
-}
-
 let leftAltDown = false;
 
 window.addEventListener("keydown", (event) => {
@@ -988,6 +970,7 @@ window.addEventListener("keydown", (event) => {
     if (!claimedState.symbols.includes(symbol)) return;
     event.preventDefault();
     if (event.repeat) return;
+    showSymbolPreview(symbol);
     socket.send(JSON.stringify({ action: "play-morse-repeat", symbol }));
 });
 
@@ -999,6 +982,7 @@ window.addEventListener("keyup", (event) => {
 
 window.addEventListener("blur", () => {
     leftAltDown = false;
+    hideSymbolPreview();
 });
 
 // ─── Event handling ──────────────────────────────────────────────────────────
@@ -1025,6 +1009,7 @@ function appendEvent(event) {
     }
     if (event.type === "morse-repeat-end") {
         setSequenceTokenPlaying(sequenceRow, event.symbol, false);
+        hideSymbolPreview();
         return;
     }
 
@@ -1252,6 +1237,7 @@ socket = connectKoch({
     onMessage: appendEvent,
     onClose() {
         clearCountdown();
+        hideSymbolPreview();
         startBtn.disabled = true;
         sessionActive = false;
         stopVoiceCapture();

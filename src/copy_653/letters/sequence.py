@@ -206,6 +206,7 @@ async def play_morse_sequence(
     *,
     repeats: int = 3,
     gap_seconds: float = 0.6,
+    lead_in_seconds: float = 0.2,
     play_fn=None,
     sleep_fn=None,
 ) -> None:
@@ -213,8 +214,13 @@ async def play_morse_sequence(
 
     Used by the Cadence page's Alt+character preview keybind: no spoken
     anchor, just the rhythm, repeated so the ear has more than one pass
-    to lock in. Each playback runs in a worker thread so cancellation
-    can take effect between repeats.
+    to lock in. Playback runs in a worker thread so the WebSocket
+    handler stays responsive while PortAudio blocks.
+
+    Preview playback is assembled into one buffer with a short lead-in
+    silence. Some speaker outputs clip the start of short, freshly
+    opened streams; the lead-in gives the device time to wake before
+    the first element, and one stream avoids clipping every repeat.
 
     Raises :class:`KeyError` if the symbol has no CW pattern. Per spec
     §1.5 the failure surfaces to the caller rather than becoming a
@@ -222,25 +228,29 @@ async def play_morse_sequence(
     """
     if play_fn is None:
         play_fn = _play_samples
-    if sleep_fn is None:
-        sleep_fn = asyncio.sleep
     if repeats < 1:
         raise ValueError(f"repeats must be at least 1, got {repeats}")
     if gap_seconds < 0:
         raise ValueError(f"gap_seconds must be non-negative, got {gap_seconds}")
+    if lead_in_seconds < 0:
+        raise ValueError(f"lead_in_seconds must be non-negative, got {lead_in_seconds}")
 
     upper = symbol.upper()
     morse_samples = synth.synthesize_sequence([upper], audio_params)
-    morse_samples = texture.add_receiver_bed(
-        morse_samples, audio_params, context=f"letter-bare:{upper}"
-    )
     morse_rate = audio_params.sample_rate_hz
     output_device = audio_params.output_device
-
+    gap = synth.synthesize_silence(gap_seconds, audio_params)
+    parts: list[np.ndarray] = [synth.synthesize_silence(lead_in_seconds, audio_params)]
     for i in range(repeats):
-        await asyncio.to_thread(play_fn, morse_samples, morse_rate, output_device)
-        if i < repeats - 1:
-            await sleep_fn(gap_seconds)
+        if i > 0:
+            parts.append(gap)
+        parts.append(morse_samples)
+    preview_samples = np.concatenate(parts)
+    preview_samples = texture.add_receiver_bed(
+        preview_samples, audio_params, context=f"letter-bare:{upper}:repeat"
+    )
+
+    await asyncio.to_thread(play_fn, preview_samples, morse_rate, output_device)
 
 
 async def play_letter_sequence(
