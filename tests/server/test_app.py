@@ -1181,13 +1181,24 @@ async def test_api_recognition_burden_profile_returns_debt_profile(tmp_path):
                 "analysis": {
                     "has_evidence": True,
                     "combined_fraction": 0.8,
+                    "counts": {
+                        "correct": 1,
+                        "substitution": 1,
+                        "caught_correct": 0,
+                        "caught_substitution": 0,
+                        "miss": 0,
+                    },
                     "committed_confusions": [["U", "R"]],
+                    "caught_confusions": [],
                     "slots": [
                         {"truth": "K", "outcome": "correct"},
                         {"truth": "U", "outcome": "substitution"},
                     ],
                 },
-                "timing_analysis": {"caught_confusions": [["U", "R"]]},
+                "timing_analysis": {
+                    "has_evidence": True,
+                    "caught_confusions": [["U", "R"]],
+                },
             }
         ],
     }
@@ -1211,7 +1222,8 @@ async def test_api_recognition_burden_profile_returns_debt_profile(tmp_path):
         assert payload["window_size"] == 20
         assert payload["records_used"] == 1
         assert payload["burdens"]["unit_length"]["debt"] == "moderate"
-        assert payload["burdens"]["confusion"]["committed"] == [
+        assert payload["burdens"]["confusion"]["committed"] == []
+        assert payload["burdens"]["confusion"]["caught"] == [
             {"target": "U", "typed": "R", "count": 1}
         ]
         assert payload["burdens"]["signal"]["debt"] == "unknown"
