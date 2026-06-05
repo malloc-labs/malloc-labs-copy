@@ -9,9 +9,11 @@ from copy_653.server.recognition_actions import (
     _audio_params_for_gear,
     _audio_params_for_listening_condition,
     _audio_params_for_recognition_set,
+    _audio_params_for_rhythm_probe,
     _coerce_recognition_diagnostic,
     _coerce_recognition_exercise_completion,
     _generate_recognition_exercise,
+    _is_rhythm_probe_exercise,
     _listening_condition_for_session,
     _play_recognition_exercise,
     _recognition_floor_samples,
@@ -22,6 +24,7 @@ from copy_653.server.recognition_actions import (
     _rst_for_recognition_set,
     _rst_fields_for_audio_params,
     _say_after_for_slot,
+    _should_run_rhythm_probe,
 )
 from copy_653.audio.parameters import AudioParameters
 from copy_653.config import RecognitionSettings
@@ -120,6 +123,29 @@ def test_recognition_exercise_entry_stores_listening_probe_metadata():
     assert entry["listening_condition"] == "textured"
     assert entry["s"] == 7
     assert entry["t"] == 5
+
+
+def test_recognition_exercise_entry_stores_rhythm_probe_metadata():
+    params = _audio_params_for_rhythm_probe(AudioParameters(cadence_variation=1))
+    entry = _recognition_exercise_entry(
+        3,
+        ["K", "M"],
+        1,
+        audio_params=params,
+        baseline_cadence_variation=1,
+    )
+
+    assert entry["rhythm_probe"] == "recognition-rhythm-v1"
+    assert entry["baseline_cadence_variation"] == 1
+    assert entry["cadence_variation"] == 2
+
+
+def test_recognition_rhythm_probe_uses_third_exercise_after_grace_slot():
+    assert not _should_run_rhythm_probe(set_session=3, exercise_index=1, is_retry=False)
+    assert not _should_run_rhythm_probe(set_session=3, exercise_index=2, is_retry=False)
+    assert _should_run_rhythm_probe(set_session=3, exercise_index=3, is_retry=False)
+    assert not _should_run_rhythm_probe(set_session=3, exercise_index=3, is_retry=True)
+    assert _is_rhythm_probe_exercise(3, 3)
 
 
 def test_recognition_listening_condition_is_session_level():
