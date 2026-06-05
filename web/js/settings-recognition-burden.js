@@ -42,7 +42,7 @@ const SYMBOL_TOOLTIPS = {
     Symbol: "The character being tracked.",
     Introduced: "When this character first appeared in your saved practice.",
     Overall: "How often you have recognised this character correctly overall.",
-    "Overall %": "Your overall recognition rate for this character.",
+    "Overall %": "Your overall recognition rate for this character. Arrow compares recent practice with overall performance.",
     Recent: "How often you recognised this character correctly in recent practice.",
     "Recent %": "Your recent recognition rate for this character.",
     Status: "Whether this character looks settled, improving, or needs more attention.",
@@ -185,7 +185,7 @@ function appendSymbolTable(parent, burden) {
         appendCell(row, "", symbol.symbol || "-");
         appendCell(row, "", formatDate(symbol.introduced_at));
         appendCell(row, "", countPair(symbol.lifetime_correct, symbol.lifetime_exposures));
-        appendCell(row, "", formatPercent(symbol.lifetime_fraction));
+        appendOverallPercentCell(row, symbol);
         appendCell(row, "", countPair(symbol.recent_correct, symbol.recent_exposures));
         appendCell(row, "", formatPercent(symbol.recent_fraction));
         appendCell(row, `settings-recognition-burden-detail__signal`, symbol.signal || "-");
@@ -200,6 +200,43 @@ function appendSymbolTable(parent, burden) {
     table.appendChild(body);
     section.appendChild(table);
     parent.appendChild(section);
+}
+
+function appendOverallPercentCell(row, symbol) {
+    const cell = appendCell(row, "settings-recognition-burden-detail__overall-percent", "");
+    const percent = document.createElement("span");
+    percent.textContent = formatPercent(symbol?.lifetime_fraction);
+    cell.appendChild(percent);
+
+    const trend = symbolTrend(symbol);
+    if (trend.value === "insufficient") return;
+
+    const marker = document.createElement("span");
+    marker.className = "settings-recognition-burden-detail__trend";
+    marker.dataset.trend = trend.value;
+    marker.textContent = trend.symbol;
+    marker.title = trend.label;
+    marker.setAttribute("aria-label", trend.label);
+    cell.appendChild(marker);
+    return cell;
+}
+
+function symbolTrend(symbol) {
+    const lifetime = Number(symbol?.lifetime_fraction);
+    const recent = Number(symbol?.recent_fraction);
+    const recentExposures = Number(symbol?.recent_exposures);
+    if (!Number.isFinite(lifetime) || !Number.isFinite(recent) || recentExposures <= 0) {
+        return { value: "insufficient", symbol: "", label: "" };
+    }
+
+    const delta = recent - lifetime;
+    if (delta >= 0.03) {
+        return { value: "improving", symbol: "↑", label: "Recent trend improving" };
+    }
+    if (delta <= -0.03) {
+        return { value: "worsening", symbol: "↓", label: "Recent trend down" };
+    }
+    return { value: "stable", symbol: "→", label: "Recent trend stable" };
 }
 
 function appendConfusionTable(parent, title, rows) {

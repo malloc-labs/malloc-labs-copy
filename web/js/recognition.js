@@ -837,6 +837,41 @@ function setStartButtonMode(mode) {
     }
 }
 
+function resetRecognitionUi() {
+    sessionActive = false;
+    currentExercises = [];
+    currentExerciseIndex = 0;
+    currentSetSession = 0;
+    currentRecognitionGear = null;
+    currentRecognitionKind = "";
+    voiceCapture = [];
+    voicePartialState = [];
+    lastVoiceFinalByExercise = [];
+    symbolEventsByExercise = [];
+
+    clearCountdown();
+    clearPendingExerciseCompletion();
+    clearDiagnosticTail();
+    stopVoiceCapture();
+    clearRecognitionTimingReview();
+    answersEl.replaceChildren();
+    eventsEl.replaceChildren();
+    setActiveTab("answers");
+    setTimelineOpen(false);
+    setTimelineLocked(true);
+    const meta = toggleBtn.querySelector(".timeline-meta");
+    meta.textContent = "—";
+    saveBtn.disabled = true;
+    saveBtn.dataset.state = "idle";
+    saveBtn.textContent = "Save";
+    if (pendingSaveResolve) {
+        pendingSaveResolve(false);
+        pendingSaveResolve = null;
+    }
+    setStartButtonMode("idle");
+    renderPrimed();
+}
+
 async function beginCountdownThenStart() {
     try {
         await ensureVoiceCaptureReady();
@@ -909,10 +944,7 @@ startBtn.addEventListener("click", async () => {
         return;
     }
     if (mode === "end") {
-        currentSetSession = 0;
-        eventsEl.replaceChildren();
-        setStartButtonMode("idle");
-        renderPrimed();
+        resetRecognitionUi();
         return;
     }
     startBtn.disabled = true;

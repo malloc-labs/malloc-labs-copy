@@ -904,6 +904,25 @@
     letter-spacing: 0.04em;
 }
 
+.settings-recognition-burden-detail__overall-percent {
+    white-space: nowrap;
+}
+
+.settings-recognition-burden-detail__trend {
+    display: inline-block;
+    margin-left: 0.35rem;
+    color: var(--mr-muted);
+    font-weight: 600;
+}
+
+.settings-recognition-burden-detail__trend[data-trend="improving"] {
+    color: var(--mr-anchor);
+}
+
+.settings-recognition-burden-detail__trend[data-trend="worsening"] {
+    color: var(--mr-warning);
+}
+
 .settings-recognition-burden__table th:nth-child(1),
 .settings-recognition-burden__table td:nth-child(1) {
     width: 50%;
