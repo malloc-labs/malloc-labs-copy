@@ -1198,7 +1198,69 @@ is not merely turbulence from a newly introduced burden.
 The nudge remains non-binding. The learner is still the authority. The app uses
 burden debt to shape practice and training quietly, not to enforce a curriculum.
 
-## 15 Probes
+## 15 Recognition Practice Needs
+
+Recognition Practice Needs is the current learner-facing view of the burden debt
+profile for Symbol Recognition. It is not a scorecard and it is not a direct
+progression gate. It is a compact explanation of what the saved Recognition
+evidence currently says about the learner's auditory burden.
+
+The table has three columns:
+
+| Column | Meaning |
+| --- | --- |
+| Area | The burden axis being described. |
+| Practice need | The unresolved debt on that axis: low, moderate, high, or unknown. |
+| Confidence | How much evidence supports that interpretation. |
+
+The important distinction is that "unknown" is a real state. It does not mean
+the learner is weak, and it does not mean the learner is stable. It means Copy
+does not yet have the right kind of controlled evidence for that burden. Unknown
+practice needs should lead to small probes, not to punishment or blocked
+progression.
+
+Current Recognition Practice Needs align to the method as follows:
+
+| Practice need area | Method axis | Current interpretation |
+| --- | --- | --- |
+| Symbols | Symbol inventory | Per-symbol recognition stability within the current claimed set. This uses exposures, correct recognitions, misses, substitutions, recent trend, and evidence since introduction. |
+| Unit length | Unit length | Whether the learner is carrying grouped units such as pairs or short word-like units, not only identifying isolated symbols. |
+| Confusions | Confusion pressure | Whether specific sound shapes are attracting one another through committed substitutions or caught self-corrections. |
+| Listening conditions | Signal condition | Whether recognition holds when the receiver bed or related listening condition changes under controlled evidence. |
+| Rhythm | Rhythm condition | Whether recognition survives cadence variation. This remains unknown until cadence-varied Recognition probes exist. |
+| Anchor | Anchor support | Whether recognition survives reduced or removed spoken confirmation. This remains unknown until anchor contrast probes exist. |
+| Practice transfer | Practice transfer | Whether Symbol Recognition stability carries into Koch Exercise stream practice. This remains unknown until the two modes are linked analytically. |
+
+The Symbols detail is intentionally richer than a single percentage. It can show
+each symbol's lifetime and recent evidence, trend, misses, substitutions, and
+status. This is where the table most directly resists symbol collapse: one
+overall Recognition percentage may look acceptable while a particular symbol is
+still fragile, undersampled, or only recently recovering.
+
+The Unit length row is similarly separate from Symbols. A learner can recognize
+`K`, `M`, `R`, and `U` as isolated symbols while still struggling with `KR`,
+`MU`, or `RU` as short auditory units. That is not regression. It means the
+burden moved from symbol identification to grouped retention.
+
+The Confusions row treats wrong answers as structured evidence. A repeated
+`U -> R` substitution is not the same as a random miss, and a caught
+self-correction is not the same as a committed wrong answer. Both matter because
+they reveal how sound shapes are settling, competing, or being repaired during
+the listening act.
+
+Listening conditions, Rhythm, Anchor, and Practice transfer should stay
+conservative. They should not be marked as low debt simply because normal
+Recognition sessions do not test them. They become knowable only through
+controlled probes or comparable contrast evidence where one burden changes and
+the rest of the environment remains stable.
+
+The Estimated Time in Session section is related but separate. It is a
+learner-facing estimate based on saved Recognition time and current performance.
+It helps the learner understand scale and effort, but it should not replace the
+Practice Needs table. Time can say roughly how much more contact may be needed;
+Practice Needs explains which burden that contact should probably service.
+
+## 16 Probes
 
 Burden debt creates a second useful concept: probes.
 
@@ -1272,7 +1334,7 @@ Probes should remain structurally modest. They should be short enough that they
 do not feel like a mode change, a challenge, or a hidden exam. Their purpose is
 to improve the background model so the app can choose better future exercises.
 
-## 16 Current Data as Progression Evidence
+## 17 Current Data as Progression Evidence
 
 The current recognition dataset is small, but it already demonstrates why
 background evidence is useful. The local recognition records contain:
@@ -1344,7 +1406,7 @@ NumPy once a larger dataset exists. The important point is not the specific
 tooling. The important point is that the JSON record already contains enough
 structure to support longitudinal progression analysis.
 
-## 17 Why This Structure Matters
+## 18 Why This Structure Matters
 
 The current JSON format already avoids the most damaging form of symbol
 collapse. It does not only store a session score. It stores:
@@ -1373,25 +1435,3 @@ For example:
 
 That is closer to controlled auditory acquisition than a flat progression
 threshold.
-
----
-
-## 18 Open Questions for Version 0.0.1
-
-The next version of this document should address methodology rather than only
-format:
-
-- [ ] Should progression be symbol-level, unit-level, set-level, or a layered
-  combination? *I think it should very much be a layered combination, the data already begins to support this, thoughts?*
-- [ ] Should saved answer or voice capture drive progression? *We must separate training from practice, Symbol Recognition is training, the Koch Exercise is practice. We are using the same 20WPM baseline for both.*
-- [ ] How much exposure is enough before a symbol can be considered stable? *This is the problem in a nutshell, if we consider 90% we need to be sensible with the layered approach of how the various cognitive elements weight against each other and when and how they contribute holistically to the 90%*
-- [ ] Should "ready to add a symbol" require stability across singles and pairs? *This is the same question as above, I think just framed outside of the layered approach, thoughts?*
-- [ ] How should caught self-corrections be weighted? *I think caught self corrections should be weighted quite high, they demonstrate a few things the user is stabilising the symbol flow, is confident to correct the past whilst the future is still streaming, I think.*
-- [ ] How should latency be used without turning recognition into a reaction-time
-  game? *We have a natural timer for the symbol stream 20WPM as the default, but we do need to be cognisant that "saying/repeating" is going to be naturally longer than "keying", I think.*
-- [ ] How should the app signpost readiness while preserving the learner's authority
-  to navigate? *I have experimented with a "soft" nudge in the Koch Exercises, a box appears around the next set. The nudge should probably remain the final visible signal: evidence suggests readiness to consider the next symbol. The hidden model underneath should be the burden debt profile, which shapes training without exposing a scorecard.*
-- [ ] How can progression remain useful without becoming a learner-facing scoring
-  system? *The "soft" nudge above. The learner sees a signpost, while the app quietly services burden debt through tailored exercises.*
-
----

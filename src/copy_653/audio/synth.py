@@ -252,12 +252,19 @@ def compute_timeline(symbols: list[str], params: AudioParameters) -> list[tuple[
     if not symbols:
         return []
 
-    inter_char = timing.inter_character_seconds(params)
     out: list[tuple[str, float, float]] = []
     cursor = 0.0
+    gap_index = 0
+    context = f"sequence:{''.join(symbols)}"
     for i, symbol in enumerate(symbols):
         if i > 0:
-            cursor += inter_char
+            cursor += texture.cadence_gap_seconds(
+                timing.inter_character_seconds(params),
+                params,
+                gap_index=gap_index,
+                context=context,
+            )
+            gap_index += 1
         duration = symbol_duration_seconds(symbol, params)
         out.append((symbol, cursor, cursor + duration))
         cursor += duration
@@ -272,17 +279,29 @@ def compute_word_timeline(
     if not words:
         return []
 
-    inter_char = timing.inter_character_seconds(params)
-    inter_word = timing.inter_word_seconds(params)
     out: list[tuple[str, float, float, int, str]] = []
     cursor = 0.0
+    gap_index = 0
+    context = f"words:{'|'.join(word.lower() for word in words)}"
     for word_index, word in enumerate(words, start=1):
         if word_index > 1:
-            cursor += inter_word
+            cursor += texture.cadence_gap_seconds(
+                timing.inter_word_seconds(params),
+                params,
+                gap_index=gap_index,
+                context=context,
+            )
+            gap_index += 1
         normalized_word = word.lower()
         for symbol_index, symbol in enumerate(word.upper()):
             if symbol_index > 0:
-                cursor += inter_char
+                cursor += texture.cadence_gap_seconds(
+                    timing.inter_character_seconds(params),
+                    params,
+                    gap_index=gap_index,
+                    context=context,
+                )
+                gap_index += 1
             duration = symbol_duration_seconds(symbol, params)
             out.append((symbol, cursor, cursor + duration, word_index, normalized_word))
             cursor += duration
