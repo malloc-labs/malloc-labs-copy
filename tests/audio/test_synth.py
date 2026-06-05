@@ -4,7 +4,7 @@ import math
 
 import numpy as np
 
-from copy_653.audio import synth, timing
+from copy_653.audio import synth, texture, timing
 from copy_653.audio.parameters import AudioParameters
 
 
@@ -173,13 +173,35 @@ def test_compute_timeline_inter_character_gap_with_farnsworth():
     # Farnsworth: characters render at 25 WPM, but spacing widens to
     # hit a 10 WPM effective rate. The gap between symbols 0 and 1
     # should match inter_character_seconds (which honours Farnsworth).
-    params = AudioParameters(character_speed_wpm=25, effective_speed_wpm=10)
+    params = AudioParameters(
+        character_speed_wpm=25,
+        effective_speed_wpm=10,
+        cadence_variation=0,
+    )
     timeline = synth.compute_timeline(["K", "M"], params)
     assert len(timeline) == 2
     _, _, t_off_first = timeline[0]
     _, t_on_second, _ = timeline[1]
     gap = t_on_second - t_off_first
     assert math.isclose(gap, timing.inter_character_seconds(params), abs_tol=1e-9)
+
+
+def test_compute_timeline_uses_cadence_varied_gap():
+    params = AudioParameters(
+        character_speed_wpm=20,
+        effective_speed_wpm=20,
+        cadence_variation=5,
+    )
+    timeline = synth.compute_timeline(["K", "M"], params)
+
+    gap = timeline[1][1] - timeline[0][2]
+    expected = texture.cadence_gap_seconds(
+        timing.inter_character_seconds(params),
+        params,
+        gap_index=0,
+        context="sequence:KM",
+    )
+    assert math.isclose(gap, expected, abs_tol=1e-9)
 
 
 def test_synthesize_words_separates_words_with_inter_word_silence():
@@ -202,7 +224,11 @@ def test_synthesize_words_separates_words_with_inter_word_silence():
 
 
 def test_compute_word_timeline_records_word_index_and_gap():
-    params = AudioParameters(character_speed_wpm=20, effective_speed_wpm=20)
+    params = AudioParameters(
+        character_speed_wpm=20,
+        effective_speed_wpm=20,
+        cadence_variation=0,
+    )
     timeline = synth.compute_word_timeline(["km", "u"], params)
 
     assert timeline[0][0] == "K"
@@ -216,3 +242,30 @@ def test_compute_word_timeline_records_word_index_and_gap():
     gap_between_words = timeline[2][1] - timeline[1][2]
     assert math.isclose(gap_inside_word, timing.inter_character_seconds(params), abs_tol=1e-9)
     assert math.isclose(gap_between_words, timing.inter_word_seconds(params), abs_tol=1e-9)
+
+
+def test_compute_word_timeline_uses_cadence_varied_gaps():
+    params = AudioParameters(
+        character_speed_wpm=20,
+        effective_speed_wpm=20,
+        cadence_variation=5,
+    )
+    timeline = synth.compute_word_timeline(["km", "u"], params)
+
+    gap_inside_word = timeline[1][1] - timeline[0][2]
+    gap_between_words = timeline[2][1] - timeline[1][2]
+    context = "words:km|u"
+    expected_inside = texture.cadence_gap_seconds(
+        timing.inter_character_seconds(params),
+        params,
+        gap_index=0,
+        context=context,
+    )
+    expected_between = texture.cadence_gap_seconds(
+        timing.inter_word_seconds(params),
+        params,
+        gap_index=1,
+        context=context,
+    )
+    assert math.isclose(gap_inside_word, expected_inside, abs_tol=1e-9)
+    assert math.isclose(gap_between_words, expected_between, abs_tol=1e-9)

@@ -20,6 +20,7 @@ const effectiveInput = document.getElementById("effective-wpm");
 const signalStrengthInput = document.getElementById("signal-strength");
 const signalToneInput = document.getElementById("signal-tone");
 const cadenceVariationInput = document.getElementById("cadence-variation");
+const cadenceVariationSummary = document.getElementById("cadence-variation-summary");
 const rstTableBody = document.getElementById("rst-table-body");
 const keyerModeRadios = document.querySelectorAll('input[name="keyer_mode"]');
 const keyerModeSyncButton = document.getElementById("keyer-mode-sync");
@@ -28,6 +29,7 @@ const observedDitReadoutEl = document.getElementById("observed-dit-readout");
 const lastSyncReadoutEl = document.getElementById("last-sync-readout");
 const texturePreviewButton = document.getElementById("texture-preview-toggle");
 const texturePreviewSaveButton = document.getElementById("texture-preview-save");
+const cadencePreviewButton = document.getElementById("cadence-preview-toggle");
 const saveDirectoryInput = document.getElementById("save-directory");
 const warmUpTimeoutInput = document.getElementById("warm-up-timeout");
 const saveButton = document.getElementById("save-audio-settings");
@@ -55,6 +57,7 @@ let isPlayingTestMessage = false;
 let isSavingTestMessage = false;
 let isPlayingTexturePreview = false;
 let isSavingTexturePreview = false;
+let activePreviewKind = null;
 let textureWavExport = null;
 let wavExport = null;
 
@@ -112,6 +115,7 @@ function setInputsEnabled(enabled) {
     saveTestButton.disabled = !enabled;
     texturePreviewButton.disabled = !enabled;
     texturePreviewSaveButton.disabled = !enabled;
+    cadencePreviewButton.disabled = !enabled;
 }
 
 function getKeyerMode() {
@@ -205,11 +209,18 @@ function backendPayload() {
 }
 
 function updateSummaries() {
-    const { character, effective } = currentSettings();
+    const { character, effective, cadenceVariation } = currentSettings();
     characterSummary.textContent =
         Number.isFinite(character) && character > 0 ? `${character} WPM` : "Character WPM";
     effectiveSummary.textContent =
         Number.isFinite(effective) && effective > 0 ? `${effective} WPM` : "Effective WPM";
+    if (Number.isInteger(cadenceVariation) && cadenceVariation >= 0 && cadenceVariation <= 5) {
+        const movement = (cadenceVariation * 0.6).toFixed(1);
+        cadenceVariationSummary.textContent =
+            `Selected: ${cadenceVariation} (up to +/-${movement}% gap movement).`;
+    } else {
+        cadenceVariationSummary.textContent = "Selected: -";
+    }
 }
 
 function validateSettings() {
@@ -291,6 +302,7 @@ function updateSaveState() {
 
     updateTestMessageState(validationError);
     updateTexturePreviewState(validationError);
+    updateCadencePreviewState(validationError);
     return { validationError, dirty };
 }
 
@@ -447,15 +459,20 @@ function connect() {
             setStatus("error", event.detail || "test message failed");
             updateTestMessageState();
         } else if (event.type === "texture-preview-start") {
+            if (!activePreviewKind) activePreviewKind = "texture";
             isPlayingTexturePreview = true;
             updateTexturePreviewState();
+            updateCadencePreviewState();
         } else if (event.type === "texture-preview-end") {
             isPlayingTexturePreview = false;
+            activePreviewKind = null;
             updateTexturePreviewState();
+            updateCadencePreviewState();
         } else if (event.type === "texture-preview-wav-start") {
             textureWavExport = { filename: event.filename, chunks: [] };
             isSavingTexturePreview = true;
             updateTexturePreviewState();
+            updateCadencePreviewState();
         } else if (event.type === "texture-preview-wav-chunk" && textureWavExport) {
             textureWavExport.chunks.push(event.data);
         } else if (event.type === "texture-preview-wav-end" && textureWavExport) {
@@ -463,6 +480,7 @@ function connect() {
             textureWavExport = null;
             isSavingTexturePreview = false;
             updateTexturePreviewState();
+            updateCadencePreviewState();
         } else if (
             event.type === "error" &&
             (event.reason === "invalid-texture-preview-settings" ||
@@ -471,9 +489,11 @@ function connect() {
         ) {
             isPlayingTexturePreview = false;
             isSavingTexturePreview = false;
+            activePreviewKind = null;
             textureWavExport = null;
             setStatus("error", event.detail || "texture preview failed");
             updateTexturePreviewState();
+            updateCadencePreviewState();
         }
     });
 
@@ -483,6 +503,7 @@ function connect() {
         isSavingTestMessage = false;
         isPlayingTexturePreview = false;
         isSavingTexturePreview = false;
+        activePreviewKind = null;
         textureWavExport = null;
         wavExport = null;
         setInputsEnabled(false);
@@ -492,6 +513,8 @@ function connect() {
         texturePreviewButton.textContent = "Preview";
         texturePreviewSaveButton.disabled = true;
         texturePreviewSaveButton.textContent = "Save WAV";
+        cadencePreviewButton.disabled = true;
+        cadencePreviewButton.textContent = "Preview";
         saveButton.classList.remove("btn--primary");
         setStatus("disconnected", "disconnected");
     });
@@ -502,10 +525,12 @@ function connect() {
         isSavingTestMessage = false;
         isPlayingTexturePreview = false;
         isSavingTexturePreview = false;
+        activePreviewKind = null;
         textureWavExport = null;
         setStatus("error", "connection error");
         updateTestMessageState();
         updateTexturePreviewState();
+        updateCadencePreviewState();
     });
 }
 
@@ -658,10 +683,21 @@ saveTestButton.addEventListener("click", () => {
 
 function updateTexturePreviewState(validationError = validateSettings()) {
     const ready = !validationError && socket && socket.readyState === WebSocket.OPEN;
-    texturePreviewButton.disabled = !ready || isSaving;
-    texturePreviewButton.textContent = isPlayingTexturePreview ? "Stop" : "Preview";
-    texturePreviewSaveButton.disabled = !ready || isSaving || isSavingTexturePreview;
+    const inactivePreviewRunning = isPlayingTexturePreview && activePreviewKind !== "texture";
+    texturePreviewButton.disabled = !ready || isSaving || inactivePreviewRunning;
+    texturePreviewButton.textContent =
+        isPlayingTexturePreview && activePreviewKind === "texture" ? "Stop" : "Preview";
+    texturePreviewSaveButton.disabled =
+        !ready || isSaving || isSavingTexturePreview || isPlayingTexturePreview;
     texturePreviewSaveButton.textContent = isSavingTexturePreview ? "Saving WAV" : "Save WAV";
+}
+
+function updateCadencePreviewState(validationError = validateSettings()) {
+    const ready = !validationError && socket && socket.readyState === WebSocket.OPEN;
+    const inactivePreviewRunning = isPlayingTexturePreview && activePreviewKind !== "cadence";
+    cadencePreviewButton.disabled = !ready || isSaving || inactivePreviewRunning;
+    cadencePreviewButton.textContent =
+        isPlayingTexturePreview && activePreviewKind === "cadence" ? "Stop" : "Preview";
 }
 
 function stopTexturePreview() {
@@ -685,6 +721,29 @@ texturePreviewButton.addEventListener("click", () => {
         return;
     }
 
+    activePreviewKind = "texture";
+    updateTexturePreviewState();
+    updateCadencePreviewState();
+    socket.send(JSON.stringify({ action: "play-texture-preview", ...testMessagePayload() }));
+});
+
+cadencePreviewButton.addEventListener("click", () => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
+    if (isPlayingTexturePreview) {
+        stopTexturePreview();
+        return;
+    }
+
+    const validationError = validateSettings();
+    if (validationError) {
+        setStatus("error", validationError);
+        return;
+    }
+
+    activePreviewKind = "cadence";
+    updateTexturePreviewState();
+    updateCadencePreviewState();
     socket.send(JSON.stringify({ action: "play-texture-preview", ...testMessagePayload() }));
 });
 
