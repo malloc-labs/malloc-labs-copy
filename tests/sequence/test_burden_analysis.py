@@ -162,7 +162,11 @@ def test_burden_profile_reports_low_symbol_debt_with_unknown_probe_axes():
     assert rhythm["debt"] == DEBT_UNKNOWN
     assert rhythm["response"] == "baseline_observed"
     assert "Higher rhythm variation has not been probed yet." in rhythm["evidence"][0]
-    assert profile["burdens"]["anchor"]["debt"] == DEBT_UNKNOWN
+    anchor = profile["burdens"]["anchor"]
+    assert anchor["debt"] == DEBT_UNKNOWN
+    assert anchor["confidence"] == "high"
+    assert anchor["response"] == "not_currently_used"
+    assert "context streams" in anchor["evidence"][1]
 
 
 def test_burden_profile_ignores_untagged_st_history_for_listening_conditions():

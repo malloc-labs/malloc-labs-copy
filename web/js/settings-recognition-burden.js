@@ -93,6 +93,13 @@ function formatDebt(value) {
     return "unknown";
 }
 
+function displayPracticeNeed(key, burden) {
+    if (key === "anchor" && burden?.response === "not_currently_used") {
+        return "not currently used";
+    }
+    return formatDebt(burden?.debt);
+}
+
 function formatConfidence(value) {
     if (value === "high") return "high";
     if (value === "medium") return "medium";
@@ -169,6 +176,9 @@ function rhythmResultText(burden) {
 
 function burdenResultText(key, burden) {
     if (key === "rhythm") return rhythmResultText(burden);
+    if (key === "anchor" && burden?.response === "not_currently_used") {
+        return "Not active in the current Recognition stage.";
+    }
     return "";
 }
 
@@ -189,8 +199,17 @@ function rhythmMeaningText(burden) {
     return "";
 }
 
+function anchorMeaningText(burden) {
+    if (burden?.response !== "not_currently_used") return "";
+    return (
+        "Early phonetic support is only a beginner scaffold. Later, Anchor becomes " +
+        "useful in context streams, where familiar radio structures help the learner " +
+        "stay oriented inside longer copy."
+    );
+}
+
 function appendMeaningSection(parent, key, burden) {
-    const text = key === "rhythm" ? rhythmMeaningText(burden) : "";
+    const text = key === "rhythm" ? rhythmMeaningText(burden) : anchorMeaningText(burden);
     if (!text) return;
     const section = document.createElement("section");
     section.className = "settings-recognition-burden-detail__section";
@@ -530,7 +549,7 @@ function showBurdenDetail(key, burden) {
     const metaGrid = document.createElement("dl");
     metaGrid.className = "settings-koch-detail__meta";
     const rows = [
-        ["Practice need", formatDebt(burden?.debt)],
+        ["Practice need", displayPracticeNeed(key, burden)],
         ["Result", burdenResultText(key, burden)],
         ["Confidence", formatConfidence(burden?.confidence)],
         ["Based on", evidenceCountText(burden)],
@@ -569,7 +588,7 @@ function renderBurden(key, burden) {
     });
 
     appendCell(row, "settings-koch-confusion__label", formatKey(key));
-    appendCell(row, "settings-recognition-burden__debt", formatDebt(burden?.debt));
+    appendCell(row, "settings-recognition-burden__debt", displayPracticeNeed(key, burden));
     appendCell(
         row,
         "settings-recognition-burden__confidence",
