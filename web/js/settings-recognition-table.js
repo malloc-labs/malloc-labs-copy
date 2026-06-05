@@ -503,15 +503,15 @@ function updateNavButtons() {
 
 function detailTitle(record) {
     const parts = [formatStartedAt(record.started_at)];
-    const setIndex = groupedSetIndex(record);
-    const setSession = record?.generation?.set_session ?? record?.set_session;
-    if (Number.isInteger(setIndex) && Number.isInteger(setSession)) {
-        parts.push(`Set ${setIndex}`);
-        parts.push(`Session ${setSession} of 8`);
+    const sessionIndex = groupedSetIndex(record);
+    const setIndex = record?.generation?.set_session ?? record?.set_session;
+    if (Number.isInteger(sessionIndex) && Number.isInteger(setIndex)) {
+        parts.push(`Session ${sessionIndex}`);
+        parts.push(`Set ${setIndex} of 8`);
+    } else if (Number.isInteger(sessionIndex)) {
+        parts.push(`Session ${sessionIndex}`);
     } else if (Number.isInteger(setIndex)) {
-        parts.push(`Set ${setIndex}`);
-    } else if (Number.isInteger(setSession)) {
-        parts.push(`Session ${setSession} of 8`);
+        parts.push(`Set ${setIndex} of 8`);
     }
     return parts.join(" · ");
 }
@@ -612,7 +612,7 @@ function groupBySet(records) {
     return groups;
 }
 
-function renderSetHeader(group, setIndex) {
+function renderSetHeader(group, sessionIndex) {
     const row = document.createElement("tr");
     row.className = "settings-koch-set-header";
     row.dataset.setId = group.set_id;
@@ -633,7 +633,7 @@ function renderSetHeader(group, setIndex) {
     arrow.className = "settings-koch-set-header__arrow";
     arrow.textContent = "▶";
     const label = document.createTextNode(
-        ` Set ${setIndex} · ${total} of 8${complete ? " · complete" : ""} · ${dateStr}`,
+        ` Session ${sessionIndex} · ${total} of 8 sets${complete ? " · complete" : ""} · ${dateStr}`,
     );
     cell.append(arrow, label);
     row.appendChild(cell);
@@ -668,12 +668,12 @@ function renderRows(records) {
 
     const groups = groupBySet(records);
     let globalIdx = 0;
-    let setIndex = groups.filter((group) => group.set_id).length;
+    let sessionIndex = groups.filter((group) => group.set_id).length;
 
     groups.forEach((group) => {
         if (group.set_id) {
-            tbody.appendChild(renderSetHeader(group, setIndex));
-            setIndex -= 1;
+            tbody.appendChild(renderSetHeader(group, sessionIndex));
+            sessionIndex -= 1;
         }
 
         group.records.forEach((rec) => {
