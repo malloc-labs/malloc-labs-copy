@@ -77,6 +77,8 @@ from copy_653.server.letter_playback_actions import (
 )
 from copy_653.server.recognition_actions import (
     ActiveRecognitionSession,
+    _audio_params_for_gear,
+    _audio_params_for_recognition_set,
     _coerce_recognition_diagnostic,
     _coerce_recognition_exercise_completion,
     _recognition_kind_for_gear,
@@ -446,6 +448,17 @@ async def _run_start_recognition_session(state: ConnectionState) -> None:
         if recognition is None:
             return
         state.recognition = recognition
+        floor_params = _audio_params_for_recognition_set(
+            _audio_params_for_gear(recognition.audio_params, recognition.gear),
+            set_session,
+        )
+        await supersede(state.recognition_floor_task)
+        state.recognition_floor_task = asyncio.create_task(
+            _run_recognition_receiver_bed_loop(
+                state.config_path,
+                audio_params=floor_params,
+            )
+        )
         await _run_recognition_session(recognition)
         state.recognition_session_next += 1
         if state.recognition_session_next > 8:

@@ -42,6 +42,7 @@ from copy_653.server.records import _resolve_recognition_session_gears
 from copy_653.server.wire_events import _send_event
 from copy_653.sequence.recognition_analysis import (
     analyse_recognition_exercises,
+    apply_acclimatisation_grace,
     build_recognition_generation_profile,
 )
 
@@ -57,6 +58,8 @@ LISTENING_PROBE_VERSION = "recognition-listening-conditions-v1"
 LISTENING_CONDITION_DEFAULT = "default"
 LISTENING_CONDITION_TEXTURED = "textured"
 LISTENING_TEXTURED_RST_TONE = 5
+RECOGNITION_SET_COUNT = 8
+RECOGNITION_SET_RST_TARGET = (3, 1)
 
 GAP_AFTER_SAY_SECONDS = 0.5
 GAP_BETWEEN_MORSE_REPEATS_SECONDS = 0.6
@@ -161,8 +164,12 @@ def _play_recognition_receiver_bed_loop(
         stop_event.wait()
 
 
-async def _run_recognition_receiver_bed_loop(config_path: Path) -> None:
-    params = load_audio_parameters(config_path)
+async def _run_recognition_receiver_bed_loop(
+    config_path: Path,
+    *,
+    audio_params: AudioParameters | None = None,
+) -> None:
+    params = audio_params or load_audio_parameters(config_path)
     if params.receiver_bed == 0:
         return
     stop_event = threading.Event()
@@ -281,6 +288,49 @@ def _audio_params_for_listening_condition(
     return params
 
 
+def _rst_for_recognition_set(params: AudioParameters, set_session: int) -> tuple[int, int]:
+    baseline = _rst_fields_for_audio_params(params)
+    index = max(0, min(RECOGNITION_SET_COUNT - 1, set_session - 1))
+    target_s, target_t = RECOGNITION_SET_RST_TARGET
+    progress = index / (RECOGNITION_SET_COUNT - 1)
+    s = round(baseline["s"] + ((target_s - baseline["s"]) * progress))
+    t = round(baseline["t"] + ((target_t - baseline["t"]) * progress))
+    s = max(1, min(9, s))
+    t = max(1, min(9, t))
+    return s, t
+
+
+def _audio_params_for_recognition_set(
+    params: AudioParameters,
+    set_session: int,
+) -> AudioParameters:
+    baseline = _rst_fields_for_audio_params(params)
+    s, t = _rst_for_recognition_set(params, set_session)
+    return replace(
+        params,
+        receiver_bed=(
+            params.receiver_bed
+            if s == baseline["s"]
+            else round(texture.bed_level_for_rst_strength(s))
+        ),
+        envelope_ramp_seconds=(
+            params.envelope_ramp_seconds
+            if t == baseline["t"]
+            else texture.envelope_seconds_for_rst_tone(t)
+        ),
+        tone_distortion=(
+            params.tone_distortion
+            if t == baseline["t"]
+            else max(params.tone_distortion, texture.distortion_for_rst_tone(t))
+        ),
+        tone_ripple=(
+            params.tone_ripple
+            if t == baseline["t"]
+            else max(params.tone_ripple, texture.ripple_for_rst_tone(t))
+        ),
+    )
+
+
 def _recognition_answer_matches_target(answer: str, target: str) -> bool:
     return _compact_symbols(answer) == _compact_symbols(target)
 
@@ -290,6 +340,13 @@ def _compact_symbols(value: str) -> str:
 
 
 async def _run_recognition_session(session: ActiveRecognitionSession) -> Path | None:
+    base_audio_params = _audio_params_for_gear(session.audio_params, session.gear)
+    session_audio_params = _audio_params_for_recognition_set(
+        base_audio_params,
+        session.set_session,
+    )
+    session_s, session_t = _rst_for_recognition_set(base_audio_params, session.set_session)
+    listening_condition = _listening_condition_for_session(session.set_session)
     await _send_event(
         session.ws,
         {
@@ -300,17 +357,14 @@ async def _run_recognition_session(session: ActiveRecognitionSession) -> Path | 
             "set_session": session.set_session,
             "gear": session.gear,
             "recognition_kind": _recognition_kind_for_gear(session.gear),
-            "listening_condition": _listening_condition_for_session(session.set_session),
+            "listening_condition": listening_condition,
+            "s": session_s,
+            "t": session_t,
         },
     )
 
     try:
         next_exercise: list[str] | None = None
-        listening_condition = _listening_condition_for_session(session.set_session)
-        session_audio_params = _audio_params_for_listening_condition(
-            _audio_params_for_gear(session.audio_params, session.gear),
-            listening_condition,
-        )
         for ex_idx in range(1, EXERCISE_COUNT + 1):
             if ex_idx > 1:
                 await asyncio.sleep(GAP_BETWEEN_EXERCISES_SECONDS)
@@ -361,6 +415,10 @@ async def _run_recognition_session(session: ActiveRecognitionSession) -> Path | 
             next_exercise = None if _recognition_answer_matches_target(answer, target) else exercise
 
         await asyncio.sleep(DIAGNOSTIC_TAIL_AFTER_FINAL_COMPLETION_SECONDS)
+        session.exercises = apply_acclimatisation_grace(
+            session.exercises,
+            set_session=session.set_session,
+        )
 
         generation = build_recognition_generation_profile(
             claimed_set=session.claimed,
@@ -382,6 +440,14 @@ async def _run_recognition_session(session: ActiveRecognitionSession) -> Path | 
                     "conditions": [
                         LISTENING_CONDITION_DEFAULT,
                         LISTENING_CONDITION_TEXTURED,
+                    ],
+                    "set_conditions": [
+                        {
+                            "set": idx,
+                            "s": _rst_for_recognition_set(base_audio_params, idx)[0],
+                            "t": _rst_for_recognition_set(base_audio_params, idx)[1],
+                        }
+                        for idx in range(1, RECOGNITION_SET_COUNT + 1)
                     ],
                 },
             }

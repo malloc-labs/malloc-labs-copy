@@ -212,6 +212,46 @@ def analyse_recognition_exercises(
     return updated
 
 
+def apply_acclimatisation_grace(
+    exercises: list[dict[str, Any]],
+    *,
+    set_session: int,
+) -> list[dict[str, Any]]:
+    """Soft-mark first-exercise misses after recognition condition changes.
+
+    Sets 3-8 introduce the meaningful S/T difficulty ramp. The first
+    exercise in those sets is the learner settling their ear into the
+    changed listening condition; if the same target is repeated and then
+    copied exactly, keep the honest miss but exclude it from set-level
+    progression pressure.
+    """
+    updated = [dict(exercise) for exercise in exercises]
+    if set_session < 3 or not updated:
+        return updated
+    first = updated[0]
+    if not _exercise_index_is(first, 1):
+        return updated
+    first_analysis = first.get("analysis")
+    if not isinstance(first_analysis, dict) or _analysis_is_exact(first_analysis):
+        return updated
+    second = _exercise_by_index(updated, 2)
+    if second is None:
+        return updated
+    second_analysis = second.get("analysis")
+    if not isinstance(second_analysis, dict) or not _analysis_is_exact(second_analysis):
+        return updated
+    if _target_key(first) != _target_key(second):
+        return updated
+
+    softened = dict(first_analysis)
+    softened["acclimatisation_grace"] = True
+    softened["evidence_weight"] = "soft"
+    softened["progression_excluded"] = True
+    first["analysis"] = softened
+    updated[0] = first
+    return updated
+
+
 def recognition_review_analysis(exercise: dict[str, Any]) -> dict[str, Any]:
     """Return a settings-only analysis view with recovered errors softened.
 
@@ -1209,6 +1249,9 @@ def _set_fraction(records: list[dict[str, Any]], *, set_size: int) -> float | No
             analysis = exercise.get("analysis")
             if not isinstance(analysis, dict):
                 continue
+            if _exercise_has_acclimatisation_grace(exercise, exercises, session):
+                record_has_analysis = True
+                continue
             fraction = analysis.get("combined_fraction")
             if isinstance(fraction, (int, float)) and not isinstance(fraction, bool):
                 fractions.append(float(fraction))
@@ -1220,6 +1263,46 @@ def _set_fraction(records: list[dict[str, Any]], *, set_size: int) -> float | No
     if not fractions:
         return None
     return _fraction(sum(fractions), len(fractions))
+
+
+def _exercise_has_acclimatisation_grace(
+    exercise: dict[str, Any],
+    exercises: list[Any],
+    set_session: int | None,
+) -> bool:
+    analysis = exercise.get("analysis")
+    if not isinstance(analysis, dict):
+        return False
+    if analysis.get("acclimatisation_grace") is True:
+        return True
+    if set_session is None or set_session < 3:
+        return False
+    if not _exercise_index_is(exercise, 1) or _analysis_is_exact(analysis):
+        return False
+    second = _exercise_by_index(exercises, 2)
+    if second is None:
+        return False
+    second_analysis = second.get("analysis")
+    if not isinstance(second_analysis, dict) or not _analysis_is_exact(second_analysis):
+        return False
+    return _target_key(exercise) == _target_key(second)
+
+
+def _exercise_by_index(exercises: list[Any], index: int) -> dict[str, Any] | None:
+    for exercise in exercises:
+        if isinstance(exercise, dict) and _exercise_index_is(exercise, index):
+            return exercise
+    return None
+
+
+def _exercise_index_is(exercise: dict[str, Any], index: int) -> bool:
+    value = exercise.get("index")
+    return isinstance(value, int) and not isinstance(value, bool) and value == index
+
+
+def _target_key(exercise: dict[str, Any]) -> str:
+    target = exercise.get("target")
+    return "".join(_compact_symbol_string(target)) if isinstance(target, str) else ""
 
 
 def _record_set_id(record: dict[str, Any]) -> str | None:

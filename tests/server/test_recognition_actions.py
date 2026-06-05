@@ -8,6 +8,7 @@ from copy_653.server.recognition_actions import (
     ActiveRecognitionSession,
     _audio_params_for_gear,
     _audio_params_for_listening_condition,
+    _audio_params_for_recognition_set,
     _coerce_recognition_diagnostic,
     _coerce_recognition_exercise_completion,
     _generate_recognition_exercise,
@@ -18,6 +19,7 @@ from copy_653.server.recognition_actions import (
     _run_recognition_session,
     _recognition_answer_matches_target,
     _recognition_kind_for_gear,
+    _rst_for_recognition_set,
     _rst_fields_for_audio_params,
     _say_after_for_slot,
 )
@@ -124,6 +126,41 @@ def test_recognition_listening_condition_is_session_level():
     assert _listening_condition_for_session(1) == "default"
     assert _listening_condition_for_session(2) == "textured"
     assert _listening_condition_for_session(3) == "default"
+
+
+def test_recognition_set_rst_ramp_degrades_from_configured_baseline():
+    params = AudioParameters(receiver_bed=2, envelope_ramp_seconds=0.007)
+
+    assert [_rst_for_recognition_set(params, idx) for idx in range(1, 9)] == [
+        (7, 3),
+        (6, 3),
+        (6, 2),
+        (5, 2),
+        (5, 2),
+        (4, 2),
+        (4, 1),
+        (3, 1),
+    ]
+
+
+def test_recognition_set_rst_ramp_updates_effective_audio_params():
+    params = _audio_params_for_recognition_set(
+        AudioParameters(receiver_bed=2, envelope_ramp_seconds=0.007),
+        8,
+    )
+
+    assert _rst_fields_for_audio_params(params) == {"s": 3, "t": 1}
+
+
+def test_recognition_set_one_preserves_configured_audio_params():
+    base = AudioParameters(
+        receiver_bed=2,
+        envelope_ramp_seconds=0.007,
+        tone_distortion=0.0,
+        tone_ripple=0.0,
+    )
+
+    assert _audio_params_for_recognition_set(base, 1) == base
 
 
 def test_default_recognition_probe_keeps_configured_texture():
@@ -416,3 +453,5 @@ def test_recognition_session_start_announces_gear_and_kind(tmp_path, monkeypatch
     assert ws.events[0]["gear"] == 1
     assert ws.events[0]["recognition_kind"] == "pairs"
     assert ws.events[0]["listening_condition"] == "default"
+    assert ws.events[0]["s"] == 7
+    assert ws.events[0]["t"] == 3
