@@ -427,15 +427,15 @@ function updateNavButtons() {
 
 function detailTitle(record) {
     const parts = [formatStartedAt(record.started_at)];
-    const setIndex = groupedSetIndex(record);
-    const setSession = record?.generation?.set_session ?? record?.set_session;
-    if (Number.isInteger(setIndex) && Number.isInteger(setSession)) {
-        parts.push(`Set ${setIndex}`);
-        parts.push(`Session ${setSession} of ${SET_SIZE}`);
+    const sessionIndex = groupedSetIndex(record);
+    const setIndex = record?.generation?.set_session ?? record?.set_session;
+    if (Number.isInteger(sessionIndex) && Number.isInteger(setIndex)) {
+        parts.push(`Session ${sessionIndex}`);
+        parts.push(`Set ${setIndex} of ${SET_SIZE}`);
+    } else if (Number.isInteger(sessionIndex)) {
+        parts.push(`Session ${sessionIndex}`);
     } else if (Number.isInteger(setIndex)) {
-        parts.push(`Set ${setIndex}`);
-    } else if (Number.isInteger(setSession)) {
-        parts.push(`Session ${setSession} of ${SET_SIZE}`);
+        parts.push(`Set ${setIndex} of ${SET_SIZE}`);
     }
     return parts.join(" · ");
 }
@@ -444,10 +444,10 @@ function groupedSetIndex(record) {
     const setId = record?.generation?.set_id ?? record?.set_id;
     if (!setId) return null;
     const groups = groupBySet(currentRecords).filter((group) => group.set_id);
-    let setIndex = groups.length;
+    let sessionIndex = groups.length;
     for (const group of groups) {
-        if (group.set_id === setId) return setIndex;
-        setIndex -= 1;
+        if (group.set_id === setId) return sessionIndex;
+        sessionIndex -= 1;
     }
     return null;
 }
@@ -580,7 +580,7 @@ function groupBySet(records) {
     return groups;
 }
 
-function renderSetHeader(group, setIndex) {
+function renderSetHeader(group, sessionIndex) {
     const tr = document.createElement("tr");
     tr.className = "settings-koch-set-header";
     tr.dataset.setId = group.set_id;
@@ -603,7 +603,7 @@ function renderSetHeader(group, setIndex) {
     arrow.className = "settings-koch-set-header__arrow";
     arrow.textContent = "▶";
     const label = document.createTextNode(
-        ` Set ${setIndex} · ${total} of ${SET_SIZE}${complete ? " · complete" : ""} · ${dateStr}`,
+        ` Session ${sessionIndex} · ${total} of ${SET_SIZE} sets${complete ? " · complete" : ""} · ${dateStr}`,
     );
     cell.append(arrow, label);
     tr.appendChild(cell);
@@ -636,12 +636,12 @@ function renderRows(records) {
 
     const groups = groupBySet(records);
     let globalIdx = 0;
-    let setIndex = groups.filter((g) => g.set_id).length;
+    let sessionIndex = groups.filter((g) => g.set_id).length;
 
     groups.forEach((group) => {
         if (group.set_id) {
-            tbody.appendChild(renderSetHeader(group, setIndex));
-            setIndex -= 1;
+            tbody.appendChild(renderSetHeader(group, sessionIndex));
+            sessionIndex -= 1;
         }
 
         group.records.forEach((rec) => {
