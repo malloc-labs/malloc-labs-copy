@@ -11,6 +11,9 @@ const tbody = document.getElementById("settings-recognition-burden-tbody");
 const detailDialog = document.getElementById("settings-recognition-burden-dialog");
 const detailTitle = document.getElementById("settings-recognition-burden-dialog-title");
 const detailBody = document.getElementById("settings-recognition-burden-dialog-body");
+const timeRoot = document.getElementById("settings-recognition-estimated-time");
+const timeMeta = document.getElementById("settings-recognition-estimated-time-meta");
+const timeTbody = document.getElementById("settings-recognition-estimated-time-tbody");
 
 const BURDEN_LABELS = {
     symbol_inventory: "Symbols",
@@ -30,6 +33,13 @@ const BURDEN_ORDER = [
     "rhythm",
     "anchor",
     "practice_transfer",
+];
+
+const KOCH_ORDER = [
+    "K", "M", "U", "R", "E", "S", "N", "A", "P", "T",
+    "L", "W", "I", ".", "J", "Z", "=", "F", "O", "Y",
+    ",", "V", "G", "5", "/", "Q", "9", "2", "H", "3",
+    "8", "B", "?", "4", "7", "C", "1", "D", "6", "0", "X",
 ];
 
 const PROFILE_TOOLTIPS = {
@@ -60,6 +70,12 @@ const MIXUP_TOOLTIPS = {
     Target: "The character that was played.",
     "Read as": "The character you answered with instead.",
     Count: "How many times this mix-up has appeared.",
+};
+
+const ESTIMATE_TOOLTIPS = {
+    Current: "The current state or next learning step.",
+    Details: "The current score or estimated time left.",
+    "Total time": "Total saved Recognition time if the estimate holds.",
 };
 
 function formatKey(value) {
@@ -115,6 +131,8 @@ function addTooltip(element, text) {
 function renderHeaders() {
     const headers = root?.querySelectorAll("th") || [];
     headers.forEach((header) => addTooltip(header, PROFILE_TOOLTIPS[header.textContent]));
+    const estimateHeaders = timeRoot?.querySelectorAll("th") || [];
+    estimateHeaders.forEach((header) => addTooltip(header, ESTIMATE_TOOLTIPS[header.textContent]));
 }
 
 function appendEvidenceList(parent, burden) {
@@ -296,6 +314,121 @@ function formatDate(value) {
     return date.toLocaleDateString();
 }
 
+function formatDuration(seconds) {
+    const numeric = Number(seconds);
+    if (!Number.isFinite(numeric) || numeric < 0) return "-";
+    const totalMinutes = Math.round(numeric / 60);
+    if (totalMinutes < 60) return `${totalMinutes}m`;
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (minutes === 0) return `${hours}h`;
+    return `${hours}h ${minutes}m`;
+}
+
+function formatSessions(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) return "-";
+    const rounded = Math.round(numeric);
+    return rounded === 1 ? "1 session" : `${rounded} sessions`;
+}
+
+function formatDurationRange(low, high) {
+    const lowText = formatDuration(low);
+    const highText = formatDuration(high);
+    if (lowText === "-" && highText === "-") return "-";
+    if (lowText === highText || highText === "-") return lowText;
+    if (lowText === "-") return highText;
+    return `${lowText}-${highText}`;
+}
+
+function prefixAbout(value) {
+    if (!value || value === "-") return value;
+    return `about ${value}`;
+}
+
+function formatSessionRange(low, high) {
+    const lowNumber = Number(low);
+    const highNumber = Number(high);
+    if (!Number.isFinite(lowNumber) || !Number.isFinite(highNumber)) return "-";
+    if (Math.round(lowNumber) === Math.round(highNumber)) return formatSessions(lowNumber);
+    return `${Math.round(lowNumber)}-${Math.round(highNumber)} sessions`;
+}
+
+function estimateByKey(estimatedTime, key) {
+    const estimates = Array.isArray(estimatedTime?.estimates) ? estimatedTime.estimates : [];
+    return estimates.find((estimate) => estimate?.key === key) || null;
+}
+
+function nextKochAfter(claimedSetKey) {
+    const claimed = new Set(String(claimedSetKey || "").split(/\s+/).filter(Boolean));
+    return KOCH_ORDER.find((symbol) => !claimed.has(symbol)) || null;
+}
+
+function estimateDetail(estimate) {
+    if (!estimate || estimate.status === "not_trending") {
+        return "not clear yet";
+    }
+    if (estimate.status === "already_met") return "already there";
+    return `${prefixAbout(formatDuration(estimate.seconds))} more`;
+}
+
+function estimateRangeDetail(estimate) {
+    if (!estimate || estimate.status === "not_trending") {
+        return "not clear yet";
+    }
+    const duration = formatDuration(estimate.seconds_high);
+    return `${prefixAbout(duration)} more`;
+}
+
+function appendEstimateRow(label, estimateText, totalText, detail = "") {
+    const row = document.createElement("tr");
+    appendCell(row, "settings-koch-confusion__label", label);
+    appendCell(row, "settings-recognition-estimated-time__estimate", estimateText);
+    appendCell(row, "settings-recognition-estimated-time__total", totalText);
+    if (detail) row.title = detail;
+    timeTbody.appendChild(row);
+}
+
+function renderEstimatedTime(estimatedTime, claimedSetKey = "") {
+    if (!timeRoot || !timeMeta || !timeTbody) return;
+    timeTbody.replaceChildren();
+    const current = estimatedTime?.current || {};
+    const pace = estimatedTime?.pace || {};
+    if (Number(current.sessions || 0) <= 0 || Number(current.practice_seconds || 0) <= 0) {
+        timeRoot.hidden = true;
+        return;
+    }
+
+    const aggregate = estimateByKey(estimatedTime, "aggregate_90_recent");
+    const symbolsRange = estimateByKey(estimatedTime, "claimed_symbols_90_settled_range");
+    const nextSymbol = estimatedTime?.next_symbol || nextKochAfter(claimedSetKey) || "-";
+
+    const currentFraction = formatPercent(current.fraction);
+    const paceText = formatDuration(pace.seconds_per_session);
+    timeMeta.textContent =
+        `You have ${formatDuration(current.practice_seconds)} saved across ${current.sessions} ` +
+        `sessions. Recent sessions are taking about ${paceText}.`;
+
+    appendEstimateRow(
+        "Where am I now?",
+        `${currentFraction} overall`,
+        formatDuration(current.practice_seconds),
+    );
+    appendEstimateRow(
+        "Estimated time to 90%",
+        estimateDetail(aggregate),
+        formatDuration(aggregate?.total_seconds),
+        "Uses the recent Recognition accuracy as the future accuracy estimate.",
+    );
+    appendEstimateRow(
+        `Next symbol: ${nextSymbol}`,
+        estimateRangeDetail(symbolsRange),
+        formatDuration(symbolsRange?.total_seconds_high),
+        "Estimated time before all current claimed symbols are settled enough to add the next symbol.",
+    );
+    timeRoot.hidden = false;
+}
+
 function showBurdenDetail(key, burden) {
     if (!detailDialog || !detailTitle || !detailBody) return;
     detailTitle.textContent = `${formatKey(key)} practice need`;
@@ -358,6 +491,7 @@ function renderProfile(profile) {
 
     if (!keys.length || Number(profile?.records_used || 0) <= 0) {
         root.hidden = true;
+        renderEstimatedTime(null);
         return;
     }
 
@@ -371,6 +505,7 @@ function renderProfile(profile) {
         `${windowSize}-record window`;
 
     keys.forEach((key) => renderBurden(key, burdens[key]));
+    renderEstimatedTime(profile.estimated_time, profile.claimed_set_key);
     root.hidden = false;
 }
 
@@ -383,6 +518,7 @@ async function loadBurdenProfile() {
     } catch {
         tbody.replaceChildren();
         root.hidden = true;
+        renderEstimatedTime(null);
     }
 }
 

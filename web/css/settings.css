@@ -1089,6 +1089,31 @@
     color: var(--mr-muted);
 }
 
+.settings-recognition-estimated-time__table th:nth-child(1),
+.settings-recognition-estimated-time__table td:nth-child(1) {
+    width: 46%;
+}
+
+.settings-recognition-estimated-time__table th:nth-child(2),
+.settings-recognition-estimated-time__table td:nth-child(2) {
+    width: 34%;
+}
+
+.settings-recognition-estimated-time__table th:nth-child(3),
+.settings-recognition-estimated-time__table td:nth-child(3) {
+    width: 20%;
+}
+
+.settings-recognition-estimated-time__estimate,
+.settings-recognition-estimated-time__total {
+    font-weight: 600;
+    white-space: normal;
+}
+
+.settings-recognition-estimated-time__total {
+    color: var(--mr-muted);
+}
+
 .settings-koch-attention-dialog {
     width: min(96vw, 640px);
     max-height: min(86vh, 720px);

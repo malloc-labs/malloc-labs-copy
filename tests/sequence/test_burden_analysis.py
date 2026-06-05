@@ -79,6 +79,19 @@ def _record(started_at: str, *exercises: dict, claimed_set_key: str = "K M R U")
     }
 
 
+def _timed_record(
+    minute: int,
+    *exercises: dict,
+    claimed_set_key: str = "K M R U",
+    duration_seconds: int = 48,
+) -> dict:
+    started = f"2026-06-01T12:{minute:02d}:00Z"
+    ended = f"2026-06-01T12:{minute:02d}:{duration_seconds:02d}Z"
+    record = _record(started, *exercises, claimed_set_key=claimed_set_key)
+    record["ended_at"] = ended
+    return record
+
+
 def _tag_listening_probe(record: dict, conditions: list[str]) -> dict:
     record["generation"]["listening_probe"] = {
         "version": "recognition-listening-conditions-v1",
@@ -377,6 +390,63 @@ def test_burden_profile_default_window_is_longer_than_progression_window():
 
     assert profile["window_size"] == DEFAULT_RECOGNITION_BURDEN_WINDOW_SIZE
     assert profile["records_used"] == DEFAULT_RECOGNITION_BURDEN_WINDOW_SIZE
+
+
+def test_recognition_burden_profile_estimates_time_to_targets():
+    records = []
+    for minute in range(10):
+        slots = [
+            _slot("K", OUTCOME_SUBSTITUTION),
+            _slot("M"),
+            _slot("R"),
+            _slot("U"),
+        ]
+        records.append(
+            _timed_record(
+                minute,
+                _exercise(gear=0, fraction=0.75, slots=slots),
+                duration_seconds=48,
+            )
+        )
+    for minute in range(10, 30):
+        slots = [
+            _slot("K", OUTCOME_SUBSTITUTION if minute < 13 else OUTCOME_CORRECT),
+            _slot("M"),
+            _slot("R", OUTCOME_SUBSTITUTION if minute < 12 else OUTCOME_CORRECT),
+            _slot("U"),
+        ]
+        records.append(
+            _timed_record(
+                minute,
+                _exercise(gear=0, fraction=0.875, slots=slots),
+                duration_seconds=48,
+            )
+        )
+
+    profile = load_recognition_burden_profile(
+        records,
+        claimed_set_key="K M R U",
+        window_size=20,
+    )
+
+    estimate = profile["estimated_time"]
+    assert estimate["version"] == "recognition-estimated-time-v1"
+    assert estimate["next_symbol"] == "E"
+    assert estimate["current"]["sessions"] == 30
+    assert estimate["current"]["practice_seconds"] == 1440
+    assert estimate["current"]["correct"] == 105
+    assert estimate["current"]["total"] == 120
+    assert estimate["pace"]["seconds_per_session"] == 48
+    assert estimate["pace"]["slots_per_session"] == 4
+
+    estimates = {row["key"]: row for row in estimate["estimates"]}
+    assert estimates["aggregate_90_recent"]["status"] == "estimated"
+    assert estimates["aggregate_90_recent"]["sessions"] == 20
+    assert estimates["aggregate_90_recent"]["total_seconds"] == 2400
+    assert estimates["claimed_symbols_90_best"]["blocking_symbol"] == "K"
+    assert estimates["claimed_symbols_90_best"]["sessions"] == 100
+    assert estimates["claimed_symbols_90_settled_range"]["sessions_low"] == 125
+    assert estimates["claimed_symbols_90_settled_range"]["sessions_high"] == 167
 
 
 def _koch_exercise(
