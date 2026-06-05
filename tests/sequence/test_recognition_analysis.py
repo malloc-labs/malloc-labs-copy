@@ -9,6 +9,7 @@ from copy_653.sequence.recognition_analysis import (
     OUTCOME_MISS,
     OUTCOME_SUBSTITUTION,
     REVIEW_ANALYSIS_VERSION,
+    apply_acclimatisation_grace,
     attach_recognition_review_analysis,
     analyse_recognition_exercises,
     build_recognition_generation_profile,
@@ -871,6 +872,61 @@ def _recognition_set_record(
     }
 
 
+def test_acclimatisation_grace_marks_set_three_first_retry_recovery():
+    exercises = [
+        {
+            "index": 1,
+            "target": "KM UR",
+            "analysis": {
+                "has_evidence": True,
+                "combined_fraction": 0.25,
+                "recognition_state": "low",
+            },
+        },
+        {
+            "index": 2,
+            "target": "KM UR",
+            "analysis": {
+                "has_evidence": True,
+                "combined_fraction": 1.0,
+                "recognition_state": "exact",
+            },
+        },
+    ]
+
+    result = apply_acclimatisation_grace(exercises, set_session=3)
+
+    assert result[0]["analysis"]["acclimatisation_grace"] is True
+    assert result[0]["analysis"]["evidence_weight"] == "soft"
+    assert result[0]["analysis"]["progression_excluded"] is True
+    assert result[0]["analysis"]["combined_fraction"] == 0.25
+
+
+def test_acclimatisation_grace_does_not_mark_set_two():
+    exercises = [
+        {
+            "index": 1,
+            "target": "KM UR",
+            "analysis": {"combined_fraction": 0.25, "recognition_state": "low"},
+        },
+        {
+            "index": 2,
+            "target": "KM UR",
+            "analysis": {"combined_fraction": 1.0, "recognition_state": "exact"},
+        },
+    ]
+
+    assert (
+        "acclimatisation_grace"
+        not in apply_acclimatisation_grace(
+            exercises,
+            set_session=2,
+        )[
+            0
+        ]["analysis"]
+    )
+
+
 def test_recognition_set_evidence_advances_after_completed_strong_set():
     records = [
         _recognition_set_record(set_id="set-a", set_session=session, gear=0, fraction=1.0)
@@ -910,6 +966,26 @@ def test_recognition_set_evidence_counts_silent_sessions_against_progression():
     assert evidence["recent_fractions"] == [0.875]
     assert evidence["strong_streak"] == 0
     assert resolve_set_gear(evidence, current_gear=1) == 1
+
+
+def test_recognition_set_evidence_softens_first_exercise_acclimatisation_recovery():
+    records = [
+        _recognition_set_record(set_id="set-a", set_session=session, gear=1, fraction=1.0)
+        for session in range(1, 9)
+    ]
+    for record in records:
+        for exercise in record["exercises"]:
+            exercise["target"] = "KM UR"
+    session_three = records[2]
+    session_three["exercises"][0]["analysis"]["combined_fraction"] = 0.25
+    session_three["exercises"][0]["analysis"]["recognition_state"] = "low"
+    session_three["exercises"][1]["analysis"]["combined_fraction"] = 1.0
+    session_three["exercises"][1]["analysis"]["recognition_state"] = "exact"
+
+    evidence = load_set_evidence(records, claimed_set_key="K M")
+
+    assert evidence["recent_fractions"] == [1.0]
+    assert evidence["strong_streak"] == 1
 
 
 def test_recognition_set_gear_holds_after_one_low_set():
