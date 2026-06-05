@@ -1227,7 +1227,7 @@ Current Recognition Practice Needs align to the method as follows:
 | Unit length | Unit length | Whether the learner is carrying grouped units such as pairs or short word-like units, not only identifying isolated symbols. |
 | Confusions | Confusion pressure | Whether specific sound shapes are attracting one another through committed substitutions or caught self-corrections. |
 | Listening conditions | Signal condition | Whether recognition holds when the receiver bed or related listening condition changes under controlled evidence. |
-| Rhythm | Rhythm condition | Whether recognition survives cadence variation. This remains unknown until cadence-varied Recognition probes exist. |
+| Rhythm | Rhythm condition | Whether recognition survives cadence variation. Ordinary Recognition history can seed a baseline, but only cadence-varied Recognition probes move this from baseline observed to measured debt. |
 | Anchor | Anchor support | Whether recognition survives reduced or removed spoken confirmation. This remains unknown until anchor contrast probes exist. |
 | Practice transfer | Practice transfer | Whether Symbol Recognition stability carries into Koch Exercise stream practice. This remains unknown until the two modes are linked analytically. |
 
@@ -1250,9 +1250,12 @@ the listening act.
 
 Listening conditions, Rhythm, Anchor, and Practice transfer should stay
 conservative. They should not be marked as low debt simply because normal
-Recognition sessions do not test them. They become knowable only through
-controlled probes or comparable contrast evidence where one burden changes and
-the rest of the environment remains stable.
+Recognition sessions do not test them. Rhythm is the partial exception:
+ordinary Recognition sessions can establish a stable baseline at the configured
+cadence variation, but that is still not proof of higher-variation tolerance.
+These areas become knowable only through controlled probes or comparable
+contrast evidence where one burden changes and the rest of the environment
+remains stable.
 
 The Estimated Time in Session section is related but separate. It is a
 learner-facing estimate based on saved Recognition time and current performance.
@@ -1282,9 +1285,10 @@ Examples:
 ```text
 Cadence Probe
   Purpose: sample rhythm debt
-  Shape: 2 exercises
-  Change: high cadence variation
+  Shape: 1-2 tagged exercises across otherwise normal Recognition sessions
+  Change: cadence variation +1 from the configured baseline
   Constraint: keep claimed set, unit length, signal, and anchor support stable
+  Timing: avoid the first exercise after a major set-condition change
 
 Anchor Probe
   Purpose: sample anchor debt

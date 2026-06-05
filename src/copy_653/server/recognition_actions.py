@@ -60,6 +60,8 @@ LISTENING_CONDITION_TEXTURED = "textured"
 LISTENING_TEXTURED_RST_TONE = 5
 RECOGNITION_SET_COUNT = 8
 RECOGNITION_SET_RST_TARGET = (3, 1)
+RHYTHM_PROBE_VERSION = "recognition-rhythm-v1"
+RHYTHM_PROBE_EXERCISE_INDEX = 3
 
 GAP_AFTER_SAY_SECONDS = 0.5
 GAP_BETWEEN_MORSE_REPEATS_SECONDS = 0.6
@@ -331,6 +333,32 @@ def _audio_params_for_recognition_set(
     )
 
 
+def _rhythm_probe_level(params: AudioParameters) -> int:
+    return min(texture.MAX_CADENCE_VARIATION, params.cadence_variation + 1)
+
+
+def _is_rhythm_probe_exercise(set_session: int, exercise_index: int) -> bool:
+    if exercise_index != RHYTHM_PROBE_EXERCISE_INDEX:
+        return False
+    return set_session >= 1
+
+
+def _should_run_rhythm_probe(
+    *,
+    set_session: int,
+    exercise_index: int,
+    is_retry: bool,
+) -> bool:
+    return not is_retry and _is_rhythm_probe_exercise(set_session, exercise_index)
+
+
+def _audio_params_for_rhythm_probe(params: AudioParameters) -> AudioParameters:
+    probe_level = _rhythm_probe_level(params)
+    if probe_level == params.cadence_variation:
+        return params
+    return replace(params, cadence_variation=probe_level)
+
+
 def _recognition_answer_matches_target(answer: str, target: str) -> bool:
     return _compact_symbols(answer) == _compact_symbols(target)
 
@@ -369,17 +397,28 @@ async def _run_recognition_session(session: ActiveRecognitionSession) -> Path | 
             if ex_idx > 1:
                 await asyncio.sleep(GAP_BETWEEN_EXERCISES_SECONDS)
 
+            is_retry = next_exercise is not None
             exercise = next_exercise or _generate_recognition_exercise(
                 session.claimed,
                 gear=session.gear,
                 rng=session.rng,
             )
+            exercise_audio_params = (
+                _audio_params_for_rhythm_probe(session_audio_params)
+                if _should_run_rhythm_probe(
+                    set_session=session.set_session,
+                    exercise_index=ex_idx,
+                    is_retry=is_retry,
+                )
+                else session_audio_params
+            )
             exercise_entry = _recognition_exercise_entry(
                 ex_idx,
                 exercise,
                 session.gear,
-                audio_params=session_audio_params,
+                audio_params=exercise_audio_params,
                 listening_condition=listening_condition,
+                baseline_cadence_variation=session_audio_params.cadence_variation,
             )
             session.exercises.append(exercise_entry)
             await _send_event(
@@ -394,7 +433,7 @@ async def _run_recognition_session(session: ActiveRecognitionSession) -> Path | 
                 session,
                 exercise=exercise,
                 exercise_index=ex_idx,
-                audio_params=session_audio_params,
+                audio_params=exercise_audio_params,
             )
             await _send_event(
                 session.ws,
@@ -450,6 +489,12 @@ async def _run_recognition_session(session: ActiveRecognitionSession) -> Path | 
                         for idx in range(1, RECOGNITION_SET_COUNT + 1)
                     ],
                 },
+                "rhythm_probe": {
+                    "version": RHYTHM_PROBE_VERSION,
+                    "baseline_cadence_variation": session_audio_params.cadence_variation,
+                    "probe_cadence_variation": _rhythm_probe_level(session_audio_params),
+                    "exercise_index": RHYTHM_PROBE_EXERCISE_INDEX,
+                },
             }
         )
 
@@ -483,6 +528,7 @@ def _recognition_exercise_entry(
     *,
     audio_params: AudioParameters | None = None,
     listening_condition: str | None = None,
+    baseline_cadence_variation: int | None = None,
 ) -> dict[str, Any]:
     entry = {
         "index": index,
@@ -496,6 +542,14 @@ def _recognition_exercise_entry(
     if listening_condition:
         entry["listening_probe"] = LISTENING_PROBE_VERSION
         entry["listening_condition"] = listening_condition
+    if (
+        audio_params is not None
+        and baseline_cadence_variation is not None
+        and audio_params.cadence_variation != baseline_cadence_variation
+    ):
+        entry["rhythm_probe"] = RHYTHM_PROBE_VERSION
+        entry["baseline_cadence_variation"] = baseline_cadence_variation
+        entry["cadence_variation"] = audio_params.cadence_variation
     return entry
 
 

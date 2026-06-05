@@ -31,6 +31,7 @@ def _slot(truth: str, outcome: str = OUTCOME_CORRECT) -> dict:
 
 def _exercise(
     *,
+    index: int = 1,
     gear: int,
     fraction: float,
     slots: list[dict],
@@ -38,7 +39,7 @@ def _exercise(
     caught=(),
 ) -> dict:
     return {
-        "index": 1,
+        "index": index,
         "gear": gear,
         "analysis": {
             "saved": True,
@@ -105,6 +106,22 @@ def _tag_listening_probe(record: dict, conditions: list[str]) -> dict:
     return record
 
 
+def _tag_rhythm_probe(record: dict, probe_indexes: set[int], *, baseline: int = 1) -> dict:
+    record["audio"] = {"cadence_variation": baseline}
+    record["generation"]["rhythm_probe"] = {
+        "version": "recognition-rhythm-v1",
+        "baseline_cadence_variation": baseline,
+        "probe_cadence_variation": baseline + 1,
+        "exercise_index": 3,
+    }
+    for exercise in record["exercises"]:
+        if exercise["index"] in probe_indexes:
+            exercise["rhythm_probe"] = "recognition-rhythm-v1"
+            exercise["baseline_cadence_variation"] = baseline
+            exercise["cadence_variation"] = baseline + 1
+    return record
+
+
 def test_burden_profile_reports_low_symbol_debt_with_unknown_probe_axes():
     records = [
         _record(
@@ -141,7 +158,10 @@ def test_burden_profile_reports_low_symbol_debt_with_unknown_probe_axes():
         "U": "stable",
     }
     assert profile["burdens"]["signal"]["debt"] == DEBT_UNKNOWN
-    assert profile["burdens"]["rhythm"]["debt"] == DEBT_UNKNOWN
+    rhythm = profile["burdens"]["rhythm"]
+    assert rhythm["debt"] == DEBT_UNKNOWN
+    assert rhythm["response"] == "baseline_observed"
+    assert "Higher rhythm variation has not been probed yet." in rhythm["evidence"][0]
     assert profile["burdens"]["anchor"]["debt"] == DEBT_UNKNOWN
 
 
@@ -184,6 +204,38 @@ def test_burden_profile_reports_listening_conditions_from_tagged_probe():
     assert (
         "More textured signal performed better than the default signal" in listening["evidence"][0]
     )
+
+
+def test_burden_profile_reports_rhythm_from_tagged_probe():
+    record = _tag_rhythm_probe(
+        _record(
+            "2026-06-01T12:00:00Z",
+            _exercise(gear=0, fraction=1.0, slots=[_slot("K"), _slot("M")]),
+            _exercise(index=2, gear=0, fraction=1.0, slots=[_slot("R"), _slot("U")]),
+            _exercise(
+                index=3,
+                gear=0,
+                fraction=0.5,
+                slots=[_slot("K"), _slot("M", OUTCOME_MISS)],
+            ),
+            _exercise(
+                index=4,
+                gear=0,
+                fraction=0.5,
+                slots=[_slot("R"), _slot("U", OUTCOME_MISS)],
+            ),
+        ),
+        {3, 4},
+    )
+
+    profile = load_recognition_burden_profile([record], claimed_set_key="K M R U")
+
+    rhythm = profile["burdens"]["rhythm"]
+    assert rhythm["debt"] == DEBT_HIGH
+    assert rhythm["confidence"] == "medium"
+    assert rhythm["response"] == "rhythm_hurt"
+    assert rhythm["delta"] == -0.5
+    assert "Raised rhythm variation performed worse than baseline" in rhythm["evidence"][0]
 
 
 def test_burden_profile_detects_unit_length_debt_separate_from_singles():

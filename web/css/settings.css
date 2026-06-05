@@ -1193,6 +1193,12 @@
     margin-bottom: var(--mr-space-2);
 }
 
+.settings-recognition-burden-detail__meaning {
+    margin: 0;
+    color: var(--mr-muted);
+    line-height: 1.55;
+}
+
 .settings-recognition-burden-detail__empty {
     margin: 0;
     color: var(--mr-muted);

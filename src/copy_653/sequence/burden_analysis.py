@@ -60,6 +60,10 @@ LISTENING_CONDITION_TEXTURED = "textured"
 LISTENING_MIN_EXERCISES_PER_CONDITION = 2
 LISTENING_MODERATE_DELTA = 0.05
 LISTENING_HIGH_DELTA = 0.12
+RHYTHM_PROBE_VERSION = "recognition-rhythm-v1"
+RHYTHM_MIN_EXERCISES_PER_CONDITION = 2
+RHYTHM_MODERATE_DELTA = 0.05
+RHYTHM_HIGH_DELTA = 0.12
 
 
 def load_recognition_burden_profile(
@@ -77,9 +81,10 @@ def load_recognition_burden_profile(
     * unit length
     * confusion pressure
 
-    Listening-condition debt uses only controlled probe evidence. Rhythm,
-    anchor, and practice-transfer debt remain unknown until first-class
-    probes or comparable condition evidence exist.
+    Listening-condition debt uses only controlled probe evidence. Rhythm can
+    report baseline recognition history, but only tagged cadence-varied probes
+    produce measured rhythm debt. Anchor and practice-transfer debt remain
+    unknown until first-class probes or comparable condition evidence exist.
     """
     matching = _matching_recognition_records(records, claimed_set_key)
     matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
@@ -87,6 +92,7 @@ def load_recognition_burden_profile(
     claimed_symbols = set(claimed_set_key.split())
     stats = _collect_stats(recent)
     listening_probe_rows = _collect_recognition_listening_probe_exercises(recent)
+    rhythm_rows = _collect_recognition_rhythm_exercises(recent)
     symbol_stats = _collect_symbol_stats(records, symbols=claimed_symbols)
     recent_symbol_stats = _collect_symbol_stats(recent, symbols=claimed_symbols)
     symbol_inventory = _symbol_inventory_burden(symbol_stats, recent_symbol_stats)
@@ -108,7 +114,7 @@ def load_recognition_burden_profile(
             "unit_length": _unit_length_burden(stats),
             "confusion": _confusion_burden(stats),
             "signal": _recognition_listening_conditions_burden(listening_probe_rows),
-            "rhythm": _unknown_burden("No cadence-variation probes or contrast evidence yet."),
+            "rhythm": _recognition_rhythm_burden(rhythm_rows),
             "anchor": _unknown_burden("No anchor-removal probes or contrast evidence yet."),
             "practice_transfer": _unknown_burden(
                 "No linked Symbol Recognition to Koch Exercise transfer evidence yet."
@@ -498,6 +504,69 @@ def _collect_recognition_listening_probe_exercises(
     return rows
 
 
+def _collect_recognition_rhythm_exercises(
+    records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    rows = []
+    for record in records:
+        generation = record.get("generation")
+        probe = generation.get("rhythm_probe") if isinstance(generation, dict) else None
+        record_audio = record.get("audio")
+        record_cadence = (
+            _coerce_int(record_audio.get("cadence_variation"), 0)
+            if isinstance(record_audio, dict)
+            else 0
+        )
+        baseline_cadence = _coerce_int(
+            probe.get("baseline_cadence_variation") if isinstance(probe, dict) else None,
+            record_cadence,
+        )
+        generation_is_tagged = (
+            isinstance(probe, dict) and probe.get("version") == RHYTHM_PROBE_VERSION
+        )
+        exercises = record.get("exercises")
+        if not isinstance(exercises, list):
+            continue
+        for exercise in exercises:
+            if not isinstance(exercise, dict):
+                continue
+            analysis = exercise.get("analysis")
+            if (
+                not isinstance(analysis, dict)
+                or analysis.get("saved") is not True
+                or analysis.get("has_evidence") is not True
+            ):
+                continue
+            fraction = analysis.get("combined_fraction")
+            if not isinstance(fraction, (int, float)) or isinstance(fraction, bool):
+                continue
+            counts = analysis.get("counts")
+            if not isinstance(counts, dict):
+                counts = {}
+
+            exercise_probe = exercise.get("rhythm_probe")
+            cadence_variation = _coerce_int(
+                exercise.get("cadence_variation"),
+                baseline_cadence,
+            )
+            is_probe = generation_is_tagged and exercise_probe == RHYTHM_PROBE_VERSION
+            rows.append(
+                {
+                    "condition": "probe" if is_probe else "baseline",
+                    "cadence_variation": cadence_variation,
+                    "baseline_cadence_variation": baseline_cadence,
+                    "combined_fraction": float(fraction),
+                    "correct": _coerce_int(counts.get("correct"), 0)
+                    + _coerce_int(counts.get("caught_correct"), 0),
+                    "substitutions": _coerce_int(counts.get("substitution"), 0)
+                    + _coerce_int(counts.get("caught_substitution"), 0),
+                    "misses": _coerce_int(counts.get("miss"), 0),
+                    "slot_count": sum(_coerce_int(value, 0) for value in counts.values()),
+                }
+            )
+    return rows
+
+
 def _koch_attention_condition(
     *,
     key: str,
@@ -834,6 +903,108 @@ def _recognition_listening_conditions_burden(rows: list[dict[str, Any]]) -> dict
         "delta": round(delta, 6),
         "default": default_metrics,
         "textured": textured_metrics,
+    }
+
+
+def _recognition_rhythm_burden(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    baseline = [row for row in rows if row["condition"] == "baseline"]
+    probe = [row for row in rows if row["condition"] == "probe"]
+    if not rows:
+        return _unknown_burden("No saved recognition rhythm evidence yet.")
+    baseline_metrics = _recognition_attention_metrics(baseline)
+    if not probe:
+        cadence_levels = sorted({int(row["cadence_variation"]) for row in baseline})
+        level_text = (
+            ", ".join(str(level) for level in cadence_levels) if cadence_levels else "unknown"
+        )
+        overall = baseline_metrics.get("overall_fraction")
+        percent = _percent(float(overall)) if isinstance(overall, (int, float)) else "unknown"
+        return {
+            "debt": DEBT_UNKNOWN,
+            "confidence": _confidence_from_count(
+                len(baseline),
+                medium=RHYTHM_MIN_EXERCISES_PER_CONDITION,
+                high=MIN_UNIT_EXERCISES_HIGH_CONFIDENCE,
+            ),
+            "response": "baseline_observed",
+            "evidence": [
+                (
+                    f"Stable rhythm baseline observed at cadence variation {level_text}: "
+                    f"{percent} over {len(baseline)} exercises. Higher rhythm variation "
+                    "has not been probed yet."
+                )
+            ],
+            "baseline": baseline_metrics,
+            "probe": _recognition_attention_metrics([]),
+        }
+
+    probe_metrics = _recognition_attention_metrics(probe)
+    baseline_overall = baseline_metrics.get("overall_fraction")
+    probe_overall = probe_metrics.get("overall_fraction")
+    confidence = _confidence_from_count(
+        min(len(baseline), len(probe)),
+        medium=RHYTHM_MIN_EXERCISES_PER_CONDITION,
+        high=MIN_UNIT_EXERCISES_HIGH_CONFIDENCE,
+    )
+
+    if (
+        baseline_overall is None
+        or probe_overall is None
+        or len(baseline) < RHYTHM_MIN_EXERCISES_PER_CONDITION
+        or len(probe) < RHYTHM_MIN_EXERCISES_PER_CONDITION
+    ):
+        return {
+            "debt": DEBT_UNKNOWN,
+            "confidence": confidence,
+            "response": "needs_more_probe_evidence",
+            "evidence": [
+                (
+                    "Rhythm probe needs at least "
+                    f"{RHYTHM_MIN_EXERCISES_PER_CONDITION} baseline and "
+                    f"{RHYTHM_MIN_EXERCISES_PER_CONDITION} raised-cadence exercises."
+                )
+            ],
+            "baseline": baseline_metrics,
+            "probe": probe_metrics,
+        }
+
+    delta = float(probe_overall) - float(baseline_overall)
+    if delta <= -RHYTHM_HIGH_DELTA:
+        debt = DEBT_HIGH
+    elif delta <= -RHYTHM_MODERATE_DELTA:
+        debt = DEBT_MODERATE
+    else:
+        debt = DEBT_LOW
+
+    if delta <= -RHYTHM_MODERATE_DELTA:
+        response = "rhythm_hurt"
+        summary = "Raised rhythm variation performed worse than baseline"
+    elif delta >= RHYTHM_MODERATE_DELTA:
+        response = "rhythm_helped"
+        summary = "Raised rhythm variation performed better than baseline"
+    else:
+        response = "neutral"
+        summary = "Baseline and raised rhythm variation performance were similar"
+
+    probe_levels = sorted({int(row["cadence_variation"]) for row in probe})
+    baseline_levels = sorted({int(row["cadence_variation"]) for row in baseline})
+    probe_text = ", ".join(str(level) for level in probe_levels) or "unknown"
+    baseline_text = ", ".join(str(level) for level in baseline_levels) or "unknown"
+    return {
+        "debt": debt,
+        "confidence": confidence,
+        "response": response,
+        "delta": round(delta, 6),
+        "evidence": [
+            (
+                f"{summary}: {_percent(float(probe_overall))} over {len(probe)} "
+                f"raised-cadence exercises (variation {probe_text}) vs "
+                f"{_percent(float(baseline_overall))} over {len(baseline)} "
+                f"baseline exercises (variation {baseline_text})."
+            )
+        ],
+        "baseline": baseline_metrics,
+        "probe": probe_metrics,
     }
 
 

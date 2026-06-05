@@ -62,6 +62,7 @@ const SYMBOL_TOOLTIPS = {
 
 const BURDEN_META_TOOLTIPS = {
     "Practice need": "How much this area still needs practice.",
+    Result: "The plain-language reading of the current evidence.",
     Confidence: "How sure the app is about that estimate.",
     "Based on": "The observations behind this estimate.",
 };
@@ -106,9 +107,101 @@ function burdenKeys(burdens) {
 }
 
 function evidenceCountText(burden) {
+    const rhythmText = rhythmBasedOnText(burden);
+    if (rhythmText) return rhythmText;
     const evidence = Array.isArray(burden?.evidence) ? burden.evidence : [];
     if (evidence.length === 1) return "1 item";
     return `${evidence.length} items`;
+}
+
+function metricExerciseCount(metric) {
+    const count = Number(metric?.exercise_count);
+    return Number.isFinite(count) && count >= 0 ? count : 0;
+}
+
+function rhythmBasedOnText(burden) {
+    if (!burden || !("baseline" in burden || "probe" in burden)) return "";
+    const baselineCount = metricExerciseCount(burden.baseline);
+    const probeCount = metricExerciseCount(burden.probe);
+    if (probeCount > 0) {
+        return `${probeCount} rhythm probe exercises, ${baselineCount} baseline exercises`;
+    }
+    if (baselineCount > 0) {
+        return `${baselineCount} baseline exercises`;
+    }
+    return "";
+}
+
+function rhythmVariationText(burden) {
+    const evidence = Array.isArray(burden?.evidence) ? burden.evidence.join(" ") : "";
+    const raised = evidence.match(/raised-cadence exercises \(variation ([^)]+)\)/);
+    const baseline = evidence.match(/baseline exercises \(variation ([^)]+)\)/);
+    if (raised && baseline) return `${baseline[1]} to ${raised[1]}`;
+    const observed = evidence.match(/cadence variation ([^:]+):/);
+    return observed ? observed[1] : "";
+}
+
+function rhythmResultText(burden) {
+    if (!burden || !("baseline" in burden || "probe" in burden)) return "";
+    const debt = formatDebt(burden.debt);
+    const response = burden.response;
+    const variation = rhythmVariationText(burden);
+    if (response === "baseline_observed") {
+        return variation
+            ? `Stable at cadence variation ${variation}; higher variation not tested yet.`
+            : "Stable at the current cadence variation; higher variation not tested yet.";
+    }
+    if (response === "needs_more_probe_evidence") {
+        return "More rhythm probe samples are needed before this can be judged.";
+    }
+    if (response === "rhythm_hurt") {
+        return variation
+            ? `Rhythm needs support when cadence variation increases from ${variation}.`
+            : "Rhythm needs support at the raised cadence variation.";
+    }
+    if (debt === "low") {
+        return variation
+            ? `No rhythm issue detected when cadence variation increased from ${variation}.`
+            : "No rhythm issue detected at the raised cadence variation.";
+    }
+    return "Rhythm evidence has been collected, but the result is mixed.";
+}
+
+function burdenResultText(key, burden) {
+    if (key === "rhythm") return rhythmResultText(burden);
+    return "";
+}
+
+function rhythmMeaningText(burden) {
+    if (!burden || !("baseline" in burden || "probe" in burden)) return "";
+    if (burden.response === "baseline_observed") {
+        return "Normal Recognition sessions show the current rhythm is usable, but this is not yet a raised-cadence probe.";
+    }
+    if (burden.response === "needs_more_probe_evidence") {
+        return "Keep collecting normal sessions; the app needs a few more tagged rhythm probes before changing this estimate.";
+    }
+    if (burden.response === "rhythm_hurt") {
+        return "Keep the symbol set stable and use gentle cadence variation before treating Rhythm as settled.";
+    }
+    if (formatDebt(burden.debt) === "low") {
+        return "Keep normal progression. Collect more rhythm probes before treating higher cadence variation as settled.";
+    }
+    return "";
+}
+
+function appendMeaningSection(parent, key, burden) {
+    const text = key === "rhythm" ? rhythmMeaningText(burden) : "";
+    if (!text) return;
+    const section = document.createElement("section");
+    section.className = "settings-recognition-burden-detail__section";
+    const heading = document.createElement("h3");
+    heading.className = "settings-koch-detail__heading";
+    heading.textContent = "What this means";
+    const body = document.createElement("p");
+    body.className = "settings-recognition-burden-detail__meaning";
+    body.textContent = text;
+    section.append(heading, body);
+    parent.appendChild(section);
 }
 
 function appendCell(row, className, text, tagName = "td") {
@@ -436,11 +529,13 @@ function showBurdenDetail(key, burden) {
 
     const metaGrid = document.createElement("dl");
     metaGrid.className = "settings-koch-detail__meta";
-    [
+    const rows = [
         ["Practice need", formatDebt(burden?.debt)],
+        ["Result", burdenResultText(key, burden)],
         ["Confidence", formatConfidence(burden?.confidence)],
         ["Based on", evidenceCountText(burden)],
-    ].forEach(([label, value]) => {
+    ].filter(([_label, value]) => value);
+    rows.forEach(([label, value]) => {
         const dt = document.createElement("dt");
         dt.textContent = label;
         addTooltip(dt, BURDEN_META_TOOLTIPS[label]);
@@ -450,6 +545,7 @@ function showBurdenDetail(key, burden) {
     });
     detailBody.appendChild(metaGrid);
 
+    appendMeaningSection(detailBody, key, burden);
     appendEvidenceList(detailBody, burden);
     appendSymbolTable(detailBody, burden);
     appendConfusionTable(detailBody, "Committed mix-ups", burden?.committed);
