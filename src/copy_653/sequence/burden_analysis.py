@@ -115,7 +115,7 @@ def load_recognition_burden_profile(
             "confusion": _confusion_burden(stats),
             "signal": _recognition_listening_conditions_burden(listening_probe_rows),
             "rhythm": _recognition_rhythm_burden(rhythm_rows),
-            "anchor": _unknown_burden("No anchor-removal probes or contrast evidence yet."),
+            "anchor": _recognition_anchor_burden(),
             "practice_transfer": _unknown_burden(
                 "No linked Symbol Recognition to Koch Exercise transfer evidence yet."
             ),
@@ -1727,6 +1727,25 @@ def _unknown_burden(evidence: str) -> dict[str, Any]:
         "debt": DEBT_UNKNOWN,
         "confidence": CONFIDENCE_LOW,
         "evidence": [evidence],
+    }
+
+
+def _recognition_anchor_burden() -> dict[str, Any]:
+    return {
+        "debt": DEBT_UNKNOWN,
+        "confidence": CONFIDENCE_HIGH,
+        "response": "not_currently_used",
+        "evidence": [
+            (
+                "Anchor is not currently active as a Recognition practice burden. "
+                "The existing phonetic scaffold is limited to the early gear-0 flow."
+            ),
+            (
+                "Later context streams can use structural anchors such as CQ, DE, "
+                "callsigns, RST reports, Q-codes, and 73 to help orientation in "
+                "longer copy."
+            ),
+        ],
     }
 
 
