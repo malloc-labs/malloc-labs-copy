@@ -21,8 +21,7 @@
                  id="settings-panel-recognition">
             <details class="settings-koch-confusion settings-recognition-burden"
                      id="settings-recognition-burden"
-                     open
-                     hidden>
+                     open>
                 <summary class="settings-recognition-section__summary">
                     <span class="settings-koch-confusion__heading">Recognition practice needs</span>
                 </summary>
@@ -64,8 +63,7 @@
             </details>
             <details class="settings-koch-confusion settings-recognition-estimated-time"
                      id="settings-recognition-estimated-time"
-                     open
-                     hidden>
+                     open>
                 <summary class="settings-recognition-section__summary">
                     <span class="settings-koch-confusion__heading">Estimated time in session</span>
                 </summary>
@@ -213,6 +211,23 @@
     <script type="module" src="../js/partials/landing-header.js"></script>
     <script type="module" src="../js/partials/theme-btn.js"></script>
     <script type="module" src="../js/settings-recognition-burden.js"></script>
+    <script>
+        window.setTimeout(() => {
+            const burdenRoot = document.getElementById("settings-recognition-burden");
+            const burdenMeta = document.getElementById("settings-recognition-burden-meta");
+            const timeRoot = document.getElementById("settings-recognition-estimated-time");
+            const timeMeta = document.getElementById("settings-recognition-estimated-time-meta");
+            if (burdenRoot) burdenRoot.hidden = false;
+            if (timeRoot) timeRoot.hidden = false;
+            if (burdenMeta && burdenMeta.textContent === "Loading practice needs…") {
+                burdenMeta.textContent =
+                    "Recognition practice needs could not be loaded. Restart Copy and refresh.";
+            }
+            if (timeMeta && timeMeta.textContent === "Loading estimated time…") {
+                timeMeta.textContent = "Estimated time could not be loaded. Restart Copy and refresh.";
+            }
+        }, 3000);
+    </script>
     <script type="module" src="../js/settings-recognition-attention.js"></script>
     <script type="module" src="../js/settings-recognition-confusion.js"></script>
     <script type="module" src="../js/settings-recognition-table.js"></script>

@@ -64,6 +64,12 @@ RHYTHM_PROBE_VERSION = "recognition-rhythm-v1"
 RHYTHM_MIN_EXERCISES_PER_CONDITION = 2
 RHYTHM_MODERATE_DELTA = 0.05
 RHYTHM_HIGH_DELTA = 0.12
+TRANSFER_MIN_RECOGNITION_SLOTS = 20
+TRANSFER_MIN_KOCH_SYMBOL_UNITS = 8
+TRANSFER_MODERATE_DELTA = 0.05
+TRANSFER_HIGH_DELTA = 0.12
+TRANSFER_LOW_ABSOLUTE_FRACTION = 0.85
+TRANSFER_HIGH_ABSOLUTE_FRACTION = 0.70
 
 
 def load_recognition_burden_profile(
@@ -89,8 +95,12 @@ def load_recognition_burden_profile(
     matching = _matching_recognition_records(records, claimed_set_key)
     matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
     recent = matching[: max(0, window_size)]
+    koch_matching = _matching_koch_records(records, claimed_set_key)
+    koch_matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
+    koch_recent = koch_matching[:DEFAULT_KOCH_BURDEN_WINDOW_SIZE]
     claimed_symbols = set(claimed_set_key.split())
     stats = _collect_stats(recent)
+    koch_stats = _collect_koch_stats(koch_recent)
     listening_probe_rows = _collect_recognition_listening_probe_exercises(recent)
     rhythm_rows = _collect_recognition_rhythm_exercises(recent)
     symbol_stats = _collect_symbol_stats(records, symbols=claimed_symbols)
@@ -116,8 +126,10 @@ def load_recognition_burden_profile(
             "signal": _recognition_listening_conditions_burden(listening_probe_rows),
             "rhythm": _recognition_rhythm_burden(rhythm_rows),
             "anchor": _recognition_anchor_burden(),
-            "practice_transfer": _unknown_burden(
-                "No linked Symbol Recognition to Koch Exercise transfer evidence yet."
+            "practice_transfer": _recognition_practice_transfer_burden(
+                stats,
+                koch_stats,
+                koch_records_used=len(koch_recent),
             ),
         },
     }
@@ -1746,6 +1758,150 @@ def _recognition_anchor_burden() -> dict[str, Any]:
                 "longer copy."
             ),
         ],
+    }
+
+
+def _recognition_practice_transfer_burden(
+    recognition_stats: dict[str, Any],
+    koch_stats: dict[str, Any],
+    *,
+    koch_records_used: int,
+) -> dict[str, Any]:
+    recognition_metrics = _recognition_symbol_transfer_metrics(recognition_stats)
+    koch_metrics = _koch_transfer_metrics(koch_stats)
+    recognition_total = int(recognition_metrics["symbol_available_units"])
+    koch_total = int(koch_metrics["symbol_available_units"])
+
+    if recognition_total < TRANSFER_MIN_RECOGNITION_SLOTS:
+        return {
+            "debt": DEBT_UNKNOWN,
+            "confidence": CONFIDENCE_LOW,
+            "response": "needs_recognition_evidence",
+            "evidence": [
+                (
+                    "Practice transfer needs recent Symbol Recognition evidence before "
+                    "Koch Exercise copy can be interpreted as transfer."
+                )
+            ],
+            "recognition": recognition_metrics,
+            "koch": koch_metrics,
+        }
+    if koch_total < TRANSFER_MIN_KOCH_SYMBOL_UNITS:
+        return {
+            "debt": DEBT_UNKNOWN,
+            "confidence": CONFIDENCE_LOW,
+            "response": "needs_koch_evidence",
+            "evidence": [
+                (
+                    "Practice transfer needs matching non-warm-up Koch Exercise evidence "
+                    "for the current claimed set."
+                )
+            ],
+            "recognition": recognition_metrics,
+            "koch": koch_metrics,
+            "koch_records_used": koch_records_used,
+        }
+
+    recognition_fraction = float(recognition_metrics["symbol_fraction"])
+    koch_fraction = float(koch_metrics["symbol_fraction"])
+    delta = koch_fraction - recognition_fraction
+    weakest_band = koch_metrics.get("weakest_band")
+    confidence = _confidence_from_count(
+        min(recognition_total, koch_total),
+        medium=MIN_SYMBOL_EXPOSURES_MEDIUM_CONFIDENCE,
+        high=MIN_SYMBOL_EXPOSURES_HIGH_CONFIDENCE,
+    )
+
+    if koch_fraction < TRANSFER_HIGH_ABSOLUTE_FRACTION or delta <= -TRANSFER_HIGH_DELTA:
+        debt = DEBT_HIGH
+        response = "transfer_hurt"
+        summary = "Koch Exercise copy is much weaker than recent Symbol Recognition"
+    elif koch_fraction < TRANSFER_LOW_ABSOLUTE_FRACTION or delta <= -TRANSFER_MODERATE_DELTA:
+        debt = DEBT_MODERATE
+        response = "transfer_lag"
+        summary = "Koch Exercise copy is lagging behind recent Symbol Recognition"
+    else:
+        debt = DEBT_LOW
+        response = "transfer_stable"
+        summary = "Recognition is carrying into Koch Exercises"
+
+    evidence = [
+        (
+            f"{summary}: Koch symbol copy {_percent(koch_fraction)} over "
+            f"{koch_total} symbol units vs Recognition {_percent(recognition_fraction)} "
+            f"over {recognition_total} recent symbol slots."
+        )
+    ]
+    if isinstance(weakest_band, dict):
+        evidence.append(
+            f"Weakest Koch burden band {weakest_band['band']} averaged "
+            f"{_percent(float(weakest_band['average_fraction']))} over "
+            f"{weakest_band['exercise_count']} exercises."
+        )
+
+    return {
+        "debt": debt,
+        "confidence": confidence,
+        "response": response,
+        "delta": round(delta, 6),
+        "evidence": evidence,
+        "recognition": recognition_metrics,
+        "koch": koch_metrics,
+        "koch_records_used": koch_records_used,
+    }
+
+
+def _recognition_symbol_transfer_metrics(stats: dict[str, Any]) -> dict[str, Any]:
+    symbol_slots: dict[str, Counter[str]] = stats["symbol_slots"]
+    correct = 0
+    total = 0
+    for counts in symbol_slots.values():
+        total += sum(counts.values())
+        correct += counts["correct"] + counts["caught_correct"]
+    return {
+        "symbol_correct_units": correct,
+        "symbol_available_units": total,
+        "symbol_fraction": _round_or_none(_fraction(correct, total)) if total else None,
+    }
+
+
+def _koch_transfer_metrics(stats: dict[str, Any]) -> dict[str, Any]:
+    symbol_correct = int(stats["symbol_correct"])
+    symbol_available = int(stats["symbol_available"])
+    spacing_correct = int(stats["spacing_correct"])
+    spacing_available = int(stats["spacing_available"])
+    band_attempts: dict[int, list[tuple[float, int]]] = stats["band_attempts"]
+    bands = []
+    for band, entries in sorted(band_attempts.items()):
+        fractions = [fraction for fraction, _gear in entries]
+        bands.append(
+            {
+                "band": band,
+                "average_fraction": round(sum(fractions) / len(fractions), 6),
+                "exercise_count": len(entries),
+            }
+        )
+    weakest_band = (
+        min(bands, key=lambda row: (row["average_fraction"], -row["band"])) if bands else None
+    )
+    return {
+        "exercise_count": int(stats["exercise_count"]),
+        "symbol_correct_units": symbol_correct,
+        "symbol_available_units": symbol_available,
+        "symbol_fraction": (
+            _round_or_none(_fraction(symbol_correct, symbol_available))
+            if symbol_available
+            else None
+        ),
+        "spacing_correct_units": spacing_correct,
+        "spacing_available_units": spacing_available,
+        "spacing_fraction": (
+            _round_or_none(_fraction(spacing_correct, spacing_available))
+            if spacing_available
+            else None
+        ),
+        "bands": bands,
+        "weakest_band": weakest_band,
     }
 
 

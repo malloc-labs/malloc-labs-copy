@@ -242,6 +242,91 @@ def test_burden_profile_reports_rhythm_from_tagged_probe():
     assert "Raised rhythm variation performed worse than baseline" in rhythm["evidence"][0]
 
 
+def test_burden_profile_keeps_practice_transfer_unknown_without_koch_copy():
+    records = [
+        _record(
+            f"2026-06-01T12:{minute:02d}:00Z",
+            _exercise(
+                gear=2,
+                fraction=1.0,
+                slots=[_slot("K"), _slot("M"), _slot("R"), _slot("U")],
+            ),
+        )
+        for minute in range(5)
+    ]
+
+    profile = load_recognition_burden_profile(records, claimed_set_key="K M R U")
+
+    transfer = profile["burdens"]["practice_transfer"]
+    assert transfer["debt"] == DEBT_UNKNOWN
+    assert transfer["response"] == "needs_koch_evidence"
+    assert "matching non-warm-up Koch Exercise evidence" in transfer["evidence"][0]
+
+
+def test_burden_profile_compares_recognition_to_koch_for_practice_transfer():
+    recognition_records = [
+        _record(
+            f"2026-06-01T12:{minute:02d}:00Z",
+            _exercise(
+                gear=2,
+                fraction=0.95,
+                slots=[
+                    _slot("K"),
+                    _slot("M"),
+                    _slot("R"),
+                    _slot("U", OUTCOME_MISS if minute == 0 else OUTCOME_CORRECT),
+                ],
+            ),
+        )
+        for minute in range(5)
+    ]
+    koch_record = _koch_record(
+        "2026-06-03T18:42:00Z",
+        _koch_exercise(
+            band=1,
+            gear=2,
+            played="DE KMRU",
+            answer="DE KMRU",
+            fraction=1.0,
+            symbol_correct=8,
+            symbol_available=8,
+            spacing_correct=0,
+            spacing_available=0,
+        ),
+        _koch_exercise(
+            band=5,
+            gear=2,
+            played="DE K MR U",
+            answer="DE K MU",
+            fraction=0.75,
+            symbol_correct=12,
+            symbol_available=14,
+            spacing_correct=1,
+            spacing_available=2,
+        ),
+    )
+
+    profile = load_recognition_burden_profile(
+        [*recognition_records, koch_record],
+        claimed_set_key="K M R U",
+        window_size=20,
+    )
+
+    transfer = profile["burdens"]["practice_transfer"]
+    assert transfer["debt"] == DEBT_LOW
+    assert transfer["confidence"] == "high"
+    assert transfer["response"] == "transfer_stable"
+    assert transfer["recognition"]["symbol_fraction"] == 0.95
+    assert transfer["koch"]["symbol_fraction"] == 0.909091
+    assert transfer["koch"]["weakest_band"] == {
+        "band": 5,
+        "average_fraction": 0.75,
+        "exercise_count": 1,
+    }
+    assert "Recognition is carrying into Koch Exercises" in transfer["evidence"][0]
+    assert "Weakest Koch burden band 5" in transfer["evidence"][1]
+
+
 def test_burden_profile_detects_unit_length_debt_separate_from_singles():
     singles = [
         _record(

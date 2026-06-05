@@ -996,7 +996,7 @@ def _read_recognition_burden_profile(
     try:
         _save_directory, records, resolved_key = _resolve_records_and_key(
             config_path,
-            iter_records=_iter_recognition_records,
+            iter_records=_iter_recognition_and_koch_records,
             extract_key=record_claimed_set_key,
             claimed_set_key=claimed_set_key,
         )
@@ -1016,6 +1016,14 @@ def _read_recognition_burden_profile(
         claimed_set_key=resolved_key,
         window_size=window_size,
     )
+
+
+def _iter_recognition_and_koch_records(save_directory: Path) -> list[dict[str, Any]]:
+    """Load records needed for Recognition burden debt and transfer evidence."""
+    return [
+        *_iter_recognition_records(save_directory),
+        *_iter_koch_records(save_directory),
+    ]
 
 
 def _read_recognition_attention_response(

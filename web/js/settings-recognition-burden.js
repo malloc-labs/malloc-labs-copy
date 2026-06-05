@@ -116,6 +116,8 @@ function burdenKeys(burdens) {
 function evidenceCountText(burden) {
     const rhythmText = rhythmBasedOnText(burden);
     if (rhythmText) return rhythmText;
+    const transferText = practiceTransferBasedOnText(burden);
+    if (transferText) return transferText;
     const evidence = Array.isArray(burden?.evidence) ? burden.evidence : [];
     if (evidence.length === 1) return "1 item";
     return `${evidence.length} items`;
@@ -135,6 +137,19 @@ function rhythmBasedOnText(burden) {
     }
     if (baselineCount > 0) {
         return `${baselineCount} baseline exercises`;
+    }
+    return "";
+}
+
+function practiceTransferBasedOnText(burden) {
+    if (!burden || !("recognition" in burden || "koch" in burden)) return "";
+    const recognitionCount = Number(burden.recognition?.symbol_available_units);
+    const kochCount = Number(burden.koch?.symbol_available_units);
+    if (Number.isFinite(recognitionCount) && Number.isFinite(kochCount) && kochCount > 0) {
+        return `${recognitionCount} Recognition slots, ${kochCount} Koch symbol units`;
+    }
+    if (Number.isFinite(recognitionCount) && recognitionCount > 0) {
+        return `${recognitionCount} Recognition slots`;
     }
     return "";
 }
@@ -179,6 +194,29 @@ function burdenResultText(key, burden) {
     if (key === "anchor" && burden?.response === "not_currently_used") {
         return "Not active in the current Recognition stage.";
     }
+    if (key === "practice_transfer") return practiceTransferResultText(burden);
+    return "";
+}
+
+function practiceTransferResultText(burden) {
+    if (!burden || !("recognition" in burden || "koch" in burden)) return "";
+    if (burden.response === "needs_recognition_evidence") {
+        return "More recent Recognition evidence is needed before transfer can be judged.";
+    }
+    if (burden.response === "needs_koch_evidence") {
+        return "No matching Koch Exercise copy evidence yet.";
+    }
+    const recognition = formatPercent(burden.recognition?.symbol_fraction);
+    const koch = formatPercent(burden.koch?.symbol_fraction);
+    if (burden.response === "transfer_stable") {
+        return `Recognition is carrying into Koch Exercises: ${koch} Koch symbol copy vs ${recognition} Recognition.`;
+    }
+    if (burden.response === "transfer_lag") {
+        return `Koch copy is lagging Recognition: ${koch} Koch symbol copy vs ${recognition} Recognition.`;
+    }
+    if (burden.response === "transfer_hurt") {
+        return `Koch copy is much weaker than Recognition: ${koch} Koch symbol copy vs ${recognition} Recognition.`;
+    }
     return "";
 }
 
@@ -208,8 +246,26 @@ function anchorMeaningText(burden) {
     );
 }
 
+function practiceTransferMeaningText(burden) {
+    if (!burden || !("recognition" in burden || "koch" in burden)) return "";
+    if (burden.response === "needs_koch_evidence") {
+        return "Practice transfer becomes meaningful once the same claimed symbols have been copied in non-warm-up Koch Exercises.";
+    }
+    if (burden.response === "transfer_stable") {
+        return "The symbols are not just recognisable in isolation; they are also surviving the move into stream copy. Use the weakest Koch band as the next practice clue.";
+    }
+    if (burden.response === "transfer_lag" || burden.response === "transfer_hurt") {
+        return "This usually means the symbol sounds are known, but stream listening, ordering, grouping, memory, or typing are adding load.";
+    }
+    return "";
+}
+
 function appendMeaningSection(parent, key, burden) {
-    const text = key === "rhythm" ? rhythmMeaningText(burden) : anchorMeaningText(burden);
+    const text = key === "rhythm"
+        ? rhythmMeaningText(burden)
+        : key === "anchor"
+            ? anchorMeaningText(burden)
+            : practiceTransferMeaningText(burden);
     if (!text) return;
     const section = document.createElement("section");
     section.className = "settings-recognition-burden-detail__section";
@@ -605,7 +661,8 @@ function renderProfile(profile) {
     tbody.replaceChildren();
 
     if (!keys.length || Number(profile?.records_used || 0) <= 0) {
-        root.hidden = true;
+        meta.textContent = "No Recognition practice need evidence is available yet.";
+        root.hidden = false;
         renderEstimatedTime(null);
         return;
     }
@@ -628,12 +685,23 @@ async function loadBurdenProfile() {
     if (!root || !meta || !tbody) return;
     try {
         const res = await fetch("/api/recognition-burden-profile", { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+        }
         renderProfile(await res.json());
-    } catch {
+    } catch (error) {
+        const detail = error instanceof Error ? error.message : "request failed";
+        const restartHint = detail === "HTTP 404"
+            ? " Restart Copy to load the updated practice-needs API."
+            : "";
         tbody.replaceChildren();
-        root.hidden = true;
+        meta.textContent = `Recognition practice needs could not be loaded (${detail}).${restartHint}`;
+        root.hidden = false;
         renderEstimatedTime(null);
+        if (timeMeta) {
+            timeMeta.textContent = `Estimated time could not be loaded (${detail}).${restartHint}`;
+            if (timeRoot) timeRoot.hidden = false;
+        }
     }
 }
 

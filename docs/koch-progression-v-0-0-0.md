@@ -1229,7 +1229,7 @@ Current Recognition Practice Needs align to the method as follows:
 | Listening conditions | Signal condition | Whether recognition holds when the receiver bed or related listening condition changes under controlled evidence. |
 | Rhythm | Rhythm condition | Whether recognition survives cadence variation. Ordinary Recognition history can seed a baseline, but only cadence-varied Recognition probes move this from baseline observed to measured debt. |
 | Anchor | Anchor support | Whether recognition survives reduced or removed spoken confirmation. This remains unknown until anchor contrast probes exist. |
-| Practice transfer | Practice transfer | Whether Symbol Recognition stability carries into Koch Exercise stream practice. This remains unknown until the two modes are linked analytically. |
+| Practice transfer | Practice transfer | Whether Symbol Recognition stability carries into Koch Exercise stream practice. This compares recent Recognition symbol stability with matching non-warm-up Koch Exercise symbol-copy evidence for the same claimed set, and uses the weakest Koch burden band as context rather than treating the two modes as identical. |
 
 The Symbols detail is intentionally richer than a single percentage. It can show
 each symbol's lifetime and recent evidence, trend, misses, substitutions, and
@@ -1253,9 +1253,14 @@ conservative. They should not be marked as low debt simply because normal
 Recognition sessions do not test them. Rhythm is the partial exception:
 ordinary Recognition sessions can establish a stable baseline at the configured
 cadence variation, but that is still not proof of higher-variation tolerance.
-These areas become knowable only through controlled probes or comparable
-contrast evidence where one burden changes and the rest of the environment
-remains stable.
+Practice transfer is the other partial exception: once the same claimed set has
+recent Symbol Recognition evidence and matching non-warm-up Koch Exercise copy
+evidence, the app can compare whether symbol stability is carrying into stream
+copy. The comparison remains deliberately conservative because Koch Exercises
+also include ordering, memory, spacing, typing, burden bands, gear, and fixed
+`DE` framing. The remaining areas become knowable only through controlled probes
+or comparable contrast evidence where one burden changes and the rest of the
+environment remains stable.
 
 The Estimated Time in Session section is related but separate. It is a
 learner-facing estimate based on saved Recognition time and current performance.
