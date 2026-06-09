@@ -154,6 +154,7 @@ def load_koch_burden_profile(
     matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
     recent = matching[: max(0, window_size)]
     stats = _collect_koch_stats(recent)
+    lifetime_stats = _collect_koch_stats(matching)
     claimed_symbols = set(claimed_set_key.split())
     symbol_stats = _collect_koch_symbol_stats(matching, symbols=claimed_symbols)
     recent_symbol_stats = _collect_koch_symbol_stats(recent, symbols=claimed_symbols)
@@ -168,11 +169,12 @@ def load_koch_burden_profile(
         "burdens": {
             "symbol_inventory": _koch_symbol_inventory_burden(
                 stats,
+                lifetime_stats=lifetime_stats,
                 symbol_stats=symbol_stats,
                 recent_symbol_stats=recent_symbol_stats,
             ),
-            "grouping": _koch_grouping_burden(stats),
-            "unit_length": _koch_unit_length_burden(stats),
+            "grouping": _koch_grouping_burden(stats, lifetime_stats=lifetime_stats),
+            "unit_length": _koch_unit_length_burden(stats, lifetime_stats=lifetime_stats),
             "confusion": _koch_confusion_burden(confusions),
             "signal": _unknown_burden("No Koch receiver-bed contrast probes yet."),
             "rhythm": _unknown_burden("No Koch cadence-variation contrast probes yet."),
@@ -1081,6 +1083,7 @@ def _recognition_rhythm_burden(rows: list[dict[str, Any]]) -> dict[str, Any]:
 def _koch_symbol_inventory_burden(
     stats: dict[str, Any],
     *,
+    lifetime_stats: dict[str, Any],
     symbol_stats: dict[str, Any],
     recent_symbol_stats: dict[str, Any],
 ) -> dict[str, Any]:
@@ -1095,10 +1098,29 @@ def _koch_symbol_inventory_burden(
         recent_symbol_stats,
         sort_key=_symbol_sort_key,
     )
+    lifetime_total = int(lifetime_stats["symbol_available"])
+    lifetime_correct = int(lifetime_stats["symbol_correct"])
+    lifetime_fraction = _fraction(lifetime_correct, lifetime_total)
     evidence = [
-        f"Koch symbol stream copied at {_percent(fraction)} "
-        f"over {total} symbol units in the recent window."
+        f"Recent Koch sessions: copied symbols were correct {_percent(fraction)} of the time.",
+        (
+            f"Based on {total} copied symbols across "
+            f"{_count_label(int(stats['exercise_count']), 'recent exercise')}."
+        ),
     ]
+    if lifetime_total > 0:
+        evidence.extend(
+            [
+                (
+                    "Since this symbol set began: copied symbols are correct "
+                    f"{_percent(lifetime_fraction)} of the time."
+                ),
+                (
+                    f"Based on {lifetime_total} copied symbols across "
+                    f"{_count_label(int(lifetime_stats['exercise_count']), 'saved exercise')}."
+                ),
+            ]
+        )
     evidence.extend(_symbol_inventory_evidence(symbol_rows, context="Koch"))
     return {
         "debt": _debt_from_fraction(fraction),
@@ -1111,17 +1133,41 @@ def _koch_symbol_inventory_burden(
         "symbol_correct_units": correct,
         "symbol_available_units": total,
         "fraction": round(fraction, 6),
+        "lifetime_symbol_correct_units": lifetime_correct,
+        "lifetime_symbol_available_units": lifetime_total,
+        "lifetime_fraction": round(lifetime_fraction, 6),
         "symbols": symbol_rows,
     }
 
 
-def _koch_grouping_burden(stats: dict[str, Any]) -> dict[str, Any]:
+def _koch_grouping_burden(
+    stats: dict[str, Any],
+    *,
+    lifetime_stats: dict[str, Any],
+) -> dict[str, Any]:
     total = int(stats["spacing_available"])
     if total <= 0:
-        return _unknown_burden("No Koch word-boundary evidence in the recent window.")
+        return _unknown_burden("No recent Koch exercises with word breaks to measure yet.")
 
     correct = int(stats["spacing_correct"])
     fraction = _fraction(correct, total)
+    lifetime_total = int(lifetime_stats["spacing_available"])
+    lifetime_correct = int(lifetime_stats["spacing_correct"])
+    lifetime_fraction = _fraction(lifetime_correct, lifetime_total)
+    evidence = [
+        f"Recent Koch sessions: word breaks were correct {_percent(fraction)} of the time.",
+        f"Based on {total} word breaks across recent Koch sessions.",
+    ]
+    if lifetime_total > 0:
+        evidence.extend(
+            [
+                (
+                    "Since this symbol set began: word breaks are correct "
+                    f"{_percent(lifetime_fraction)} of the time."
+                ),
+                f"Based on {lifetime_total} word breaks across all saved Koch sessions.",
+            ]
+        )
     return {
         "debt": _debt_from_fraction(fraction),
         "confidence": _confidence_from_count(
@@ -1129,17 +1175,21 @@ def _koch_grouping_burden(stats: dict[str, Any]) -> dict[str, Any]:
             medium=MIN_UNIT_EXERCISES_MEDIUM_CONFIDENCE,
             high=MIN_UNIT_EXERCISES_HIGH_CONFIDENCE,
         ),
-        "evidence": [
-            f"Koch grouping copied at {_percent(fraction)} "
-            f"over {total} word-boundary units in the recent window."
-        ],
+        "evidence": evidence,
         "spacing_correct_units": correct,
         "spacing_available_units": total,
         "fraction": round(fraction, 6),
+        "lifetime_spacing_correct_units": lifetime_correct,
+        "lifetime_spacing_available_units": lifetime_total,
+        "lifetime_fraction": round(lifetime_fraction, 6),
     }
 
 
-def _koch_unit_length_burden(stats: dict[str, Any]) -> dict[str, Any]:
+def _koch_unit_length_burden(
+    stats: dict[str, Any],
+    *,
+    lifetime_stats: dict[str, Any],
+) -> dict[str, Any]:
     band_attempts: dict[int, list[tuple[float, int]]] = stats["band_attempts"]
     if not band_attempts:
         return _unknown_burden("No Koch band evidence in the recent window.")
@@ -1159,6 +1209,33 @@ def _koch_unit_length_burden(stats: dict[str, Any]) -> dict[str, Any]:
     weakest = min(rows, key=lambda row: (row["average_fraction"], -row["band"]))
     all_fractions = [fraction for entries in band_attempts.values() for fraction, _gear in entries]
     average = sum(all_fractions) / len(all_fractions)
+    lifetime_attempts: dict[int, list[tuple[float, int]]] = lifetime_stats["band_attempts"]
+    lifetime_fractions = [
+        fraction for entries in lifetime_attempts.values() for fraction, _gear in entries
+    ]
+    lifetime_average = (
+        sum(lifetime_fractions) / len(lifetime_fractions) if lifetime_fractions else 0.0
+    )
+    evidence = [
+        (
+            f"Recent Koch sessions: band {weakest['band']} at gear {weakest['current_gear']} "
+            f"is the current weak spot, averaging {_percent(float(weakest['average_fraction']))}."
+        ),
+        (
+            f"Based on {_count_label(weakest['exercise_count'], 'recent exercise')} "
+            f"at gear {weakest['current_gear']}."
+        ),
+        (
+            "Recent Koch sessions: all exercise groups average "
+            f"{_percent(average)} across {_count_label(len(all_fractions), 'exercise')}."
+        ),
+    ]
+    if lifetime_fractions:
+        evidence.append(
+            "Since this symbol set began: all exercise groups average "
+            f"{_percent(lifetime_average)} across "
+            f"{_count_label(len(lifetime_fractions), 'saved exercise')}."
+        )
 
     return {
         "debt": _debt_from_fraction(float(weakest["average_fraction"])),
@@ -1167,13 +1244,7 @@ def _koch_unit_length_burden(stats: dict[str, Any]) -> dict[str, Any]:
             medium=MIN_UNIT_EXERCISES_MEDIUM_CONFIDENCE,
             high=MIN_UNIT_EXERCISES_HIGH_CONFIDENCE,
         ),
-        "evidence": [
-            f"Weakest Koch unit-length band {weakest['band']} averaged "
-            f"{_percent(float(weakest['average_fraction']))} over "
-            f"{weakest['exercise_count']} exercises at gear {weakest['current_gear']}.",
-            f"All Koch bands averaged {_percent(average)} over "
-            f"{len(all_fractions)} exercises in the recent window.",
-        ],
+        "evidence": evidence,
         "bands": [
             {
                 **row,
@@ -1182,6 +1253,8 @@ def _koch_unit_length_burden(stats: dict[str, Any]) -> dict[str, Any]:
             for row in rows
         ],
         "average_fraction": round(average, 6),
+        "lifetime_average_fraction": round(lifetime_average, 6),
+        "lifetime_exercise_count": len(lifetime_fractions),
     }
 
 
@@ -2076,6 +2149,11 @@ def _fraction(correct: int, total: int) -> float:
 
 def _percent(value: float) -> str:
     return f"{round(value * 100, 1)}%"
+
+
+def _count_label(count: int, singular: str) -> str:
+    suffix = "" if count == 1 else "s"
+    return f"{count} {singular}{suffix}"
 
 
 def _round_or_none(value: float | None) -> float | None:
