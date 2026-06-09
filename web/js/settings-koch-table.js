@@ -21,7 +21,8 @@ const prevButton = document.getElementById("settings-koch-dialog-prev");
 const nextButton = document.getElementById("settings-koch-dialog-next");
 const countEl = document.getElementById("settings-koch-dialog-count");
 
-const SET_SIZE = 8;
+const LEGACY_SET_SIZE = 8;
+const CHALLENGE_SET_SIZE = 12;
 
 let openFilename = null;
 let currentRecords = [];
@@ -429,15 +430,93 @@ function detailTitle(record) {
     const parts = [formatStartedAt(record.started_at)];
     const sessionIndex = groupedSetIndex(record);
     const setIndex = record?.generation?.set_session ?? record?.set_session;
+    const setSize = kochSetSize(record);
     if (Number.isInteger(sessionIndex) && Number.isInteger(setIndex)) {
         parts.push(`Session ${sessionIndex}`);
-        parts.push(`Set ${setIndex} of ${SET_SIZE}`);
+        parts.push(`Set ${setIndex} of ${setSize}`);
     } else if (Number.isInteger(sessionIndex)) {
         parts.push(`Session ${sessionIndex}`);
     } else if (Number.isInteger(setIndex)) {
-        parts.push(`Set ${setIndex} of ${SET_SIZE}`);
+        parts.push(`Set ${setIndex} of ${setSize}`);
     }
     return parts.join(" · ");
+}
+
+function recordUsesChallengeSet(record) {
+    const setIndex = record?.generation?.set_session ?? record?.set_session;
+    if (Number.isInteger(setIndex) && setIndex > LEGACY_SET_SIZE) return true;
+    const generationProbe = record?.generation?.listening_probe;
+    const exerciseProbe = Array.isArray(record?.exercises)
+        ? record.exercises.find((exercise) => exercise?.listening_probe || exercise?.probe_phase)
+        : null;
+    const phase =
+        generationProbe?.phase ??
+        generationProbe?.probe_phase ??
+        record?.generation?.probe_phase ??
+        record?.probe_phase ??
+        exerciseProbe?.listening_probe?.phase ??
+        exerciseProbe?.probe_phase;
+    if (phase === "challenge-block") return true;
+    return (
+        record?.generation?.progression_role === "supporting_gear_up" ||
+        record?.progression_role === "supporting_gear_up" ||
+        exerciseProbe?.progression_role === "supporting_gear_up"
+    );
+}
+
+function kochSetSize(record) {
+    if (recordUsesChallengeSet(record)) return CHALLENGE_SET_SIZE;
+    const setId = record?.generation?.set_id ?? record?.set_id;
+    if (!setId) return LEGACY_SET_SIZE;
+    return currentRecords.some((rec) => {
+        const recSetId = rec?.generation?.set_id ?? rec?.set_id;
+        return recSetId === setId && recordUsesChallengeSet(rec);
+    })
+        ? CHALLENGE_SET_SIZE
+        : LEGACY_SET_SIZE;
+}
+
+function recordSetIndex(record) {
+    return record?.generation?.set_session ?? record?.set_session;
+}
+
+function kochSetProgress(records) {
+    const uniqueSetIndexes = new Set();
+    records.forEach((record) => {
+        const setIndex = recordSetIndex(record);
+        if (Number.isInteger(setIndex)) uniqueSetIndexes.add(setIndex);
+    });
+    return uniqueSetIndexes.size || records.length;
+}
+
+function startedAtMs(record) {
+    const ms = new Date(record?.started_at).getTime();
+    return Number.isFinite(ms) ? ms : 0;
+}
+
+function sortKochSetRecords(records) {
+    return [...records].sort((a, b) => {
+        const aSet = recordSetIndex(a);
+        const bSet = recordSetIndex(b);
+        if (Number.isInteger(aSet) && Number.isInteger(bSet) && aSet !== bSet) {
+            return bSet - aSet;
+        }
+        if (Number.isInteger(aSet) !== Number.isInteger(bSet)) {
+            return Number.isInteger(bSet) ? 1 : -1;
+        }
+        return startedAtMs(b) - startedAtMs(a);
+    });
+}
+
+function displayGroups(records) {
+    return groupBySet(records).map((group) => ({
+        ...group,
+        records: group.set_id ? sortKochSetRecords(group.records) : group.records,
+    }));
+}
+
+function flattenGroups(groups) {
+    return groups.flatMap((group) => group.records);
 }
 
 function groupedSetIndex(record) {
@@ -592,18 +671,19 @@ function renderSetHeader(group, sessionIndex) {
     const cell = document.createElement("td");
     cell.colSpan = 4;
     const recs = group.records;
-    const mainCount = recs.filter((r) => !r.warm_up).length;
-    const warmUpCount = recs.filter((r) => r.warm_up).length;
-    const total = mainCount + warmUpCount;
-    const complete = mainCount >= 6 && warmUpCount >= 2;
-    const earliest = recs[recs.length - 1];
+    const setSize = group.records.some(recordUsesChallengeSet) ? CHALLENGE_SET_SIZE : LEGACY_SET_SIZE;
+    const completedSets = Math.min(kochSetProgress(recs), setSize);
+    const savedRuns = recs.length;
+    const complete = completedSets >= setSize;
+    const earliest = recs.reduce((oldest, rec) => (startedAtMs(rec) < startedAtMs(oldest) ? rec : oldest), recs[0]);
     const dateStr = formatStartedAt(earliest.started_at);
 
     const arrow = document.createElement("span");
     arrow.className = "settings-koch-set-header__arrow";
     arrow.textContent = "▶";
+    const savedRunsLabel = savedRuns > completedSets ? ` · ${savedRuns} saved runs` : "";
     const label = document.createTextNode(
-        ` Session ${sessionIndex} · ${total} of ${SET_SIZE} sets${complete ? " · complete" : ""} · ${dateStr}`,
+        ` Session ${sessionIndex} · ${completedSets} of ${setSize} sets${savedRunsLabel}${complete ? " · complete" : ""} · ${dateStr}`,
     );
     cell.append(arrow, label);
     tr.appendChild(cell);
@@ -631,10 +711,10 @@ function renderSetHeader(group, sessionIndex) {
 function renderRows(records) {
     tbody.replaceChildren();
     openFilename = null;
-    currentRecords = records;
+    const groups = displayGroups(records);
+    currentRecords = flattenGroups(groups);
     updateNavButtons();
 
-    const groups = groupBySet(records);
     let globalIdx = 0;
     let sessionIndex = groups.filter((g) => g.set_id).length;
 

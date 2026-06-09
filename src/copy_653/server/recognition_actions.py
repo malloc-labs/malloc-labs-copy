@@ -40,6 +40,14 @@ from copy_653.letters.wav import load_wav
 from copy_653.server.records import _write_recognition_record
 from copy_653.server.records import _resolve_recognition_session_gears
 from copy_653.server.wire_events import _send_event
+from copy_653.sequence.listening_conditions import (
+    LISTENING_CONDITION_DEFAULT,
+    LISTENING_CONDITION_TEXTURED,
+    RECOGNITION_LISTENING_PROBE_VERSION,
+    audio_params_for_listening_condition,
+    listening_condition_for_session,
+    rst_fields_for_audio_params,
+)
 from copy_653.sequence.recognition_analysis import (
     analyse_recognition_exercises,
     apply_acclimatisation_grace,
@@ -54,10 +62,7 @@ GEAR_1_WORDS_PER_EXERCISE = 1
 GEAR_2_WORDS_PER_EXERCISE = 2
 GEAR_3_WORDS_PER_EXERCISE = 1
 GEAR_3_MIN_RECEIVER_BED = 2
-LISTENING_PROBE_VERSION = "recognition-listening-conditions-v1"
-LISTENING_CONDITION_DEFAULT = "default"
-LISTENING_CONDITION_TEXTURED = "textured"
-LISTENING_TEXTURED_RST_TONE = 5
+LISTENING_PROBE_VERSION = RECOGNITION_LISTENING_PROBE_VERSION
 RECOGNITION_SET_COUNT = 8
 RECOGNITION_SET_RST_TARGET = (3, 1)
 RHYTHM_PROBE_VERSION = "recognition-rhythm-v1"
@@ -262,32 +267,14 @@ def _audio_params_for_gear(params: AudioParameters, gear: int) -> AudioParameter
 
 
 def _listening_condition_for_session(set_session: int) -> str:
-    if set_session % 2 == 1:
-        return LISTENING_CONDITION_DEFAULT
-    return LISTENING_CONDITION_TEXTURED
+    return listening_condition_for_session(set_session)
 
 
 def _audio_params_for_listening_condition(
     params: AudioParameters,
     condition: str,
 ) -> AudioParameters:
-    if condition == LISTENING_CONDITION_TEXTURED:
-        return replace(
-            params,
-            envelope_ramp_seconds=max(
-                params.envelope_ramp_seconds,
-                texture.envelope_seconds_for_rst_tone(LISTENING_TEXTURED_RST_TONE),
-            ),
-            tone_distortion=max(
-                params.tone_distortion,
-                texture.distortion_for_rst_tone(LISTENING_TEXTURED_RST_TONE),
-            ),
-            tone_ripple=max(
-                params.tone_ripple,
-                texture.ripple_for_rst_tone(LISTENING_TEXTURED_RST_TONE),
-            ),
-        )
-    return params
+    return audio_params_for_listening_condition(params, condition)
 
 
 def _rst_for_recognition_set(params: AudioParameters, set_session: int) -> tuple[int, int]:
@@ -554,10 +541,7 @@ def _recognition_exercise_entry(
 
 
 def _rst_fields_for_audio_params(params: AudioParameters) -> dict[str, int]:
-    return {
-        "s": texture.rst_strength_for_bed_level(params.receiver_bed),
-        "t": texture.rst_tone_for_envelope_seconds(params.envelope_ramp_seconds),
-    }
+    return rst_fields_for_audio_params(params)
 
 
 async def _play_recognition_exercise(

@@ -68,8 +68,56 @@ from copy_653.sequence.exercise_analysis import (
     build_generation_profile,
     load_confusion_pairs,
 )
+from copy_653.sequence.listening_conditions import (
+    KOCH_CHALLENGE_END_SESSION,
+    KOCH_CHALLENGE_START_SESSION,
+    KOCH_LISTENING_PROBE_VERSION,
+    KOCH_PROBE_PHASE_CHALLENGE,
+    KOCH_PROGRESSION_ROLE_SUPPORTING_GEAR_UP,
+    LISTENING_CONDITION_TEXTURED,
+    rst_fields_for_audio_params,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _apply_koch_listening_probe_metadata(
+    entries: list[dict[str, Any]],
+    *,
+    rst_draws: list[tuple[int | None, int | None]],
+) -> list[dict[str, Any]]:
+    """Tag Koch challenge rows as positive-only listening-condition evidence."""
+    for entry in entries:
+        index = entry.get("index")
+        s_draw: int | None = None
+        t_draw: int | None = None
+        if isinstance(index, int) and not isinstance(index, bool) and 1 <= index <= len(rst_draws):
+            s_draw, t_draw = rst_draws[index - 1]
+        entry["listening_probe"] = KOCH_LISTENING_PROBE_VERSION
+        entry["listening_condition"] = LISTENING_CONDITION_TEXTURED
+        entry["probe_phase"] = KOCH_PROBE_PHASE_CHALLENGE
+        entry["progression_role"] = KOCH_PROGRESSION_ROLE_SUPPORTING_GEAR_UP
+        if s_draw is not None:
+            entry["s"] = int(s_draw)
+        if t_draw is not None:
+            entry["t"] = int(t_draw)
+    return entries
+
+
+def _koch_challenge_rst_draws(
+    audio_params: AudioParameters,
+    *,
+    exercise_count: int,
+    seed: int,
+) -> list[tuple[int, int]]:
+    baseline = rst_fields_for_audio_params(audio_params)
+    rng = random.Random(seed ^ 0x653)
+    draws = []
+    for _ in range(exercise_count):
+        s_drop = rng.randint(1, 3)
+        t_drop = rng.randint(1, 3)
+        draws.append((max(1, baseline["s"] - s_drop), max(1, baseline["t"] - t_drop)))
+    return draws
 
 
 def _build_warmup_exercises(
@@ -153,6 +201,21 @@ async def _run_koch_session(
                 koch_gears.append(gear)
         if koch_gears:
             session_start["koch_gears"] = koch_gears
+    probe = generation.get("listening_probe")
+    if isinstance(probe, dict) and probe.get("version") == KOCH_LISTENING_PROBE_VERSION:
+        condition = next(
+            (
+                entry.get("listening_condition")
+                for entry in exercise_entries
+                if isinstance(entry, dict) and entry.get("listening_condition")
+            ),
+            None,
+        )
+        if isinstance(condition, str):
+            session_start["listening_condition"] = condition
+            phase = probe.get("phase")
+            if isinstance(phase, str):
+                session_start["probe_phase"] = phase
     if warm_up:
         session_start["warm_up"] = True
         session_start["koch_warm_up"] = True
@@ -319,13 +382,16 @@ async def _start_action(
     # by reading the recent record history for this exact claimed set.
     save_directory = load_save_directory(config_path)
     claimed_set_key = " ".join(sorted(claimed))
+    challenge_session = KOCH_CHALLENGE_START_SESSION <= set_session <= KOCH_CHALLENGE_END_SESSION
     gears, resolved_rst = _resolve_session_gears_and_rst(
         save_directory, claimed_set_key, exercise_count=5
     )
+    if challenge_session:
+        gears = [MAX_GEAR] * 5
     rst_steps_for_session = {
         band: resolved_rst.get(band, (0, 0))
         for band, gear in enumerate(gears, start=1)
-        if gear == MAX_GEAR
+        if gear == MAX_GEAR and not challenge_session
     }
 
     result = sequence.generate_copy_exercises(
@@ -363,9 +429,27 @@ async def _start_action(
     # to drop) so one imperfect copy under lead-in disruption does not
     # yank away the disruption the learner is practising through.
     scaffold_break = all(g >= MAX_GEAR for g in gears)
-    rst_draws_for_audio: list[tuple[int | None, int | None]] | None = (
-        list(result.rst_draws) if any(d != (None, None) for d in result.rst_draws) else None
-    )
+    rst_draws_for_audio: list[tuple[int | None, int | None]] | None
+    if challenge_session:
+        challenge_rst_draws = _koch_challenge_rst_draws(
+            audio_params,
+            exercise_count=len(exercises),
+            seed=result.seed,
+        )
+        rst_draws_for_audio = list(challenge_rst_draws)
+        _apply_koch_listening_probe_metadata(exercise_entries, rst_draws=challenge_rst_draws)
+        generation["listening_probe"] = {
+            "version": KOCH_LISTENING_PROBE_VERSION,
+            "phase": KOCH_PROBE_PHASE_CHALLENGE,
+            "sets": list(range(KOCH_CHALLENGE_START_SESSION, KOCH_CHALLENGE_END_SESSION + 1)),
+            "condition": LISTENING_CONDITION_TEXTURED,
+            "progression_role": KOCH_PROGRESSION_ROLE_SUPPORTING_GEAR_UP,
+        }
+        generation["progression_role"] = KOCH_PROGRESSION_ROLE_SUPPORTING_GEAR_UP
+    else:
+        rst_draws_for_audio = (
+            list(result.rst_draws) if any(d != (None, None) for d in result.rst_draws) else None
+        )
     samples, timeline, audio_shape = build_exercises_audio(
         exercises,
         audio_params,

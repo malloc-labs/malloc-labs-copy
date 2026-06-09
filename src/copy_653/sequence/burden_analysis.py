@@ -24,6 +24,13 @@ from copy_653.sequence.exercise_analysis import (
     record_claimed_set_key,
     strip_fixed_anchor,
 )
+from copy_653.sequence.listening_conditions import (
+    KOCH_LISTENING_PROBE_VERSION,
+    KOCH_PROBE_PHASE_CHALLENGE,
+    LISTENING_CONDITION_DEFAULT,
+    LISTENING_CONDITION_TEXTURED,
+    RECOGNITION_LISTENING_PROBE_VERSION,
+)
 from copy_653.sequence.recognition_analysis import recognition_review_analysis
 
 BURDEN_PROFILE_VERSION = "burden-profile-v1"
@@ -57,9 +64,7 @@ HIGH_CONFUSION_COUNT = 4
 ATTENTION_MIN_EXERCISES_PER_CONDITION = 4
 ATTENTION_HELPED_DELTA = 0.05
 ATTENTION_NEUTRAL_DELTA = 0.02
-LISTENING_PROBE_VERSION = "recognition-listening-conditions-v1"
-LISTENING_CONDITION_DEFAULT = "default"
-LISTENING_CONDITION_TEXTURED = "textured"
+LISTENING_PROBE_VERSION = RECOGNITION_LISTENING_PROBE_VERSION
 LISTENING_MIN_EXERCISES_PER_CONDITION = 2
 LISTENING_MODERATE_DELTA = 0.05
 LISTENING_HIGH_DELTA = 0.12
@@ -158,6 +163,7 @@ def load_koch_burden_profile(
     claimed_symbols = set(claimed_set_key.split())
     symbol_stats = _collect_koch_symbol_stats(matching, symbols=claimed_symbols)
     recent_symbol_stats = _collect_koch_symbol_stats(recent, symbols=claimed_symbols)
+    listening_probe_rows = _collect_koch_listening_probe_exercises(recent)
     confusions = load_confusion_pairs(records, claimed_set_key=claimed_set_key)
 
     return {
@@ -176,7 +182,7 @@ def load_koch_burden_profile(
             "grouping": _koch_grouping_burden(stats, lifetime_stats=lifetime_stats),
             "unit_length": _koch_unit_length_burden(stats, lifetime_stats=lifetime_stats),
             "confusion": _koch_confusion_burden(confusions),
-            "signal": _unknown_burden("No Koch receiver-bed contrast probes yet."),
+            "signal": _koch_listening_conditions_burden(listening_probe_rows),
             "rhythm": _unknown_burden("No Koch cadence-variation contrast probes yet."),
             "anchor": _unknown_burden("No Koch anchor-removal contrast probes yet."),
             "practice_transfer": _unknown_burden(
@@ -473,6 +479,47 @@ def _collect_koch_attention_exercises(records: list[dict[str, Any]]) -> list[dic
                 {
                     "s": s,
                     "t": t,
+                    "combined_fraction": float(fraction),
+                    "symbol_correct": _coerce_int(analysis.get("symbol_correct_units"), 0),
+                    "symbol_available": _coerce_int(analysis.get("symbol_available_units"), 0),
+                    "spacing_correct": _coerce_int(analysis.get("spacing_correct_units"), 0),
+                    "spacing_available": _coerce_int(analysis.get("spacing_available_units"), 0),
+                    "burden_band": _coerce_int(exercise.get("burden_band"), 0),
+                }
+            )
+    return rows
+
+
+def _collect_koch_listening_probe_exercises(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for record in records:
+        generation = record.get("generation")
+        probe = generation.get("listening_probe") if isinstance(generation, dict) else None
+        if not isinstance(probe, dict) or probe.get("version") != KOCH_LISTENING_PROBE_VERSION:
+            continue
+        exercises = record.get("exercises")
+        if not isinstance(exercises, list):
+            continue
+        for exercise in exercises:
+            if not isinstance(exercise, dict):
+                continue
+            if exercise.get("listening_probe") != KOCH_LISTENING_PROBE_VERSION:
+                continue
+            condition = exercise.get("listening_condition")
+            if condition not in {LISTENING_CONDITION_DEFAULT, LISTENING_CONDITION_TEXTURED}:
+                continue
+            analysis = exercise.get("analysis")
+            if not isinstance(analysis, dict) or analysis.get("saved") is not True:
+                continue
+            fraction = analysis.get("combined_fraction")
+            if not isinstance(fraction, (int, float)) or isinstance(fraction, bool):
+                continue
+            rows.append(
+                {
+                    "condition": condition,
+                    "probe_phase": str(exercise.get("probe_phase") or ""),
+                    "s": _coerce_int(exercise.get("s"), 0),
+                    "t": _coerce_int(exercise.get("t"), 0),
                     "combined_fraction": float(fraction),
                     "symbol_correct": _coerce_int(analysis.get("symbol_correct_units"), 0),
                     "symbol_available": _coerce_int(analysis.get("symbol_available_units"), 0),
@@ -960,6 +1007,122 @@ def _recognition_listening_conditions_burden(rows: list[dict[str, Any]]) -> dict
     else:
         response = "neutral"
         summary = "Default and more textured signal performance were similar"
+
+    return {
+        "debt": debt,
+        "confidence": confidence,
+        "evidence": [
+            (
+                f"{summary}: {_percent(float(textured_overall))} over {len(textured)} "
+                f"textured exercises vs {_percent(float(default_overall))} over "
+                f"{len(default)} default exercises."
+            )
+        ],
+        "response": response,
+        "delta": round(delta, 6),
+        "default": default_metrics,
+        "textured": textured_metrics,
+    }
+
+
+def _koch_listening_conditions_burden(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    challenge = [row for row in rows if row.get("probe_phase") == KOCH_PROBE_PHASE_CHALLENGE]
+    if challenge:
+        metrics = _koch_attention_metrics(challenge)
+        overall = metrics.get("overall_fraction")
+        confidence = _confidence_from_count(
+            len(challenge),
+            medium=LISTENING_MIN_EXERCISES_PER_CONDITION,
+            high=ATTENTION_MIN_EXERCISES_PER_CONDITION,
+        )
+        if overall is None or len(challenge) < LISTENING_MIN_EXERCISES_PER_CONDITION:
+            return {
+                "debt": DEBT_UNKNOWN,
+                "confidence": confidence,
+                "response": "needs_more_challenge_evidence",
+                "evidence": [
+                    (
+                        "Koch listening challenge needs at least "
+                        f"{LISTENING_MIN_EXERCISES_PER_CONDITION} saved challenge exercises."
+                    )
+                ],
+                "challenge": metrics,
+            }
+        if float(overall) >= 0.90:
+            debt = DEBT_LOW
+            response = "challenge_stable"
+        elif float(overall) >= 0.75:
+            debt = DEBT_MODERATE
+            response = "challenge_mixed"
+        else:
+            debt = DEBT_HIGH
+            response = "challenge_hurt"
+        return {
+            "debt": debt,
+            "confidence": confidence,
+            "response": response,
+            "evidence": [
+                (
+                    "Tougher Koch listening challenge: copied "
+                    f"{_percent(float(overall))} over {len(challenge)} exercises."
+                )
+            ],
+            "challenge": metrics,
+        }
+
+    default = [row for row in rows if row["condition"] == LISTENING_CONDITION_DEFAULT]
+    textured = [row for row in rows if row["condition"] == LISTENING_CONDITION_TEXTURED]
+    if not default or not textured:
+        return _unknown_burden("No saved Koch listening challenge evidence yet.")
+
+    default_metrics = _koch_attention_metrics(default)
+    textured_metrics = _koch_attention_metrics(textured)
+    default_overall = default_metrics.get("overall_fraction")
+    textured_overall = textured_metrics.get("overall_fraction")
+    confidence = _confidence_from_count(
+        min(len(default), len(textured)),
+        medium=LISTENING_MIN_EXERCISES_PER_CONDITION,
+        high=ATTENTION_MIN_EXERCISES_PER_CONDITION,
+    )
+
+    if (
+        default_overall is None
+        or textured_overall is None
+        or len(default) < LISTENING_MIN_EXERCISES_PER_CONDITION
+        or len(textured) < LISTENING_MIN_EXERCISES_PER_CONDITION
+    ):
+        return {
+            "debt": DEBT_UNKNOWN,
+            "confidence": confidence,
+            "evidence": [
+                (
+                    "Koch listening-condition probe needs at least "
+                    f"{LISTENING_MIN_EXERCISES_PER_CONDITION} default and "
+                    f"{LISTENING_MIN_EXERCISES_PER_CONDITION} textured exercises."
+                )
+            ],
+            "default": default_metrics,
+            "textured": textured_metrics,
+        }
+
+    delta = float(textured_overall) - float(default_overall)
+    magnitude = abs(delta)
+    if magnitude >= LISTENING_HIGH_DELTA:
+        debt = DEBT_HIGH
+    elif magnitude >= LISTENING_MODERATE_DELTA:
+        debt = DEBT_MODERATE
+    else:
+        debt = DEBT_LOW
+
+    if delta >= LISTENING_MODERATE_DELTA:
+        response = "texture_helped"
+        summary = "More textured Koch listening performed better than the default signal"
+    elif delta <= -LISTENING_MODERATE_DELTA:
+        response = "texture_hurt"
+        summary = "More textured Koch listening performed worse than the default signal"
+    else:
+        response = "neutral"
+        summary = "Default and more textured Koch listening performed similarly"
 
     return {
         "debt": debt,

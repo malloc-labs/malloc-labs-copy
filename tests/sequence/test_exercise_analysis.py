@@ -15,6 +15,7 @@ from copy_653.sequence.exercise_analysis import (
     spacing_weight_for_claimed_set,
     strip_fixed_anchor,
 )
+from copy_653.sequence.listening_conditions import KOCH_PROGRESSION_ROLE_SUPPORTING_GEAR_UP
 
 
 def _saved_exercise(burden_band: int, fraction: float, *, burden: int = 50) -> dict:
@@ -35,6 +36,28 @@ def _session(started_at: str, claimed_set_key: str, exercises: list[dict]) -> di
         "started_at": started_at,
         "generation": {"claimed_set_key": claimed_set_key},
         "exercises": exercises,
+    }
+
+
+def _challenge_session(started_at: str, claimed_set_key: str, exercises: list[dict]) -> dict:
+    return {
+        "mode": "koch-exercise",
+        "started_at": started_at,
+        "generation": {
+            "claimed_set_key": claimed_set_key,
+            "progression_role": KOCH_PROGRESSION_ROLE_SUPPORTING_GEAR_UP,
+            "bands": [
+                {"index": exercise["burden_band"], "gear": MAX_GEAR} for exercise in exercises
+            ],
+        },
+        "exercises": [
+            {
+                **exercise,
+                "progression_role": KOCH_PROGRESSION_ROLE_SUPPORTING_GEAR_UP,
+                "gear": MAX_GEAR,
+            }
+            for exercise in exercises
+        ],
     }
 
 
@@ -204,6 +227,38 @@ def test_load_band_evidence_strong_and_low_streaks_count_from_most_recent():
     assert band["low_streak"] == 0
 
 
+def test_load_band_evidence_uses_challenge_only_as_positive_support():
+    sessions = [
+        _session("2026-05-18T13:00:00Z", "K M", [_saved_exercise(1, 1.0)]),
+        _session("2026-05-18T13:10:00Z", "K M", [_saved_exercise(1, 1.0)]),
+        _challenge_session("2026-05-18T13:20:00Z", "K M", [_saved_exercise(1, 1.0)]),
+        _challenge_session("2026-05-18T13:30:00Z", "K M", [_saved_exercise(1, 0.2)]),
+    ]
+
+    evidence = load_band_evidence(sessions, claimed_set_key="K M")
+    band = evidence["bands"][0]
+
+    assert band["current_gear"] == 0
+    assert band["recent_fractions"] == [1.0, 1.0]
+    assert band["strong_streak"] == 2
+    assert band["low_streak"] == 0
+    assert band["challenge_support_strong"] == 1
+
+
+def test_latest_gears_ignores_challenge_block_records():
+    sessions = [
+        _session(
+            "2026-05-18T13:00:00Z",
+            "K M",
+            [{**_saved_exercise(1, 1.0), "gear": 1}],
+        ),
+        _challenge_session("2026-05-18T13:10:00Z", "K M", [_saved_exercise(1, 1.0)]),
+    ]
+    sessions[0]["generation"]["bands"] = [{"index": 1, "gear": 1}]
+
+    assert latest_gears_for_claimed_set(sessions, claimed_set_key="K M") == {1: 1}
+
+
 def test_load_band_evidence_strong_streak_resets_when_gear_changes():
     # Three strong runs at gear 0, then one strong run at gear 1.
     # The streak at the current gear (1) is 1 — the prior gear-0
@@ -339,6 +394,29 @@ def test_resolve_gears_advances_after_strong_streak():
     }
     resolved = resolve_gears(evidence, current_gears={1: 0, 2: 0})
     # Band 1 met the 3-strong threshold and advances; band 2 holds.
+    assert resolved == {1: 1, 2: 0}
+
+
+def test_resolve_gears_allows_challenge_support_to_tip_near_ready_band_up():
+    evidence = {
+        "bands": [
+            {
+                "burden_band": 1,
+                "strong_streak": 2,
+                "low_streak": 0,
+                "challenge_support_strong": 1,
+            },
+            {
+                "burden_band": 2,
+                "strong_streak": 1,
+                "low_streak": 0,
+                "challenge_support_strong": 3,
+            },
+        ]
+    }
+
+    resolved = resolve_gears(evidence, current_gears={1: 0, 2: 0})
+
     assert resolved == {1: 1, 2: 0}
 
 
