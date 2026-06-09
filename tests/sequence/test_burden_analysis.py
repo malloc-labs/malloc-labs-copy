@@ -673,6 +673,9 @@ def test_koch_burden_profile_separates_symbols_grouping_and_band_provenance():
     assert burdens["symbol_inventory"]["fraction"] == 1.0
     assert burdens["grouping"]["debt"] == DEBT_HIGH
     assert burdens["grouping"]["fraction"] == 0.5
+    assert burdens["grouping"]["lifetime_fraction"] == 0.5
+    assert "word breaks were correct 50.0% of the time" in burdens["grouping"]["evidence"][0]
+    assert "Since this symbol set began" in burdens["grouping"]["evidence"][2]
     assert burdens["unit_length"]["debt"] == DEBT_MODERATE
     assert burdens["unit_length"]["bands"] == [
         {"band": 4, "average_fraction": 0.875, "exercise_count": 1, "current_gear": 1}

@@ -10,6 +10,7 @@ const tbody = document.getElementById("settings-koch-burden-tbody");
 const detailDialog = document.getElementById("settings-koch-burden-dialog");
 const detailTitle = document.getElementById("settings-koch-burden-dialog-title");
 const detailBody = document.getElementById("settings-koch-burden-dialog-body");
+let currentClaimedSet = "";
 
 const BURDEN_LABELS = {
     symbol_inventory: "Symbols",
@@ -40,6 +41,7 @@ const PROFILE_TOOLTIPS = {
 };
 
 const BURDEN_META_TOOLTIPS = {
+    "Claimed set": "The current Koch symbols these observations are grouped under.",
     "Practice need": "How much this area still needs practice.",
     Confidence: "How sure the app is about that estimate.",
     "Based on": "The observations behind this estimate.",
@@ -348,10 +350,11 @@ function showBurdenDetail(key, burden) {
     const metaGrid = document.createElement("dl");
     metaGrid.className = "settings-koch-detail__meta";
     [
+        ["Claimed set", currentClaimedSet],
         ["Practice need", formatDebt(burden?.debt)],
         ["Confidence", formatConfidence(burden?.confidence)],
         ["Based on", evidenceCountText(burden)],
-    ].forEach(([label, value]) => {
+    ].filter(([_label, value]) => value).forEach(([label, value]) => {
         const dt = document.createElement("dt");
         dt.textContent = label;
         addTooltip(dt, BURDEN_META_TOOLTIPS[label]);
@@ -410,6 +413,7 @@ function renderProfile(profile) {
     const totalRecords = Number(profile.record_count) || recordsUsed;
     const windowSize = Number(profile.window_size) || recordsUsed;
     const claimed = profile.claimed_set_key || "current set";
+    currentClaimedSet = claimed;
     meta.textContent =
         `${claimed} · based on ${recordsUsed}/${totalRecords} saved session` +
         `${totalRecords === 1 ? "" : "s"} from the recent ${windowSize}-session window`;
