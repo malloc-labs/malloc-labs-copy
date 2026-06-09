@@ -52,6 +52,18 @@ const BAND_TOOLTIPS = {
     Gear: "The current difficulty step for this group.",
 };
 
+const SYMBOL_TOOLTIPS = {
+    Symbol: "The character being tracked.",
+    Introduced: "When this character first appeared in your saved Koch practice.",
+    Overall: "How often you copied this character correctly overall.",
+    "Overall %": "Your overall copy rate for this character. Arrow compares recent practice with overall performance.",
+    Recent: "How often you copied this character correctly in recent practice.",
+    "Recent %": "Your recent copy rate for this character.",
+    Status: "Whether this character looks settled, improving, or needs more attention.",
+    Miss: "Times this character was omitted in stream copy.",
+    "Mix-ups": "Times this character was copied as another one.",
+};
+
 const MIXUP_TOOLTIPS = {
     Target: "The character that was played.",
     "Read as": "The character you entered instead.",
@@ -174,6 +186,98 @@ function appendBandTable(parent, burden) {
     parent.appendChild(section);
 }
 
+function appendSymbolTable(parent, burden) {
+    const symbols = Array.isArray(burden?.symbols) ? burden.symbols : [];
+    if (!symbols.length) return;
+
+    const section = document.createElement("section");
+    section.className = "settings-recognition-burden-detail__section";
+    const heading = document.createElement("h3");
+    heading.className = "settings-koch-detail__heading";
+    heading.textContent = "Symbols";
+    section.appendChild(heading);
+
+    const table = document.createElement("table");
+    table.className = "settings-recognition-burden-detail__table";
+    const thead = document.createElement("thead");
+    const header = document.createElement("tr");
+    [
+        "Symbol",
+        "Introduced",
+        "Overall",
+        "Overall %",
+        "Recent",
+        "Recent %",
+        "Status",
+        "Miss",
+        "Mix-ups",
+    ].forEach((label) => {
+        const th = appendCell(header, "", label, "th");
+        addTooltip(th, SYMBOL_TOOLTIPS[label]);
+    });
+    thead.appendChild(header);
+    table.appendChild(thead);
+
+    const body = document.createElement("tbody");
+    symbols.forEach((symbol) => {
+        const row = document.createElement("tr");
+        appendCell(row, "", symbol.symbol || "-");
+        appendCell(row, "", formatDate(symbol.introduced_at));
+        appendCell(row, "", countPair(symbol.lifetime_correct, symbol.lifetime_exposures));
+        appendOverallPercentCell(row, symbol);
+        appendCell(row, "", countPair(symbol.recent_correct, symbol.recent_exposures));
+        appendCell(row, "", formatPercent(symbol.recent_fraction));
+        appendCell(row, "settings-recognition-burden-detail__signal", symbol.signal || "-");
+        appendCell(row, "", String(symbol.lifetime_misses ?? symbol.misses ?? 0));
+        appendCell(
+            row,
+            "",
+            String(symbol.lifetime_substitutions ?? symbol.substitutions ?? 0),
+        );
+        body.appendChild(row);
+    });
+    table.appendChild(body);
+    section.appendChild(table);
+    parent.appendChild(section);
+}
+
+function appendOverallPercentCell(row, symbol) {
+    const cell = appendCell(row, "settings-recognition-burden-detail__overall-percent", "");
+    const percent = document.createElement("span");
+    percent.textContent = formatPercent(symbol?.lifetime_fraction);
+    cell.appendChild(percent);
+
+    const trend = symbolTrend(symbol);
+    if (trend.value === "insufficient") return cell;
+
+    const marker = document.createElement("span");
+    marker.className = "settings-recognition-burden-detail__trend";
+    marker.dataset.trend = trend.value;
+    marker.textContent = trend.symbol;
+    marker.title = trend.label;
+    marker.setAttribute("aria-label", trend.label);
+    cell.appendChild(marker);
+    return cell;
+}
+
+function symbolTrend(symbol) {
+    const lifetime = Number(symbol?.lifetime_fraction);
+    const recent = Number(symbol?.recent_fraction);
+    const recentExposures = Number(symbol?.recent_exposures);
+    if (!Number.isFinite(lifetime) || !Number.isFinite(recent) || recentExposures <= 0) {
+        return { value: "insufficient", symbol: "", label: "" };
+    }
+
+    const delta = recent - lifetime;
+    if (delta >= 0.03) {
+        return { value: "improving", symbol: "↑", label: "Recent trend improving" };
+    }
+    if (delta <= -0.03) {
+        return { value: "worsening", symbol: "↓", label: "Recent trend down" };
+    }
+    return { value: "stable", symbol: "→", label: "Recent trend stable" };
+}
+
 function appendMixupTable(parent, title, rows) {
     const pairs = Array.isArray(rows) ? rows : [];
     if (!pairs.length) return;
@@ -215,6 +319,22 @@ function formatPercent(value) {
     return `${Math.round(numeric * 100)}%`;
 }
 
+function countPair(correct, total) {
+    const correctNumber = Number(correct);
+    const totalNumber = Number(total);
+    if (!Number.isFinite(correctNumber) || !Number.isFinite(totalNumber) || totalNumber <= 0) {
+        return "-";
+    }
+    return `${correctNumber}/${totalNumber}`;
+}
+
+function formatDate(value) {
+    if (typeof value !== "string" || value.length === 0) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString();
+}
+
 function renderHeaders() {
     const headers = root?.querySelectorAll("th") || [];
     headers.forEach((header) => addTooltip(header, PROFILE_TOOLTIPS[header.textContent]));
@@ -242,6 +362,7 @@ function showBurdenDetail(key, burden) {
     detailBody.appendChild(metaGrid);
 
     appendEvidenceList(detailBody, burden);
+    appendSymbolTable(detailBody, burden);
     appendBandTable(detailBody, burden);
     appendMixupTable(detailBody, "Mix-ups", burden?.committed);
     detailDialog.showModal();
