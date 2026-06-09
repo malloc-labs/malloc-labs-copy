@@ -17,7 +17,7 @@ const BURDEN_LABELS = {
     grouping: "Grouping",
     unit_length: "Unit length",
     confusion: "Confusions",
-    signal: "Signal",
+    signal: "Listening conditions",
     rhythm: "Rhythm",
     anchor: "Anchor",
     practice_transfer: "Practice transfer",

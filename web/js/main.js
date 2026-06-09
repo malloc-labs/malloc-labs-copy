@@ -43,10 +43,13 @@ let claimedSymbolSet = new Set();
 let currentExercises = [];
 let currentExerciseIndex = 0;
 const EXERCISE_COUNT = 5;
-const SET_SIZE = 8;
+const SET_SIZE = 12;
+const CHALLENGE_START_SET = 9;
+const CHALLENGE_PHASE = "challenge-block";
 let currentSetSession = 0;
 let currentKochGears = [];
 let currentKochWarmUp = false;
+let currentKochProbePhase = "";
 let sessionActive   = false;
 let sessionStartedAtMs = null;
 
@@ -73,14 +76,22 @@ function renderPrimed() {
 
 function kochSetNotice() {
     if (currentSetSession <= 0) return "";
-    const mode = kochModeLabel(currentKochGears, currentKochWarmUp);
+    const mode = kochModeLabel(
+        currentKochGears,
+        currentKochWarmUp,
+        currentSetSession,
+        currentKochProbePhase,
+    );
     return mode
         ? `Set ${currentSetSession} of ${SET_SIZE} · ${mode}`
         : `Set ${currentSetSession} of ${SET_SIZE}`;
 }
 
-function kochModeLabel(gears, warmUp) {
+function kochModeLabel(gears, warmUp, setSession = 0, probePhase = "") {
     if (warmUp) return "Warm-up: 2-symbol words";
+    if (probePhase === CHALLENGE_PHASE || setSession >= CHALLENGE_START_SET) {
+        return "Listening challenge: tougher signal, gear 3 copy";
+    }
     const validGears = (Array.isArray(gears) ? gears : [])
         .filter((gear) => Number.isInteger(gear) && gear >= 0);
     if (!validGears.length) return "Koch exercises: 1-3 words, 1-3 symbols each";
@@ -301,6 +312,7 @@ function appendEvent(event) {
             ? event.koch_gears
             : currentKochGears;
         currentKochWarmUp = event.koch_warm_up === true;
+        currentKochProbePhase = typeof event.probe_phase === "string" ? event.probe_phase : "";
         renderSequence(event);
         return;
     }
@@ -347,6 +359,7 @@ function appendEvent(event) {
         currentSetSession = event.koch_set_session || event.set_session || 0;
         currentKochGears = Array.isArray(event.koch_gears) ? event.koch_gears : currentKochGears;
         currentKochWarmUp = event.koch_warm_up === true || event.warm_up === true;
+        currentKochProbePhase = typeof event.probe_phase === "string" ? event.probe_phase : "";
         sessionActive   = true;
         sessionStartedAtMs = Date.now();
         claimedState.set_is_fresh = false;
@@ -501,8 +514,9 @@ startBtn.addEventListener("click", () => {
     }
     if (mode === "end") {
         // Set complete — reset to a clean Start position. No engine
-        // action; the engine already wrapped its state after session 8.
+        // action; the engine already wrapped its state after session 12.
         currentSetSession = 0;
+        currentKochProbePhase = "";
         claimedState.set_is_fresh = true;
         resetReviewSection();
         setStartButtonMode("idle");

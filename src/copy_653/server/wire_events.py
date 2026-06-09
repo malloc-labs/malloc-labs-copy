@@ -55,6 +55,7 @@ def _claimed_symbols_event(
     koch_set_session: int | None = None,
     koch_gears: list[int] | None = None,
     koch_warm_up: bool | None = None,
+    probe_phase: str | None = None,
     recognition_set_session: int | None = None,
     recognition_gear: int | None = None,
     recognition_kind: str | None = None,
@@ -113,6 +114,8 @@ def _claimed_symbols_event(
         event["koch_gears"] = list(koch_gears)
     if koch_warm_up is not None:
         event["koch_warm_up"] = koch_warm_up
+    if probe_phase:
+        event["probe_phase"] = probe_phase
     return event
 
 

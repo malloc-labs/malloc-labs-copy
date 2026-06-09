@@ -107,6 +107,11 @@ from copy_653.server.wire_events import (
     _key_input_start_payload,
     _send_event,
 )
+from copy_653.sequence.listening_conditions import (
+    KOCH_CHALLENGE_END_SESSION,
+    KOCH_CHALLENGE_START_SESSION,
+    KOCH_PROBE_PHASE_CHALLENGE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -156,10 +161,11 @@ class ConnectionState:
     # awaiting a `save-koch-answers` rewrite. Cleared on a new `start`,
     # on successful save, or when the connection closes.
     pending_koch_record_path: Path | None = None
-    # Koch exercise set state machine. A set is 8 sessions: 2 warm-up
-    # (pair recognition) followed by 6 main (full-burden). The warm-up
-    # re-engages when the gap since the last session exceeds the
-    # configured timeout, but the main counter resumes where it was.
+    # Koch exercise set state machine. A set is 12 sessions: 2 warm-up
+    # (pair recognition), 6 main (full-burden), then 4 challenge-block
+    # listening-condition probes. The warm-up re-engages when the gap
+    # since the last session exceeds the configured timeout, but the
+    # main/challenge counter resumes where it was.
     warmup_remaining: int = 2
     main_session_next: int = 3
     last_session_ended_at: float | None = None
@@ -256,7 +262,7 @@ def _reconstruct_set_state(state: ConnectionState) -> None:
             except ValueError:
                 continue
 
-    if max_session == 0 or max_session >= 8 or latest_ended is None:
+    if max_session == 0 or max_session >= KOCH_CHALLENGE_END_SESSION or latest_ended is None:
         return
 
     elapsed = (datetime.now(timezone.utc) - latest_ended).total_seconds()
@@ -303,7 +309,7 @@ async def _run_start_session(state: ConnectionState) -> None:
                 state.ws, state.config_path, set_session=set_session, set_id=state.set_id
             )
             state.main_session_next += 1
-            if state.main_session_next > 8:
+            if state.main_session_next > KOCH_CHALLENGE_END_SESSION:
                 state.warmup_remaining = 2
                 state.main_session_next = 3
 
@@ -413,10 +419,13 @@ def _next_koch_profile(state: ConnectionState, claimed: tuple[str, ...]) -> dict
             "koch_set_session": state.main_session_next,
             "koch_warm_up": False,
         }
-    return {
+    profile = {
         **_next_koch_set_position(state),
         "koch_gears": gears,
     }
+    if KOCH_CHALLENGE_START_SESSION <= state.main_session_next <= KOCH_CHALLENGE_END_SESSION:
+        profile["probe_phase"] = KOCH_PROBE_PHASE_CHALLENGE
+    return profile
 
 
 def _next_koch_set_position(state: ConnectionState) -> dict[str, Any]:

@@ -13,6 +13,7 @@ import re
 from typing import Any, Callable
 
 from copy_653.sequence.copy_exercises import _score_copy_exercise
+from copy_653.sequence.listening_conditions import KOCH_PROGRESSION_ROLE_SUPPORTING_GEAR_UP
 
 FIXED_LISTENING_ANCHOR = "DE"
 ANALYSIS_VERSION = "koch-analysis-v1"
@@ -491,9 +492,14 @@ def load_band_evidence(
     """
     matching = _matching_sessions(records, claimed_set_key)
     matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
-    window = matching[: max(0, window_size)]
+    normal_matching = [
+        session for session in matching if not _is_supporting_gear_up_session(session)
+    ]
+    window = normal_matching[: max(0, window_size)]
+    challenge_window = matching[: max(0, window_size)]
 
     band_entries: dict[int, list[tuple[float, str, int]]] = {}
+    challenge_support: dict[int, int] = {}
     for session in window:
         session_gears = _gears_from_generation(session.get("generation"))
         exercises = session.get("exercises")
@@ -521,9 +527,37 @@ def load_band_evidence(
                 )
             )
 
+    for session in challenge_window:
+        if not _is_supporting_gear_up_session(session):
+            continue
+        session_gears = _gears_from_generation(session.get("generation"))
+        exercises = session.get("exercises")
+        if not isinstance(exercises, list):
+            continue
+        for exercise in exercises:
+            if not isinstance(exercise, dict):
+                continue
+            if exercise.get("progression_role") != KOCH_PROGRESSION_ROLE_SUPPORTING_GEAR_UP:
+                continue
+            analysis = exercise.get("analysis")
+            if not isinstance(analysis, dict) or analysis.get("saved") is not True:
+                continue
+            burden_band = exercise.get("burden_band")
+            if not isinstance(burden_band, int) or isinstance(burden_band, bool):
+                continue
+            fraction = analysis.get("combined_fraction")
+            if not isinstance(fraction, (int, float)) or isinstance(fraction, bool):
+                continue
+            if _exercise_gear(exercise, session_gears, burden_band) < MAX_GEAR:
+                continue
+            if float(fraction) >= STRONG_FRACTION:
+                challenge_support[burden_band] = challenge_support.get(burden_band, 0) + 1
+
     bands: list[dict[str, Any]] = []
-    for band_index in sorted(band_entries):
-        entries = band_entries[band_index]
+    for band_index in sorted(set(band_entries) | set(challenge_support)):
+        entries = band_entries.get(band_index, [])
+        if not entries:
+            continue
         fractions = [f for f, _, _ in entries]
         states = [s for _, s, _ in entries]
         bands.append(
@@ -534,6 +568,7 @@ def load_band_evidence(
                 "recent_band_states": states,
                 "strong_streak": _streak_at_current_gear(entries, lambda v: v >= STRONG_FRACTION),
                 "low_streak": _streak_at_current_gear(entries, lambda v: v < LOW_FRACTION),
+                "challenge_support_strong": challenge_support.get(band_index, 0),
             }
         )
 
@@ -570,6 +605,13 @@ def _streak_at_current_gear(
             return count
         count += 1
     return count
+
+
+def _is_supporting_gear_up_session(record: dict[str, Any]) -> bool:
+    generation = record.get("generation")
+    if not isinstance(generation, dict):
+        return False
+    return generation.get("progression_role") == KOCH_PROGRESSION_ROLE_SUPPORTING_GEAR_UP
 
 
 def _gears_from_generation(generation: Any) -> dict[int, int]:
@@ -616,6 +658,7 @@ def latest_gears_for_claimed_set(
     bands as gear 0.
     """
     matching = _matching_sessions(records, claimed_set_key)
+    matching = [record for record in matching if not _is_supporting_gear_up_session(record)]
     if not matching:
         return {}
     matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
@@ -835,9 +878,17 @@ def resolve_gears(
         current = resolved.get(burden_band, 0)
         strong_streak = band.get("strong_streak", 0)
         low_streak = band.get("low_streak", 0)
+        challenge_support = band.get("challenge_support_strong", 0)
         if (
             isinstance(strong_streak, int)
-            and strong_streak >= n_clean_runs_for_shift
+            and (
+                strong_streak >= n_clean_runs_for_shift
+                or (
+                    strong_streak >= n_clean_runs_for_shift - 1
+                    and isinstance(challenge_support, int)
+                    and challenge_support > 0
+                )
+            )
             and current < max_gear
         ):
             resolved[burden_band] = current + 1

@@ -106,6 +106,37 @@ def _tag_listening_probe(record: dict, conditions: list[str]) -> dict:
     return record
 
 
+def _tag_koch_listening_probe(record: dict, conditions: list[str]) -> dict:
+    record["generation"]["listening_probe"] = {
+        "version": "koch-listening-conditions-v1",
+        "conditions": ["default", "textured"],
+    }
+    for exercise, condition in zip(record["exercises"], conditions, strict=False):
+        exercise["listening_probe"] = "koch-listening-conditions-v1"
+        exercise["listening_condition"] = condition
+        exercise["s"] = 7
+        exercise["t"] = 3 if condition == "default" else 5
+    return record
+
+
+def _tag_koch_challenge_probe(record: dict) -> dict:
+    record["generation"]["listening_probe"] = {
+        "version": "koch-listening-conditions-v1",
+        "phase": "challenge-block",
+        "condition": "textured",
+        "progression_role": "supporting_gear_up",
+    }
+    record["generation"]["progression_role"] = "supporting_gear_up"
+    for exercise in record["exercises"]:
+        exercise["listening_probe"] = "koch-listening-conditions-v1"
+        exercise["listening_condition"] = "textured"
+        exercise["probe_phase"] = "challenge-block"
+        exercise["progression_role"] = "supporting_gear_up"
+        exercise["s"] = 5
+        exercise["t"] = 3
+    return record
+
+
 def _tag_rhythm_probe(record: dict, probe_indexes: set[int], *, baseline: int = 1) -> dict:
     record["audio"] = {"cadence_variation": baseline}
     record["generation"]["rhythm_probe"] = {
@@ -709,6 +740,133 @@ def test_koch_burden_profile_reports_confusion_debt_from_substitutions():
     assert confusion["debt"] == DEBT_HIGH
     assert confusion["committed"][0] == {"target": "R", "typed": "U", "count": 4}
     assert profile["burdens"]["signal"]["debt"] == DEBT_UNKNOWN
+
+
+def test_koch_burden_profile_ignores_untagged_st_for_listening_conditions():
+    record = _koch_record(
+        "2026-06-03T18:00:00Z",
+        _koch_exercise(
+            band=1,
+            gear=3,
+            played="DE MKR",
+            answer="DE MKR",
+            fraction=1.0,
+            symbol_correct=3,
+            symbol_available=3,
+            spacing_correct=0,
+            spacing_available=0,
+            s=5,
+            t=5,
+        ),
+    )
+
+    profile = load_koch_burden_profile([record], claimed_set_key="K M R U")
+
+    listening = profile["burdens"]["signal"]
+    assert listening["debt"] == DEBT_UNKNOWN
+    assert "No saved Koch listening challenge evidence yet." in listening["evidence"]
+
+
+def test_koch_burden_profile_reports_listening_conditions_from_tagged_probe():
+    record = _tag_koch_listening_probe(
+        _koch_record(
+            "2026-06-03T18:00:00Z",
+            _koch_exercise(
+                band=1,
+                gear=1,
+                played="DE MK",
+                answer="DE MK",
+                fraction=0.80,
+                symbol_correct=2,
+                symbol_available=2,
+                spacing_correct=0,
+                spacing_available=0,
+            ),
+            _koch_exercise(
+                band=2,
+                gear=1,
+                played="DE KM",
+                answer="DE KM",
+                fraction=0.90,
+                symbol_correct=2,
+                symbol_available=2,
+                spacing_correct=0,
+                spacing_available=0,
+            ),
+            _koch_exercise(
+                band=3,
+                gear=1,
+                played="DE MR",
+                answer="DE MR",
+                fraction=0.80,
+                symbol_correct=2,
+                symbol_available=2,
+                spacing_correct=0,
+                spacing_available=0,
+            ),
+            _koch_exercise(
+                band=4,
+                gear=1,
+                played="DE RM",
+                answer="DE RM",
+                fraction=0.90,
+                symbol_correct=2,
+                symbol_available=2,
+                spacing_correct=0,
+                spacing_available=0,
+            ),
+        ),
+        ["default", "textured", "default", "textured"],
+    )
+
+    profile = load_koch_burden_profile([record], claimed_set_key="K M R U")
+
+    listening = profile["burdens"]["signal"]
+    assert listening["debt"] == DEBT_MODERATE
+    assert listening["confidence"] == "medium"
+    assert listening["response"] == "texture_helped"
+    assert listening["delta"] == 0.1
+    assert "More textured Koch listening performed better" in listening["evidence"][0]
+    assert listening["default"]["exercise_count"] == 2
+    assert listening["textured"]["exercise_count"] == 2
+
+
+def test_koch_burden_profile_reports_challenge_block_listening_conditions():
+    record = _tag_koch_challenge_probe(
+        _koch_record(
+            "2026-06-03T18:00:00Z",
+            _koch_exercise(
+                band=1,
+                gear=3,
+                played="DE MK",
+                answer="DE MK",
+                fraction=0.92,
+                symbol_correct=2,
+                symbol_available=2,
+                spacing_correct=0,
+                spacing_available=0,
+            ),
+            _koch_exercise(
+                band=2,
+                gear=3,
+                played="DE KM",
+                answer="DE KM",
+                fraction=0.94,
+                symbol_correct=2,
+                symbol_available=2,
+                spacing_correct=0,
+                spacing_available=0,
+            ),
+        )
+    )
+
+    profile = load_koch_burden_profile([record], claimed_set_key="K M R U")
+
+    listening = profile["burdens"]["signal"]
+    assert listening["debt"] == DEBT_LOW
+    assert listening["response"] == "challenge_stable"
+    assert "Tougher Koch listening challenge" in listening["evidence"][0]
+    assert listening["challenge"]["exercise_count"] == 2
 
 
 def test_koch_attention_response_compares_lower_and_higher_s_conditions():
