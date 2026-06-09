@@ -781,6 +781,91 @@ async def test_api_koch_band_evidence_returns_recent_per_band_rollup(tmp_path):
         await server.wait_closed()
 
 
+async def test_api_koch_burden_profile_returns_symbol_rows(tmp_path):
+    config_path = _write_test_config(tmp_path, ["K", "M"])
+    save_dir = tmp_path / "data"
+    config_path.write_text(
+        config_path.read_text() + f'\n[storage]\nsave_directory = "{save_dir}"\n'
+    )
+    web_root = _make_web_root(tmp_path)
+
+    koch_dir = save_dir / "koch-exercise"
+    koch_dir.mkdir(parents=True)
+
+    def _exercise(index: int, played: str, answer: str, correct: int) -> dict:
+        return {
+            "index": index,
+            "played": played,
+            "answer": answer,
+            "burden_band": 1,
+            "burden_score": 50,
+            "analysis": {
+                "version": "koch-analysis-v1",
+                "saved": True,
+                "normalized_answer": answer,
+                "symbol_correct_units": correct,
+                "symbol_available_units": 2,
+                "spacing_correct_units": 0,
+                "spacing_available_units": 0,
+                "combined_fraction": correct / 2,
+                "band_state": "exact" if correct == 2 else "low",
+            },
+        }
+
+    def _record(stamp: str, exercise: dict) -> dict:
+        return {
+            "schema_version": "2.0",
+            "mode": "koch-exercise",
+            "started_at": stamp,
+            "claimed_set": ["K", "M"],
+            "generation": {"claimed_set_key": "K M"},
+            "exercises": [exercise],
+            "symbols": [],
+        }
+
+    (koch_dir / "koch-exercise-20260518T130000Z.json").write_text(
+        json.dumps(_record("2026-05-18T13:00:00.000Z", _exercise(1, "KM", "KM", 2)))
+    )
+    (koch_dir / "koch-exercise-20260518T140000Z.json").write_text(
+        json.dumps(_record("2026-05-18T14:00:00.000Z", _exercise(2, "KM", "KR", 1)))
+    )
+
+    server, port = await app.serve_app(
+        port=_grab_free_port(),
+        port_search_span=5,
+        web_root=web_root,
+        config_path=config_path,
+    )
+    try:
+        response = await asyncio.to_thread(
+            urllib.request.urlopen,
+            f"http://127.0.0.1:{port}/api/koch-burden-profile?claimed_set_key=K%20M",
+        )
+        payload = json.loads(response.read())
+        assert payload["version"] == "burden-profile-v1"
+        assert payload["claimed_set_key"] == "K M"
+        assert payload["records_used"] == 2
+
+        symbol_inventory = payload["burdens"]["symbol_inventory"]
+        assert symbol_inventory["symbol_correct_units"] == 3
+        assert symbol_inventory["symbol_available_units"] == 4
+        assert "symbols" in symbol_inventory
+
+        symbols = {row["symbol"]: row for row in symbol_inventory["symbols"]}
+        assert symbols["K"]["lifetime_correct"] == 2
+        assert symbols["K"]["lifetime_exposures"] == 2
+        assert symbols["M"]["lifetime_correct"] == 1
+        assert symbols["M"]["lifetime_exposures"] == 2
+        assert symbols["M"]["lifetime_substitutions"] == 1
+        assert symbols["M"]["recent_substitutions"] == 1
+        assert any(
+            "Weakest lifetime Koch symbol M" in item for item in symbol_inventory["evidence"]
+        )
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
 async def test_api_koch_band_history_returns_chronological_grid(tmp_path):
     config_path = _write_test_config(tmp_path, ["K", "M"])
     save_dir = tmp_path / "data"

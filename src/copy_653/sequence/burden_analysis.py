@@ -18,8 +18,11 @@ from copy_653.sequence.exercise_analysis import (
     DEFAULT_EVIDENCE_WINDOW_SIZE as DEFAULT_KOCH_BURDEN_WINDOW_SIZE,
     LOW_FRACTION,
     STRONG_FRACTION,
+    _align,
+    _symbols_only,
     load_confusion_pairs,
     record_claimed_set_key,
+    strip_fixed_anchor,
 )
 from copy_653.sequence.recognition_analysis import recognition_review_analysis
 
@@ -151,6 +154,9 @@ def load_koch_burden_profile(
     matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
     recent = matching[: max(0, window_size)]
     stats = _collect_koch_stats(recent)
+    claimed_symbols = set(claimed_set_key.split())
+    symbol_stats = _collect_koch_symbol_stats(matching, symbols=claimed_symbols)
+    recent_symbol_stats = _collect_koch_symbol_stats(recent, symbols=claimed_symbols)
     confusions = load_confusion_pairs(records, claimed_set_key=claimed_set_key)
 
     return {
@@ -160,7 +166,11 @@ def load_koch_burden_profile(
         "window_size": max(0, window_size),
         "records_used": len(recent),
         "burdens": {
-            "symbol_inventory": _koch_symbol_inventory_burden(stats),
+            "symbol_inventory": _koch_symbol_inventory_burden(
+                stats,
+                symbol_stats=symbol_stats,
+                recent_symbol_stats=recent_symbol_stats,
+            ),
             "grouping": _koch_grouping_burden(stats),
             "unit_length": _koch_unit_length_burden(stats),
             "confusion": _koch_confusion_burden(confusions),
@@ -387,6 +397,54 @@ def _collect_koch_stats(records: list[dict[str, Any]]) -> dict[str, Any]:
         "spacing_available": spacing_available,
         "band_attempts": band_attempts,
         "exercise_count": exercise_count,
+    }
+
+
+def _collect_koch_symbol_stats(
+    records: list[dict[str, Any]],
+    *,
+    symbols: set[str],
+) -> dict[str, Any]:
+    symbol_slots: dict[str, Counter[str]] = defaultdict(Counter)
+    introduced_at: dict[str, str] = {}
+
+    for record in sorted(records, key=lambda r: str(r.get("started_at") or "")):
+        started_at = str(record.get("started_at") or "")
+        exercises = record.get("exercises")
+        if not isinstance(exercises, list):
+            continue
+        for exercise in exercises:
+            if not isinstance(exercise, dict):
+                continue
+            analysis = exercise.get("analysis")
+            if not isinstance(analysis, dict) or analysis.get("saved") is not True:
+                continue
+            played = str(exercise.get("played") or "")
+            answer = str(exercise.get("answer") or "")
+            truth = _symbols_only(strip_fixed_anchor(played))
+            typed = _symbols_only(strip_fixed_anchor(answer))
+            if not truth:
+                continue
+            for op, truth_symbol, _typed_symbol in _align(truth, typed):
+                if not truth_symbol:
+                    continue
+                symbol = truth_symbol.upper()
+                if symbols and symbol not in symbols:
+                    continue
+                if op == "match":
+                    outcome = "correct"
+                elif op == "sub":
+                    outcome = "substitution"
+                elif op == "del":
+                    outcome = "miss"
+                else:
+                    continue
+                symbol_slots[symbol][outcome] += 1
+                introduced_at.setdefault(symbol, started_at)
+
+    return {
+        "symbol_slots": symbol_slots,
+        "introduced_at": introduced_at,
     }
 
 
@@ -1020,13 +1078,28 @@ def _recognition_rhythm_burden(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _koch_symbol_inventory_burden(stats: dict[str, Any]) -> dict[str, Any]:
+def _koch_symbol_inventory_burden(
+    stats: dict[str, Any],
+    *,
+    symbol_stats: dict[str, Any],
+    recent_symbol_stats: dict[str, Any],
+) -> dict[str, Any]:
     total = int(stats["symbol_available"])
     if total <= 0:
         return _unknown_burden("No Koch symbol-copy evidence in the recent window.")
 
     correct = int(stats["symbol_correct"])
     fraction = _fraction(correct, total)
+    symbol_rows = _symbol_rows_from_stats(
+        symbol_stats,
+        recent_symbol_stats,
+        sort_key=_symbol_sort_key,
+    )
+    evidence = [
+        f"Koch symbol stream copied at {_percent(fraction)} "
+        f"over {total} symbol units in the recent window."
+    ]
+    evidence.extend(_symbol_inventory_evidence(symbol_rows, context="Koch"))
     return {
         "debt": _debt_from_fraction(fraction),
         "confidence": _confidence_from_count(
@@ -1034,13 +1107,11 @@ def _koch_symbol_inventory_burden(stats: dict[str, Any]) -> dict[str, Any]:
             medium=MIN_SYMBOL_EXPOSURES_MEDIUM_CONFIDENCE,
             high=MIN_SYMBOL_EXPOSURES_HIGH_CONFIDENCE,
         ),
-        "evidence": [
-            f"Koch symbol stream copied at {_percent(fraction)} "
-            f"over {total} symbol units in the recent window."
-        ],
+        "evidence": evidence,
         "symbol_correct_units": correct,
         "symbol_available_units": total,
         "fraction": round(fraction, 6),
+        "symbols": symbol_rows,
     }
 
 
@@ -1197,18 +1268,24 @@ def _collect_symbol_stats(
     }
 
 
-def _symbol_inventory_burden(
+def _symbol_sort_key(symbol: str) -> tuple[int, str]:
+    try:
+        return (patterns.KOCH_ORDER.index(symbol), symbol)
+    except ValueError:
+        return (len(patterns.KOCH_ORDER), symbol)
+
+
+def _symbol_rows_from_stats(
     stats: dict[str, Any],
     recent_stats: dict[str, Any],
-) -> dict[str, Any]:
+    *,
+    sort_key: Any = None,
+) -> list[dict[str, Any]]:
     symbol_slots: dict[str, Counter[str]] = stats["symbol_slots"]
     recent_symbol_slots: dict[str, Counter[str]] = recent_stats["symbol_slots"]
     introduced_at: dict[str, str] = stats["introduced_at"]
-    if not symbol_slots:
-        return _unknown_burden("No symbol-level recognition slots available.")
-
     rows = []
-    for symbol in sorted(symbol_slots):
+    for symbol in sorted(symbol_slots, key=sort_key):
         counts = symbol_slots[symbol]
         total = sum(counts.values())
         correct = counts["correct"] + counts["caught_correct"]
@@ -1240,7 +1317,51 @@ def _symbol_inventory_burden(
 
     for row in rows:
         row["signal"] = _symbol_signal(row)
+    return rows
 
+
+def _symbol_inventory_evidence(rows: list[dict[str, Any]], *, context: str) -> list[str]:
+    if not rows:
+        return []
+
+    evidence = []
+    prefix = f"{context} " if context else ""
+    weakest = min(rows, key=lambda row: (row["lifetime_fraction"], row["lifetime_exposures"]))
+    evidence.append(
+        (
+            f"Weakest lifetime {prefix}symbol {weakest['symbol']} at "
+            f"{_percent(weakest['lifetime_fraction'])} over "
+            f"{weakest['lifetime_exposures']} exposures since introduction."
+        )
+    )
+    weakest_recent = min(
+        [row for row in rows if row["recent_exposures"] > 0],
+        key=lambda row: (row["recent_fraction"], row["recent_exposures"]),
+        default=None,
+    )
+    if weakest_recent:
+        evidence.append(
+            f"Weakest recent {prefix}symbol {weakest_recent['symbol']} at "
+            f"{_percent(weakest_recent['recent_fraction'])} over "
+            f"{weakest_recent['recent_exposures']} exposures in the recent window."
+        )
+    stable = [row["symbol"] for row in rows if row["lifetime_fraction"] >= STRONG_FRACTION]
+    if stable:
+        evidence.append(
+            f"Stable lifetime {prefix}symbols at current evidence threshold: "
+            f"{' '.join(stable)}."
+        )
+    return evidence
+
+
+def _symbol_inventory_burden(
+    stats: dict[str, Any],
+    recent_stats: dict[str, Any],
+) -> dict[str, Any]:
+    if not stats["symbol_slots"]:
+        return _unknown_burden("No symbol-level recognition slots available.")
+
+    rows = _symbol_rows_from_stats(stats, recent_stats)
     weakest = min(rows, key=lambda row: (row["lifetime_fraction"], row["lifetime_exposures"]))
     min_exposures = min(row["lifetime_exposures"] for row in rows)
     confidence = _confidence_from_count(
@@ -1249,34 +1370,10 @@ def _symbol_inventory_burden(
         high=MIN_SYMBOL_EXPOSURES_HIGH_CONFIDENCE,
     )
     debt = _debt_from_fraction(weakest["lifetime_fraction"])
-    evidence = [
-        (
-            f"Weakest lifetime symbol {weakest['symbol']} at "
-            f"{_percent(weakest['lifetime_fraction'])} over "
-            f"{weakest['lifetime_exposures']} exposures since introduction."
-        )
-    ]
-    weakest_recent = min(
-        [row for row in rows if row["recent_exposures"] > 0],
-        key=lambda row: (row["recent_fraction"], row["recent_exposures"]),
-        default=None,
-    )
-    if weakest_recent:
-        evidence.append(
-            f"Weakest recent symbol {weakest_recent['symbol']} at "
-            f"{_percent(weakest_recent['recent_fraction'])} over "
-            f"{weakest_recent['recent_exposures']} exposures in the recent window."
-        )
-    stable = [row["symbol"] for row in rows if row["lifetime_fraction"] >= STRONG_FRACTION]
-    if stable:
-        evidence.append(
-            f"Stable lifetime symbols at current evidence threshold: {' '.join(stable)}."
-        )
-
     return {
         "debt": debt,
         "confidence": confidence,
-        "evidence": evidence,
+        "evidence": _symbol_inventory_evidence(rows, context=""),
         "symbols": rows,
     }
 
