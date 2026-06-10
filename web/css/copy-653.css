@@ -680,6 +680,14 @@ copy-top-menu {
     opacity: 0.75;
 }
 
+/* Recent-ready box — Recognition evidence says current head-copy is
+ * stable enough to try the next symbol. The border is deliberately
+ * quieter than the full nudge: the symbol itself stays visually
+ * unclaimed until the stronger settled signal arrives. */
+.sequence-row[data-recent-ready="true"] .seq-token[data-state="next"] {
+    border-color: color-mix(in srgb, var(--mr-anchor) 58%, transparent);
+}
+
 /* In-contention box — the band-evidence signal alone (the durability
  * probe is running, the time floor may not yet be met). Border picks
  * up the anchor colour but the symbol itself stays at the unclaimed

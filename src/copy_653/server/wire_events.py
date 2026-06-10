@@ -48,6 +48,8 @@ async def _send_event(ws: WebSocketServerProtocol, event: dict[str, Any]) -> Non
 def _claimed_symbols_event(
     claimed: tuple[str, ...],
     *,
+    recent_ready_for_next: bool = False,
+    settled_ready_for_next: bool = False,
     evidence_ready_for_next: bool = False,
     ready_for_next: bool = False,
     ready_for_next_send: bool = False,
@@ -97,6 +99,8 @@ def _claimed_symbols_event(
         "type": "claimed-symbols",
         "symbols": list(claimed),
         "suggested_next": patterns.next_koch_after(claimed),
+        "recent_ready_for_next": recent_ready_for_next,
+        "settled_ready_for_next": settled_ready_for_next,
         "evidence_ready_for_next": evidence_ready_for_next,
         "ready_for_next": ready_for_next,
         "ready_for_next_send": ready_for_next_send,

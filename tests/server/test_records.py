@@ -13,12 +13,18 @@ from copy_653.server.records import (
     MIN_SECONDS_PER_CLAIMED_SET,
     _koch_readiness_state,
     _next_koch_run_index,
+    _resolve_recognition_session_gears,
     _resolve_session_gears_and_rst,
     _seconds_on_claimed_set,
 )
 
 
 def _write_koch_json(target_dir: Path, name: str, payload: dict) -> None:
+    target_dir.mkdir(parents=True, exist_ok=True)
+    (target_dir / name).write_text(json.dumps(payload))
+
+
+def _write_recognition_json(target_dir: Path, name: str, payload: dict) -> None:
     target_dir.mkdir(parents=True, exist_ok=True)
     (target_dir / name).write_text(json.dumps(payload))
 
@@ -134,6 +140,80 @@ def test_resolve_session_gears_advances_band_after_three_strong_runs(tmp_path: P
     gears, _ = _resolve_session_gears_and_rst(tmp_path, "K M", exercise_count=5)
     # Three consecutive strong runs at every band: every slot advances to gear 1.
     assert gears == [1, 1, 1, 1, 1]
+
+
+def test_resolve_session_gears_inherits_latest_subset_gears_for_new_claimed_set(
+    tmp_path: Path,
+):
+    target = tmp_path / "koch-exercise"
+    _write_koch_json(
+        target,
+        "koch-exercise-previous.json",
+        {
+            "schema_version": "2.0",
+            "mode": "koch-exercise",
+            "started_at": "2026-06-10T16:00:00.000Z",
+            "claimed_set": ["K", "M", "R", "U"],
+            "generation": {
+                "claimed_set_key": "K M R U",
+                "bands": [
+                    {"index": 1, "gear": 3},
+                    {"index": 2, "gear": 3},
+                    {"index": 3, "gear": 3},
+                    {"index": 4, "gear": 2},
+                    {"index": 5, "gear": 3},
+                ],
+            },
+            "exercises": [],
+        },
+    )
+
+    gears, rst_steps = _resolve_session_gears_and_rst(tmp_path, "E K M R U", exercise_count=5)
+
+    assert gears == [3, 3, 3, 2, 3]
+    assert rst_steps == {}
+
+
+def test_resolve_recognition_gears_inherits_latest_subset_gear_for_new_claimed_set(
+    tmp_path: Path,
+):
+    target = tmp_path / "recognition"
+    for session in range(1, 9):
+        _write_recognition_json(
+            target,
+            f"recognition-{session}.json",
+            {
+                "mode": "recognition",
+                "started_at": f"2026-06-10T16:{session:02d}:00.000Z",
+                "claimed_set": ["K", "M", "R", "U"],
+                "generation": {
+                    "claimed_set_key": "K M R U",
+                    "set_id": "20260610T160000Z",
+                    "set_session": session,
+                    "gear": 2,
+                },
+                "exercises": [
+                    {
+                        "index": 1,
+                        "analysis": {
+                            "saved": True,
+                            "has_evidence": True,
+                            "combined_fraction": 1.0,
+                        },
+                    }
+                ],
+            },
+        )
+
+    gears = _resolve_recognition_session_gears(
+        tmp_path,
+        "E K M R U",
+        5,
+        set_id="20260610T170000Z",
+        set_session=1,
+    )
+
+    assert gears == [2, 2, 2, 2, 2]
 
 
 def test_next_run_index_skips_unreadable_and_non_koch_files(tmp_path: Path):

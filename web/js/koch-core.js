@@ -23,8 +23,11 @@ export function setStatus(state, text) {
 
 export function renderSequence(sequenceRow, state) {
     const claimedSet = new Set(state.symbols);
+    sequenceRow.dataset.recentReady = state.recent_ready_for_next ? "true" : "false";
     sequenceRow.dataset.evidence = state.evidence_ready_for_next ? "true" : "false";
-    sequenceRow.dataset.ready = state.ready_for_next ? "true" : "false";
+    sequenceRow.dataset.ready = (state.ready_for_next || state.settled_ready_for_next)
+        ? "true"
+        : "false";
     const next = state.suggested_next;
 
     KOCH_ORDER.forEach((sym) => {
