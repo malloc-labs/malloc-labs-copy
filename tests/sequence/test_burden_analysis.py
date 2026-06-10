@@ -7,6 +7,7 @@ from copy_653.sequence.burden_analysis import (
     load_koch_attention_response,
     load_koch_burden_profile,
     load_recognition_burden_profile,
+    recognition_next_symbol_readiness,
 )
 from copy_653.sequence.recognition_analysis import (
     OUTCOME_CAUGHT_CORRECT,
@@ -91,6 +92,99 @@ def _timed_record(
     record = _record(started, *exercises, claimed_set_key=claimed_set_key)
     record["ended_at"] = ended
     return record
+
+
+def _stable_symbol_slots() -> list[dict]:
+    return [
+        _slot("K"),
+        _slot("M"),
+        _slot("R"),
+        _slot("U"),
+        _slot("K"),
+        _slot("M"),
+        _slot("R"),
+        _slot("U"),
+        _slot("K"),
+        _slot("M"),
+        _slot("R"),
+        _slot("U"),
+    ]
+
+
+def test_recognition_next_symbol_readiness_uses_recent_stability_for_soft_nudge():
+    records = []
+    for idx in range(50):
+        records.append(
+            _record(
+                f"2026-06-01T12:{idx:02d}:00Z",
+                _exercise(
+                    gear=0,
+                    fraction=1.0,
+                    slots=_stable_symbol_slots(),
+                ),
+            )
+        )
+
+    readiness = recognition_next_symbol_readiness(records, claimed_set_key="K M R U")
+
+    assert readiness["recent_ready"] is True
+    assert readiness["settled_ready"] is True
+
+
+def test_recognition_next_symbol_readiness_keeps_lifetime_settled_separate():
+    records = []
+    for idx in range(20):
+        records.append(
+            _record(
+                f"2026-05-31T12:{idx:02d}:00Z",
+                _exercise(
+                    gear=0,
+                    fraction=0.5,
+                    slots=[
+                        _slot("K"),
+                        _slot("M"),
+                        _slot("R", OUTCOME_MISS),
+                        _slot("U", OUTCOME_MISS),
+                    ],
+                ),
+            )
+        )
+    for idx in range(50):
+        records.append(
+            _record(
+                f"2026-06-01T12:{idx:02d}:00Z",
+                _exercise(
+                    gear=0,
+                    fraction=1.0,
+                    slots=_stable_symbol_slots(),
+                ),
+            )
+        )
+
+    readiness = recognition_next_symbol_readiness(records, claimed_set_key="K M R U")
+
+    assert readiness["recent_ready"] is True
+    assert readiness["settled_ready"] is False
+
+
+def test_recognition_next_symbol_readiness_requires_recent_exposure_per_symbol():
+    records = []
+    for idx in range(49):
+        records.append(
+            _record(
+                f"2026-06-01T12:{idx:02d}:00Z",
+                _exercise(
+                    gear=0,
+                    fraction=1.0,
+                    slots=[_slot("K"), _slot("M"), _slot("R"), _slot("U")],
+                ),
+            )
+        )
+
+    readiness = recognition_next_symbol_readiness(records, claimed_set_key="K M R U")
+
+    assert readiness["recent_ready"] is False
+    assert readiness["settled_ready"] is True
 
 
 def _tag_listening_probe(record: dict, conditions: list[str]) -> dict:

@@ -40,6 +40,7 @@ from copy_653.server.records import (
     _next_cadence_run_index,
     _next_copy_key_run_index,
     _next_send_symbol_readiness,
+    _recognition_readiness_state,
     _resolve_cadence_session_gears,
     _resolve_copy_key_session_gears,
     _resolve_session_gears_and_rst,
@@ -667,6 +668,9 @@ async def _broadcast_claimed_state(
     """Resolve readiness signals and push the claimed-symbols event."""
     save_directory = load_save_directory(config_path)
     claimed_set_key = " ".join(sorted(claimed))
+    recent_ready_for_next, settled_ready_for_next = _recognition_readiness_state(
+        save_directory, claimed_set_key
+    )
     evidence_ready_for_next, ready_for_next = _koch_readiness_state(save_directory, claimed_set_key)
     ready_for_next_send = _next_send_symbol_readiness(save_directory, claimed_set_key)
     if koch_gears is None and koch_set_session is not None:
@@ -683,6 +687,8 @@ async def _broadcast_claimed_state(
         ws,
         _claimed_symbols_event(
             claimed,
+            recent_ready_for_next=recent_ready_for_next,
+            settled_ready_for_next=settled_ready_for_next,
             evidence_ready_for_next=evidence_ready_for_next,
             ready_for_next=ready_for_next,
             ready_for_next_send=ready_for_next_send,

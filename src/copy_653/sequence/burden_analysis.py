@@ -40,6 +40,9 @@ DEFAULT_RECOGNITION_BURDEN_WINDOW_SIZE = 20
 RECOGNITION_TARGET_FRACTION = 0.90
 SETTLED_FUTURE_ACCURACY_LOW = 0.96
 SETTLED_FUTURE_ACCURACY_HIGH = 0.98
+RECENT_READY_TARGET_FRACTION = 0.95
+RECENT_READY_MIN_SYMBOL_EXPOSURES = 50
+SETTLED_READY_TARGET_FRACTION = RECOGNITION_TARGET_FRACTION
 
 DEBT_LOW = "low"
 DEBT_MODERATE = "moderate"
@@ -52,6 +55,7 @@ CONFIDENCE_HIGH = "high"
 
 MIN_SYMBOL_EXPOSURES_MEDIUM_CONFIDENCE = 8
 MIN_SYMBOL_EXPOSURES_HIGH_CONFIDENCE = 20
+SETTLED_READY_MIN_SYMBOL_EXPOSURES = MIN_SYMBOL_EXPOSURES_HIGH_CONFIDENCE
 MIN_SYMBOL_RECENT_EXPOSURES_SIGNAL = 8
 MIN_UNIT_EXERCISES_MEDIUM_CONFIDENCE = 4
 MIN_UNIT_EXERCISES_HIGH_CONFIDENCE = 10
@@ -140,6 +144,78 @@ def load_recognition_burden_profile(
                 koch_records_used=len(koch_recent),
             ),
         },
+    }
+
+
+def recognition_next_symbol_readiness(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+    window_size: int = DEFAULT_RECOGNITION_BURDEN_WINDOW_SIZE,
+) -> dict[str, Any]:
+    """Return recent and settled listen-side readiness for the next symbol.
+
+    ``recent_ready`` is the soft nudge: enough recent head-copy evidence,
+    high recent aggregate accuracy, and every current symbol stable in the
+    recent window.
+
+    ``settled_ready`` is the stronger long-horizon signal: every current
+    claimed symbol has enough lifetime exposure and has reached the 90%
+    target. Lifetime remains useful routing data, but it no longer blocks
+    the first visual nudge when recent listening is stable.
+    """
+    claimed_symbols = set(claimed_set_key.split())
+    if not claimed_symbols:
+        return {
+            "recent_ready": False,
+            "settled_ready": False,
+            "reason": "empty_claimed_set",
+            "symbols": [],
+        }
+
+    matching = _matching_recognition_records(records, claimed_set_key)
+    matching.sort(key=lambda r: str(r.get("started_at") or ""), reverse=True)
+    recent = matching[: max(0, window_size)]
+
+    stats = _collect_symbol_stats(matching, symbols=claimed_symbols)
+    recent_stats = _collect_symbol_stats(recent, symbols=claimed_symbols)
+    rows = _symbol_rows_from_stats(stats, recent_stats)
+    observed_symbols = {str(row.get("symbol")) for row in rows}
+    if observed_symbols != claimed_symbols:
+        return {
+            "recent_ready": False,
+            "settled_ready": False,
+            "reason": "missing_symbol_evidence",
+            "symbols": rows,
+        }
+
+    recent_correct = sum(_coerce_int(row.get("recent_correct"), 0) for row in rows)
+    recent_total = sum(_coerce_int(row.get("recent_exposures"), 0) for row in rows)
+    recent_fraction = _fraction(recent_correct, recent_total)
+
+    recent_ready = (
+        recent_total > 0
+        and recent_fraction >= RECENT_READY_TARGET_FRACTION
+        and all(
+            _coerce_int(row.get("recent_exposures"), 0) >= RECENT_READY_MIN_SYMBOL_EXPOSURES
+            and float(row.get("recent_fraction") or 0.0) >= RECENT_READY_TARGET_FRACTION
+            for row in rows
+        )
+    )
+    settled_ready = all(
+        _coerce_int(row.get("lifetime_exposures"), 0) >= SETTLED_READY_MIN_SYMBOL_EXPOSURES
+        and float(row.get("lifetime_fraction") or 0.0) >= SETTLED_READY_TARGET_FRACTION
+        for row in rows
+    )
+
+    return {
+        "recent_ready": recent_ready,
+        "settled_ready": settled_ready,
+        "reason": "ready" if recent_ready else "below_recent_threshold",
+        "recent_fraction": round(recent_fraction, 6),
+        "recent_correct": recent_correct,
+        "recent_total": recent_total,
+        "symbols": rows,
     }
 
 

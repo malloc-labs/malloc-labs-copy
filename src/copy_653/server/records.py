@@ -34,6 +34,7 @@ from copy_653.sequence.exercise_analysis import (
     resolve_gears,
     resolve_rst_steps,
 )
+from copy_653.sequence.burden_analysis import recognition_next_symbol_readiness
 from copy_653.sequence.recognition_analysis import (
     gear_for_recognition_set,
     latest_completed_set_gear_for_claimed_set,
@@ -418,14 +419,70 @@ def _resolve_session_gears_and_rst(
     records = _iter_koch_records(save_directory)
     evidence = load_band_evidence(records, claimed_set_key=claimed_set_key)
     current_gears = latest_gears_for_claimed_set(records, claimed_set_key=claimed_set_key)
+    if not current_gears:
+        inherited_key = _latest_subset_claimed_set_key(records, claimed_set_key=claimed_set_key)
+        if inherited_key:
+            current_gears = latest_gears_for_claimed_set(records, claimed_set_key=inherited_key)
     resolved = resolve_gears(evidence, current_gears=current_gears)
     gears = [resolved.get(i + 1, 0) for i in range(exercise_count)]
     rst_steps: dict[int, tuple[int, int]] = {}
     if any(g == MAX_GEAR for g in gears):
         axis_evidence = load_rst_axis_evidence(records, claimed_set_key=claimed_set_key)
         current_steps = latest_rst_steps_for_claimed_set(records, claimed_set_key=claimed_set_key)
+        if not current_steps:
+            inherited_key = _latest_subset_claimed_set_key(records, claimed_set_key=claimed_set_key)
+            if inherited_key:
+                current_steps = latest_rst_steps_for_claimed_set(
+                    records, claimed_set_key=inherited_key
+                )
         rst_steps = resolve_rst_steps(axis_evidence, current_steps=current_steps)
     return gears, rst_steps
+
+
+def _latest_subset_claimed_set_key(
+    records: list[dict[str, Any]],
+    *,
+    claimed_set_key: str,
+    mode: str = "koch-exercise",
+) -> str | None:
+    """Most recent strict-subset claimed-set key for first runs after a claim."""
+    claimed_symbols = set(claimed_set_key.split())
+    if not claimed_symbols:
+        return None
+
+    best_key: str | None = None
+    best_size = -1
+    best_started_at = ""
+    for record in records:
+        if not isinstance(record, dict) or record.get("mode") != mode:
+            continue
+        if record.get("warm_up") is True:
+            continue
+        key = _record_claimed_set_key(record)
+        if not key or key == claimed_set_key:
+            continue
+        symbols = set(key.split())
+        if not symbols or not symbols < claimed_symbols:
+            continue
+        size = len(symbols)
+        started_at = str(record.get("started_at") or "")
+        if size > best_size or (size == best_size and started_at > best_started_at):
+            best_key = key
+            best_size = size
+            best_started_at = started_at
+    return best_key
+
+
+def _record_claimed_set_key(record: dict[str, Any]) -> str:
+    generation = record.get("generation")
+    if isinstance(generation, dict):
+        stored = generation.get("claimed_set_key")
+        if isinstance(stored, str):
+            return stored
+    claimed = record.get("claimed_set")
+    if isinstance(claimed, list):
+        return " ".join(sorted(str(s) for s in claimed))
+    return ""
 
 
 def _seconds_on_claimed_set(records: list[dict[str, Any]], *, claimed_set_key: str) -> float:
@@ -500,6 +557,17 @@ def _koch_readiness_state(save_directory: Path, claimed_set_key: str) -> tuple[b
     return True, ready
 
 
+def _recognition_readiness_state(save_directory: Path, claimed_set_key: str) -> tuple[bool, bool]:
+    """Return ``(recent_ready, settled_ready)`` from Recognition evidence."""
+    if not claimed_set_key:
+        return False, False
+    profile = recognition_next_symbol_readiness(
+        _iter_recognition_records(save_directory),
+        claimed_set_key=claimed_set_key,
+    )
+    return bool(profile.get("recent_ready")), bool(profile.get("settled_ready"))
+
+
 def _next_send_symbol_readiness(save_directory: Path, claimed_set_key: str) -> bool:
     """Whether send-side evidence says the learner is ready for the next symbol.
 
@@ -563,6 +631,15 @@ def _resolve_recognition_session_gears(
         records,
         claimed_set_key=claimed_set_key,
     )
+    if evidence.get("set_count") == 0:
+        inherited_key = _latest_subset_claimed_set_key(
+            records, claimed_set_key=claimed_set_key, mode="recognition"
+        )
+        if inherited_key:
+            current_gear = latest_completed_set_gear_for_claimed_set(
+                records,
+                claimed_set_key=inherited_key,
+            )
     resolved = resolve_recognition_set_gear(evidence, current_gear=current_gear)
     return [resolved] * exercise_count
 
