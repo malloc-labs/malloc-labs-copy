@@ -13,6 +13,7 @@
 // panel is open at a time — opening another row closes the first.
 
 import { appendCell, formatDuration, formatStartedAt } from "./settings-formatters.js";
+import { createRecordTableController } from "./settings-record-table.js";
 
 const tbody = document.getElementById("settings-koch-tbody");
 const metaEl = document.getElementById("settings-koch-meta");
@@ -25,10 +26,6 @@ const countEl = document.getElementById("settings-koch-dialog-count");
 
 const LEGACY_SET_SIZE = 8;
 const CHALLENGE_SET_SIZE = 12;
-
-let openFilename = null;
-let currentRecords = [];
-const detailCache = new Map();
 
 function formatScaffoldBreak(record) {
     // Scaffold-break is the session-level audio shape that engages
@@ -332,85 +329,17 @@ function hasSavedAnswerData(record) {
     }) || (Array.isArray(record.answers) && record.answers.length > 0);
 }
 
-function renderDetailContent(container, record) {
-    container.replaceChildren();
-    container.appendChild(buildMetaGrid(record));
-    container.appendChild(buildExercisesList(record));
+function renderDetail(record) {
+    detailDialogBody.replaceChildren();
+    detailDialogBody.appendChild(buildMetaGrid(record));
+    detailDialogBody.appendChild(buildExercisesList(record));
 }
 
-async function loadRecord(filename) {
-    if (detailCache.has(filename)) return detailCache.get(filename);
-    const res = await fetch(
-        `/api/koch-exercise?file=${encodeURIComponent(filename)}`,
-        { cache: "no-store" },
-    );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    detailCache.set(filename, data);
-    return data;
-}
-
-async function deleteRecord(filename) {
-    // GET, not POST: the websockets legacy server we ride on accepts
-    // only GET (see read_request in websockets/legacy/http.py); the
-    // server-side handler is method-agnostic.
-    const res = await fetch(
-        `/api/delete-koch-exercise?file=${encodeURIComponent(filename)}`,
-        { cache: "no-store" },
-    );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    detailCache.delete(filename);
-    if (openFilename === filename) {
-        detailDialog.close();
-    }
-    await loadKochSessions();
-    window.dispatchEvent(new CustomEvent("copy-settings-records-changed", {
-        detail: { kind: "koch" },
-    }));
-}
-
-function clearOpenDetail() {
-    if (!openFilename) return;
-    const prevRow = tbody.querySelector(`tr[data-filename="${cssEscape(openFilename)}"]`);
-    if (prevRow) {
-        prevRow.dataset.expanded = "false";
-        prevRow.setAttribute("aria-expanded", "false");
-    }
-    openFilename = null;
-}
-
-function rowForFilename(filename) {
-    return tbody.querySelector(`tr[data-filename="${cssEscape(filename)}"]`);
-}
-
-function openRecordByOffset(offset) {
-    if (!openFilename || offset === 0) return;
-    const idx = currentRecords.findIndex((rec) => rec.filename === openFilename);
-    const nextRecord = currentRecords[idx + offset];
-    if (!nextRecord) return;
-    const row = rowForFilename(nextRecord.filename);
-    if (row) {
-        openDetail(nextRecord.filename, row);
-    }
-}
-
-function updateNavButtons() {
-    const idx = currentRecords.findIndex((rec) => rec.filename === openFilename);
-    const hasOpenRecord = idx >= 0;
-    if (prevButton) prevButton.disabled = !hasOpenRecord || idx === 0;
-    if (nextButton) nextButton.disabled = !hasOpenRecord || idx === currentRecords.length - 1;
-    if (countEl) {
-        countEl.textContent = hasOpenRecord
-            ? `${idx + 1} of ${currentRecords.length}`
-            : `0 of ${currentRecords.length}`;
-    }
-}
-
-function detailTitle(record) {
+function detailTitle(record, { records }) {
     const parts = [formatStartedAt(record.started_at)];
-    const sessionIndex = groupedSetIndex(record);
+    const sessionIndex = groupedSetIndex(record, records);
     const setIndex = record?.generation?.set_session ?? record?.set_session;
-    const setSize = kochSetSize(record);
+    const setSize = kochSetSize(record, records);
     if (Number.isInteger(sessionIndex) && Number.isInteger(setIndex)) {
         parts.push(`Session ${sessionIndex}`);
         parts.push(`Set ${setIndex} of ${setSize}`);
@@ -444,11 +373,11 @@ function recordUsesChallengeSet(record) {
     );
 }
 
-function kochSetSize(record) {
+function kochSetSize(record, records) {
     if (recordUsesChallengeSet(record)) return CHALLENGE_SET_SIZE;
     const setId = record?.generation?.set_id ?? record?.set_id;
     if (!setId) return LEGACY_SET_SIZE;
-    return currentRecords.some((rec) => {
+    return records.some((rec) => {
         const recSetId = rec?.generation?.set_id ?? rec?.set_id;
         return recSetId === setId && recordUsesChallengeSet(rec);
     })
@@ -499,10 +428,10 @@ function flattenGroups(groups) {
     return groups.flatMap((group) => group.records);
 }
 
-function groupedSetIndex(record) {
+function groupedSetIndex(record, records) {
     const setId = record?.generation?.set_id ?? record?.set_id;
     if (!setId) return null;
-    const groups = groupBySet(currentRecords).filter((group) => group.set_id);
+    const groups = groupBySet(records).filter((group) => group.set_id);
     let sessionIndex = groups.length;
     for (const group of groups) {
         if (group.set_id === setId) return sessionIndex;
@@ -510,118 +439,6 @@ function groupedSetIndex(record) {
     }
     return null;
 }
-
-function cssEscape(value) {
-    if (window.CSS && typeof window.CSS.escape === "function") {
-        return window.CSS.escape(value);
-    }
-    // Filenames are restricted to [A-Za-z0-9.-] by the server validator,
-    // so a minimal escape is enough here.
-    return value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
-}
-
-async function openDetail(filename, summaryRow) {
-    clearOpenDetail();
-    openFilename = filename;
-    summaryRow.dataset.expanded = "true";
-    summaryRow.setAttribute("aria-expanded", "true");
-    detailDialogTitle.textContent = "Session";
-    detailDialogBody.className = "settings-koch-dialog__body";
-    detailDialogBody.textContent = "Loading session…";
-    updateNavButtons();
-    if (!detailDialog.open) {
-        detailDialog.showModal();
-    }
-
-    try {
-        const record = await loadRecord(filename);
-        if (openFilename !== filename) return; // user closed/switched while fetching
-        detailDialogTitle.textContent = detailTitle(record);
-        renderDetailContent(detailDialogBody, record);
-        updateNavButtons();
-    } catch (err) {
-        detailDialogBody.textContent = `Could not load session: ${err.message}`;
-        updateNavButtons();
-    }
-}
-
-function attachRowHandler(tr, filename) {
-    tr.classList.add("settings-koch-row");
-    tr.dataset.filename = filename;
-    tr.dataset.expanded = "false";
-    tr.setAttribute("role", "button");
-    tr.setAttribute("tabindex", "0");
-    tr.setAttribute("aria-expanded", "false");
-    const toggle = () => {
-        if (openFilename === filename) {
-            detailDialog.close();
-        } else {
-            openDetail(filename, tr);
-        }
-    };
-    tr.addEventListener("click", toggle);
-    tr.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            toggle();
-        }
-    });
-}
-
-function appendDeleteCell(row, filename) {
-    const cell = document.createElement("td");
-    cell.className = "settings-koch-table__delete-cell";
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "settings-koch-table__delete";
-    button.textContent = "Delete";
-    button.setAttribute("aria-label", "Delete Koch session record");
-    button.addEventListener("click", async (event) => {
-        event.stopPropagation();
-        const ok = window.confirm("Delete this Koch session record?");
-        if (!ok) return;
-        try {
-            button.disabled = true;
-            await deleteRecord(filename);
-        } catch (err) {
-            button.disabled = false;
-            window.alert(`Could not delete Koch session: ${err.message}`);
-        }
-    });
-    button.addEventListener("keydown", (event) => {
-        event.stopPropagation();
-    });
-    cell.appendChild(button);
-    row.appendChild(cell);
-}
-
-detailDialog.addEventListener("close", () => {
-    detailDialogTitle.textContent = "Session";
-    detailDialogBody.replaceChildren();
-    clearOpenDetail();
-    updateNavButtons();
-});
-
-detailDialog.addEventListener("click", (event) => {
-    if (event.target === detailDialog) {
-        detailDialog.close();
-    }
-});
-
-prevButton?.addEventListener("click", () => openRecordByOffset(-1));
-nextButton?.addEventListener("click", () => openRecordByOffset(1));
-
-document.addEventListener("keydown", (event) => {
-    if (!detailDialog.open || event.altKey || event.ctrlKey || event.metaKey) return;
-    const key = event.key.toLowerCase();
-    if (event.key === "ArrowLeft" || event.key === "<" || key === "h") {
-        event.preventDefault();
-        openRecordByOffset(-1);
-    } else if (event.key === "ArrowRight" || event.key === ">" || key === "l") {
-        event.preventDefault();
-        openRecordByOffset(1);
-    }
-});
 
 function groupBySet(records) {
     const groups = [];
@@ -639,7 +456,7 @@ function groupBySet(records) {
     return groups;
 }
 
-function renderSetHeader(group, sessionIndex) {
+function renderSetHeader(group, sessionIndex, { cssEscape }) {
     const tr = document.createElement("tr");
     tr.className = "settings-koch-set-header";
     tr.dataset.setId = group.set_id;
@@ -688,19 +505,16 @@ function renderSetHeader(group, sessionIndex) {
     return tr;
 }
 
-function renderRows(records) {
-    tbody.replaceChildren();
-    openFilename = null;
+function renderGroupedRows(records, { appendDeleteCell, attachRowHandler, cssEscape }) {
     const groups = displayGroups(records);
-    currentRecords = flattenGroups(groups);
-    updateNavButtons();
+    const flattened = flattenGroups(groups);
 
     let globalIdx = 0;
     let sessionIndex = groups.filter((g) => g.set_id).length;
 
     groups.forEach((group) => {
         if (group.set_id) {
-            tbody.appendChild(renderSetHeader(group, sessionIndex));
+            tbody.appendChild(renderSetHeader(group, sessionIndex, { cssEscape }));
             sessionIndex -= 1;
         }
 
@@ -732,31 +546,35 @@ function renderRows(records) {
             tbody.appendChild(tr);
         });
     });
+    return flattened;
 }
 
-async function loadKochSessions() {
-    try {
-        const res = await fetch("/api/koch-exercises", { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const records = Array.isArray(data.records) ? data.records : [];
-        if (records.length === 0) {
-            metaEl.textContent = `No saved Koch sessions in ${data.save_directory || "save directory"}.`;
-            currentRecords = [];
-            openFilename = null;
-            updateNavButtons();
-            tbody.replaceChildren();
-            return;
-        }
-        metaEl.textContent = `${records.length} saved session${records.length === 1 ? "" : "s"} in ${data.save_directory}`;
-        renderRows(records);
-    } catch (err) {
-        metaEl.textContent = `Could not load saved sessions: ${err.message}`;
-        currentRecords = [];
-        openFilename = null;
-        updateNavButtons();
-        tbody.replaceChildren();
-    }
-}
-
-loadKochSessions();
+createRecordTableController({
+    tbody,
+    metaEl,
+    detailDialog,
+    detailDialogTitle,
+    detailDialogBody,
+    prevButton,
+    nextButton,
+    countEl,
+    listEndpoint: "/api/koch-exercises",
+    recordEndpoint: "/api/koch-exercise",
+    deleteEndpoint: "/api/delete-koch-exercise",
+    changedKind: "koch",
+    dialogTitle: "Session",
+    loadingText: "Loading session…",
+    detailBodyClass: "settings-koch-dialog__body",
+    emptyText: (data) =>
+        `No saved Koch sessions in ${data.save_directory || "save directory"}.`,
+    countText: (records, data) =>
+        `${records.length} saved session${records.length === 1 ? "" : "s"} in ${data.save_directory}`,
+    listErrorText: (err) => `Could not load saved sessions: ${err.message}`,
+    loadErrorText: (err) => `Could not load session: ${err.message}`,
+    deleteConfirmText: "Delete this Koch session record?",
+    deleteAriaLabel: "Delete Koch session record",
+    deleteErrorText: (err) => `Could not delete Koch session: ${err.message}`,
+    detailTitle,
+    renderDetail,
+    renderRows: renderGroupedRows,
+});

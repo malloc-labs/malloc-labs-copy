@@ -23,6 +23,7 @@ export function createRecordTableController(options) {
         changedKind,
         dialogTitle,
         loadingText,
+        detailBodyClass,
         emptyText,
         countText,
         listErrorText,
@@ -109,6 +110,7 @@ export function createRecordTableController(options) {
         row.dataset.expanded = "true";
         row.setAttribute("aria-expanded", "true");
         detailDialogTitle.textContent = dialogTitle;
+        if (detailBodyClass) detailDialogBody.className = detailBodyClass;
         detailDialogBody.textContent = loadingText;
         updateNavButtons();
         if (!detailDialog.open) detailDialog.showModal();
@@ -177,12 +179,16 @@ export function createRecordTableController(options) {
         openFilename = null;
         updateNavButtons();
         if (renderRowsOption) {
-            renderRowsOption(records, {
+            const renderedRecords = renderRowsOption(records, {
                 appendCell,
                 appendDeleteCell,
                 attachRowHandler,
                 cssEscape,
             });
+            if (Array.isArray(renderedRecords)) {
+                currentRecords = renderedRecords;
+                updateNavButtons();
+            }
             return;
         }
         records.forEach((rec, idx) => {
