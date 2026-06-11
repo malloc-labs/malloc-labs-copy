@@ -12,6 +12,8 @@
 // of what was played versus what the learner typed. Only one detail
 // panel is open at a time — opening another row closes the first.
 
+import { appendCell, formatDuration, formatStartedAt } from "./settings-formatters.js";
+
 const tbody = document.getElementById("settings-koch-tbody");
 const metaEl = document.getElementById("settings-koch-meta");
 const detailDialog = document.getElementById("settings-koch-dialog");
@@ -27,22 +29,6 @@ const CHALLENGE_SET_SIZE = 12;
 let openFilename = null;
 let currentRecords = [];
 const detailCache = new Map();
-
-function formatStartedAt(iso) {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleString();
-}
-
-function formatDuration(startedIso, endedIso) {
-    const start = new Date(startedIso).getTime();
-    const end = new Date(endedIso).getTime();
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return "—";
-    const totalSec = Math.round((end - start) / 1000);
-    const mins = Math.floor(totalSec / 60);
-    const secs = totalSec % 60;
-    return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-}
 
 function formatScaffoldBreak(record) {
     // Scaffold-break is the session-level audio shape that engages
@@ -73,7 +59,7 @@ function buildMetaPairs(record) {
     const pairs = [
         ["Started", formatStartedAt(record.started_at)],
         ["Ended", formatStartedAt(record.ended_at)],
-        ["Duration", formatDuration(record.started_at, record.ended_at)],
+        ["Duration", formatDuration(record.started_at, record.ended_at, "—")],
         ["Character speed", Number.isFinite(charWpm) ? `${charWpm} WPM` : "—"],
         ["Effective speed", Number.isFinite(effWpm) ? `${effWpm} WPM` : "—"],
         ["Farnsworth", farnsworth ? "on" : "off"],
@@ -326,12 +312,6 @@ function normalizeExerciseEntry(raw, legacyAnswer, idx) {
         answer: typeof legacyAnswer === "string" ? legacyAnswer : "",
         analysis: {},
     };
-}
-
-function appendCell(row, value) {
-    const cell = document.createElement("td");
-    cell.textContent = String(value);
-    row.appendChild(cell);
 }
 
 function unitPair(correct, available) {

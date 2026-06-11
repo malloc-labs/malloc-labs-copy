@@ -13,6 +13,8 @@
 // The Heard column is voice-derived and may differ from the learner's
 // editable Answer by design. Backend evidence, not a score (spec §9).
 
+import { appendCell, formatDuration, formatStartedAt } from "./settings-formatters.js";
+
 const tbody = document.getElementById("settings-recognition-tbody");
 const metaEl = document.getElementById("settings-recognition-records-meta");
 const detailDialog = document.getElementById("settings-recognition-dialog");
@@ -25,28 +27,6 @@ const countEl = document.getElementById("settings-recognition-dialog-count");
 let openFilename = null;
 let currentRecords = [];
 const detailCache = new Map();
-
-function formatStartedAt(iso) {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return iso || "-";
-    return d.toLocaleString();
-}
-
-function formatDuration(startedIso, endedIso) {
-    const start = new Date(startedIso).getTime();
-    const end = new Date(endedIso).getTime();
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return "-";
-    const totalSec = Math.round((end - start) / 1000);
-    const mins = Math.floor(totalSec / 60);
-    const secs = totalSec % 60;
-    return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-}
-
-function appendCell(row, value) {
-    const cell = document.createElement("td");
-    cell.textContent = String(value);
-    row.appendChild(cell);
-}
 
 function buildMetaGrid(record) {
     const grid = document.createElement("dl");
