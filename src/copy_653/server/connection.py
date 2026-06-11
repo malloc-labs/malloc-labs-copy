@@ -23,7 +23,7 @@ from typing import Any, Awaitable, Callable
 from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol
 
-from copy_653.audio import patterns, timing
+from copy_653.audio import timing
 from copy_653.config import (
     DEFAULT_CONFIG_PATH,
     load_audio_parameters,
@@ -32,7 +32,7 @@ from copy_653.config import (
     load_save_directory,
     load_warm_up_timeout_seconds,
 )
-from copy_653.letters import ANCHORED_SYMBOLS, find_anchors_dir
+from copy_653.letters import find_anchors_dir
 from copy_653.midi import KeyDecoder, KeyElementAssembler
 from copy_653.server.audio_settings_actions import (
     _get_audio_settings_action,
@@ -57,6 +57,7 @@ from copy_653.server.actions import (
     _start_warmup_action,
     _unclaim_symbol_action,
 )
+from copy_653.server.connection_context import supersede
 from copy_653.server.key_input_actions import (
     BrowserKeyInputState,
     KeyNoteSource,
@@ -64,17 +65,9 @@ from copy_653.server.key_input_actions import (
     _run_key_input_action,
 )
 from copy_653.server.test_message_actions import (
-    _play_test_message_action,
     _save_test_message_action,
 )
-from copy_653.server.texture_preview_actions import (
-    _play_texture_preview_loop,
-    _save_texture_preview_action,
-)
-from copy_653.server.letter_playback_actions import (
-    _run_letter_sequence,
-    _run_morse_repeat,
-)
+from copy_653.server.playback_controller import PlaybackController
 from copy_653.server.recognition_actions import (
     ActiveRecognitionSession,
     _audio_params_for_gear,
@@ -101,7 +94,6 @@ from copy_653.server.records import (
 )
 from copy_653.server.validation import (
     _browser_midi_note_event,
-    _optional_positive_int,
 )
 from copy_653.server.wire_events import (
     _claimed_symbols_event,
@@ -115,23 +107,6 @@ from copy_653.sequence.listening_conditions import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-async def supersede(task: asyncio.Task[Any] | None) -> None:
-    """Cancel and await an in-flight per-slot task; swallow cancellation.
-
-    The handler uses this to retire whatever was running in a task slot
-    before starting its replacement, so event ordering on the new task's
-    first frame is preserved. A ``None`` or already-completed task is a
-    no-op.
-    """
-    if task is None or task.done():
-        return
-    task.cancel()
-    try:
-        await task
-    except (asyncio.CancelledError, Exception):
-        pass
 
 
 @dataclass
@@ -547,6 +522,7 @@ async def handler(
     )
     _reconstruct_set_state(state)
     _reconstruct_recognition_set_state(state)
+    playback = PlaybackController(state)
 
     # Push current state on connect so the UI does not need to ask.
     claimed = load_claimed_symbols(state.config_path)
@@ -782,75 +758,8 @@ async def handler(
                     state.key_input_task.cancel()
                 state.close_active_cadence_session()
                 state.close_active_copy_key_session()
-            elif action == "play-test-message":
-                await supersede(state.test_message_task)
-                state.test_message_task = asyncio.create_task(
-                    _play_test_message_action(ws, message)
-                )
-            elif action == "play-texture-preview":
-                await supersede(state.texture_preview_task)
-                state.texture_preview_task = asyncio.create_task(
-                    _play_texture_preview_loop(ws, message, state.config_path)
-                )
-            elif action == "stop-texture-preview":
-                await supersede(state.texture_preview_task)
-                state.texture_preview_task = None
-            elif action == "save-texture-preview":
-                await _save_texture_preview_action(ws, message, state.config_path)
-            elif action == "play-letter":
-                symbol = message.get("symbol", "")
-                if not isinstance(symbol, str) or len(symbol) != 1:
-                    await _send_event(
-                        ws, {"type": "error", "reason": "symbol-must-be-single-character"}
-                    )
-                    continue
-                upper = symbol.upper()
-                if upper not in ANCHORED_SYMBOLS:
-                    await _send_event(
-                        ws, {"type": "error", "reason": "unknown-letter", "symbol": upper}
-                    )
-                    continue
-                # Awaiting the cancelled task before starting the new one
-                # preserves event ordering: no overlapping letter-start frames.
-                await supersede(state.letter_task)
-                state.letter_task = asyncio.create_task(
-                    _run_letter_sequence(ws, upper, state.config_path, state.anchors_dir)
-                )
-            elif action == "play-morse-repeat":
-                symbol = message.get("symbol", "")
-                if not isinstance(symbol, str) or len(symbol) != 1:
-                    await _send_event(
-                        ws, {"type": "error", "reason": "symbol-must-be-single-character"}
-                    )
-                    continue
-                upper = symbol.upper()
-                try:
-                    patterns.pattern_for(upper)
-                except KeyError:
-                    await _send_event(
-                        ws, {"type": "error", "reason": "unknown-symbol", "symbol": upper}
-                    )
-                    continue
-                try:
-                    repeats = _optional_positive_int(message.get("repeats"), "repeats")
-                except ValueError as exc:
-                    await _send_event(
-                        ws,
-                        {
-                            "type": "error",
-                            "reason": "invalid-morse-repeat-request",
-                            "detail": str(exc),
-                        },
-                    )
-                    continue
-                if repeats is None:
-                    repeats = 3
-                # Share the letter_task slot so a new preview supersedes
-                # any in-flight play-letter or play-morse-repeat cleanly.
-                await supersede(state.letter_task)
-                state.letter_task = asyncio.create_task(
-                    _run_morse_repeat(ws, upper, repeats, state.config_path)
-                )
+            elif isinstance(action, str) and await playback.handle(action, message):
+                continue
             else:
                 await _send_event(ws, {"type": "error", "reason": "unknown-action"})
     except ConnectionClosed:
