@@ -7,13 +7,10 @@ in this module is pure — no engine state crosses the seam.
 
 from __future__ import annotations
 
-import io
 import json
 import logging
 import mimetypes
 import re
-import zipfile
-from datetime import datetime, timezone
 from http import HTTPStatus
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
@@ -23,6 +20,7 @@ from websockets.datastructures import Headers
 
 from copy_653 import __version__
 from copy_653.config import load_save_directory
+from copy_653.server.backup_api import build_records_backup
 from copy_653.sequence.exercise_analysis import (
     DEFAULT_EVIDENCE_WINDOW_SIZE,
     load_band_evidence,
@@ -369,7 +367,7 @@ def _api_copy_key_band_history(
 
 
 def _api_backup(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
-    return _build_records_backup(config_path, kind=_first_query_value(params, "kind"))
+    return build_records_backup(config_path, kind=_first_query_value(params, "kind"))
 
 
 def _api_voice_lexicon(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
@@ -680,65 +678,6 @@ def _parse_window_size(raw: str | None, default: int) -> int:
     except (TypeError, ValueError):
         return default
     return parsed if parsed > 0 else default
-
-
-# ---------------------------------------------------------------------------
-# Backup
-# ---------------------------------------------------------------------------
-
-_BACKUP_KINDS: dict[str, str] = {
-    "koch-exercise": "koch-exercise",
-    "cadence-send": "cadence-send",
-    "copy-key": "copy-key",
-    "recognition": "recognition",
-}
-
-
-def _build_records_backup(
-    config_path: Path | None,
-    *,
-    kind: str,
-) -> tuple[HTTPStatus, list[tuple[str, str]], bytes]:
-    subdir = _BACKUP_KINDS.get(kind)
-    if subdir is None:
-        return _http_response(HTTPStatus.BAD_REQUEST, b"unknown backup kind")
-
-    try:
-        save_directory = load_save_directory(config_path)
-    except Exception:
-        logger.exception("could not resolve save_directory for backup")
-        return _http_response(HTTPStatus.INTERNAL_SERVER_ERROR, b"could not resolve save directory")
-
-    target_dir = save_directory / subdir
-    pattern = "*.json" if kind in ("koch-exercise", "recognition") else f"{subdir}-*.json"
-
-    buffer = io.BytesIO()
-    file_count = 0
-    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
-        if target_dir.is_dir():
-            for entry in sorted(target_dir.rglob(pattern)):
-                try:
-                    payload = entry.read_bytes()
-                except OSError:
-                    logger.exception("skipping unreadable record in backup: %s", entry)
-                    continue
-                archive.writestr(str(entry.relative_to(save_directory)), payload)
-                file_count += 1
-
-    body = buffer.getvalue()
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    filename = f"copy-653-{subdir}-backup-{stamp}.zip"
-    return (
-        HTTPStatus.OK,
-        [
-            ("Content-Type", "application/zip"),
-            ("Content-Length", str(len(body))),
-            ("Content-Disposition", f'attachment; filename="{filename}"'),
-            ("X-Copy-Backup-File-Count", str(file_count)),
-            ("Cache-Control", "no-store"),
-        ],
-        body,
-    )
 
 
 # ---------------------------------------------------------------------------
