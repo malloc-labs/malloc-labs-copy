@@ -52,7 +52,6 @@ from copy_653.server.actions import (
     _request_copy_exercises_action,
     _request_copy_key_exercises_action,
     _save_koch_answers_action,
-    _save_recognition_answers_action,
     _start_action,
     _start_warmup_action,
     _unclaim_symbol_action,
@@ -70,26 +69,17 @@ from copy_653.server.test_message_actions import (
 from copy_653.server.playback_controller import PlaybackController
 from copy_653.server.recognition_actions import (
     ActiveRecognitionSession,
-    _audio_params_for_gear,
-    _audio_params_for_recognition_set,
-    _coerce_recognition_diagnostic,
-    _coerce_recognition_exercise_completion,
-    _recognition_kind_for_gear,
-    _run_recognition_receiver_bed_loop,
-    _run_recognition_session,
-    _start_recognition_action,
 )
+from copy_653.server.recognition_controller import RecognitionController
 from copy_653.server.records import (
     _ActiveCadenceSession,
     _ActiveCopyKeySession,
     _finalize_cadence_session,
     _finalize_copy_key_session,
     _iter_koch_records,
-    _iter_recognition_records,
     _koch_readiness_state,
     _next_send_symbol_readiness,
     _recognition_readiness_state,
-    _resolve_recognition_session_gears,
     _resolve_session_gears_and_rst,
 )
 from copy_653.server.validation import (
@@ -302,78 +292,6 @@ async def _run_start_session(state: ConnectionState) -> None:
         await _send_event(state.ws, {"type": "session-end"})
 
 
-def _reconstruct_recognition_set_state(state: ConnectionState) -> None:
-    """Restore the recognition set state machine from persisted records."""
-    try:
-        save_directory = load_save_directory(state.config_path)
-    except Exception:
-        return
-
-    records = _iter_recognition_records(save_directory)
-    if not records:
-        return
-
-    by_set: dict[str, list[dict[str, Any]]] = {}
-    for r in records:
-        gen = r.get("generation") or {}
-        sid = gen.get("set_id")
-        if isinstance(sid, str) and sid:
-            by_set.setdefault(sid, []).append(r)
-
-    if not by_set:
-        return
-
-    latest_set_id = max(by_set)
-    group = by_set[latest_set_id]
-
-    max_session = 0
-    latest_ended: datetime | None = None
-    for r in group:
-        gen = r.get("generation") or {}
-        ss = gen.get("set_session")
-        if isinstance(ss, int) and not isinstance(ss, bool) and ss > max_session:
-            max_session = ss
-        ended = r.get("ended_at")
-        if isinstance(ended, str):
-            try:
-                dt = datetime.fromisoformat(ended.replace("Z", "+00:00"))
-                if latest_ended is None or dt > latest_ended:
-                    latest_ended = dt
-            except ValueError:
-                continue
-
-    if max_session == 0 or max_session >= 8 or latest_ended is None:
-        return
-
-    elapsed = (datetime.now(timezone.utc) - latest_ended).total_seconds()
-    state.recognition_set_id = latest_set_id
-    state.recognition_last_session_ended_at = time.monotonic() - elapsed
-    state.recognition_session_next = max_session + 1
-
-
-def _next_recognition_profile(state: ConnectionState, claimed: tuple[str, ...]) -> dict[str, Any]:
-    if not claimed:
-        return {}
-    try:
-        save_directory = load_save_directory(state.config_path)
-        gears = _resolve_recognition_session_gears(
-            save_directory,
-            " ".join(sorted(claimed)),
-            exercise_count=1,
-            set_id=state.recognition_set_id,
-            set_session=state.recognition_session_next,
-        )
-    except Exception:
-        logger.exception("could not resolve next recognition profile")
-        return {}
-    gear = gears[0] if gears else 0
-    return {
-        "recognition_set_session": state.recognition_session_next,
-        "recognition_gear": gear,
-        "recognition_kind": _recognition_kind_for_gear(gear),
-    }
-
-
 def _next_koch_profile(state: ConnectionState, claimed: tuple[str, ...]) -> dict[str, Any]:
     if not claimed:
         return {}
@@ -414,51 +332,6 @@ def _next_koch_set_position(state: ConnectionState) -> dict[str, Any]:
         "koch_set_session": state.main_session_next,
         "koch_warm_up": False,
     }
-
-
-async def _run_start_recognition_session(state: ConnectionState) -> None:
-    """Wrap a recognition ``start-recognition`` with the set state machine."""
-    try:
-        if state.is_recognition_fresh_set:
-            state.recognition_set_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-
-        set_session = state.recognition_session_next
-        recognition = await _start_recognition_action(
-            state.ws,
-            state.config_path,
-            set_session=set_session,
-            set_id=state.recognition_set_id,
-            anchors_dir=state.anchors_dir,
-        )
-        if recognition is None:
-            return
-        state.recognition = recognition
-        floor_params = _audio_params_for_recognition_set(
-            _audio_params_for_gear(recognition.audio_params, recognition.gear),
-            set_session,
-        )
-        await supersede(state.recognition_floor_task)
-        state.recognition_floor_task = asyncio.create_task(
-            _run_recognition_receiver_bed_loop(
-                state.config_path,
-                audio_params=floor_params,
-            )
-        )
-        await _run_recognition_session(recognition)
-        state.recognition_session_next += 1
-        if state.recognition_session_next > 8:
-            state.recognition_session_next = 1
-
-        state.recognition_last_session_ended_at = time.monotonic()
-        state.recognition = None
-    except ValueError as exc:
-        await _send_event(
-            state.ws,
-            {"type": "error", "reason": "invalid-config", "detail": str(exc)},
-        )
-    except asyncio.CancelledError:
-        state.recognition = None
-        await _send_event(state.ws, {"type": "session-end"})
 
 
 # Bare-delegation actions: no per-slot supersede, no special state. The
@@ -521,7 +394,8 @@ async def handler(
         key_note_source=key_note_source,
     )
     _reconstruct_set_state(state)
-    _reconstruct_recognition_set_state(state)
+    recognition = RecognitionController(state)
+    recognition.reconstruct_set_state()
     playback = PlaybackController(state)
 
     # Push current state on connect so the UI does not need to ask.
@@ -544,7 +418,7 @@ async def handler(
             ready_for_next_send=ready_for_next_send,
             set_is_fresh=state.is_fresh_set,
             **_next_koch_profile(state, claimed),
-            **_next_recognition_profile(state, claimed),
+            **recognition.next_profile(claimed),
         ),
     )
 
@@ -566,15 +440,6 @@ async def handler(
                 await supersede(state.session_task)
                 state.pending_koch_record_path = None
                 state.session_task = asyncio.create_task(_run_start_session(state))
-            elif action == "start-recognition":
-                await supersede(state.session_task)
-                state.pending_recognition_record_path = None
-                state.session_task = asyncio.create_task(_run_start_recognition_session(state))
-            elif action == "start-recognition-floor":
-                if state.recognition_floor_task is None or state.recognition_floor_task.done():
-                    state.recognition_floor_task = asyncio.create_task(
-                        _run_recognition_receiver_bed_loop(state.config_path)
-                    )
             elif action == "stop":
                 # session-end is sent by _run_start_session's CancelledError handler.
                 if state.session_task is not None and not state.session_task.done():
@@ -585,39 +450,8 @@ async def handler(
                     # One save per pending record. A subsequent save
                     # without a new session-end is a no-op error.
                     state.pending_koch_record_path = None
-            elif action == "save-recognition-answers":
-                saved = await _save_recognition_answers_action(
-                    ws, message, state.pending_recognition_record_path
-                )
-                if saved:
-                    state.pending_recognition_record_path = None
-            elif action == "complete-recognition-exercise":
-                if state.recognition is None:
-                    await _send_event(ws, {"type": "error", "reason": "no-active-recognition"})
-                else:
-                    completion = _coerce_recognition_exercise_completion(message)
-                    if completion is None:
-                        await _send_event(
-                            ws,
-                            {"type": "error", "reason": "invalid-recognition-exercise"},
-                        )
-                    else:
-                        await state.recognition.push_completion(completion)
-            elif action == "append-recognition-diagnostic":
-                if state.recognition is None:
-                    await _send_event(ws, {"type": "error", "reason": "no-active-recognition"})
-                else:
-                    diagnostic = _coerce_recognition_diagnostic(message)
-                    if diagnostic is None:
-                        await _send_event(
-                            ws,
-                            {"type": "error", "reason": "invalid-recognition-diagnostic"},
-                        )
-                    else:
-                        state.recognition.append_late_voice_capture(
-                            diagnostic["exercise_index"],
-                            diagnostic["late_voice_capture"],
-                        )
+            elif isinstance(action, str) and await recognition.handle(action, message):
+                continue
             elif action == "request-copy-exercises":
                 # A fresh request closes any in-flight Cadence session
                 # before opening a new one — we never silently merge
