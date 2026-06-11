@@ -13,10 +13,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -30,7 +28,6 @@ from copy_653.config import (
     load_claimed_symbols,
     load_keyer_settings,
     load_save_directory,
-    load_warm_up_timeout_seconds,
 )
 from copy_653.letters import find_anchors_dir
 from copy_653.midi import KeyDecoder, KeyElementAssembler
@@ -47,14 +44,9 @@ from copy_653.server.voice_settings_actions import (
     _set_voice_settings_action,
 )
 from copy_653.server.actions import (
-    _claim_symbol_action,
     _play_copy_key_exercise,
     _request_copy_exercises_action,
     _request_copy_key_exercises_action,
-    _save_koch_answers_action,
-    _start_action,
-    _start_warmup_action,
-    _unclaim_symbol_action,
 )
 from copy_653.server.connection_context import supersede
 from copy_653.server.key_input_actions import (
@@ -70,17 +62,16 @@ from copy_653.server.playback_controller import PlaybackController
 from copy_653.server.recognition_actions import (
     ActiveRecognitionSession,
 )
+from copy_653.server.koch_controller import KochController
 from copy_653.server.recognition_controller import RecognitionController
 from copy_653.server.records import (
     _ActiveCadenceSession,
     _ActiveCopyKeySession,
     _finalize_cadence_session,
     _finalize_copy_key_session,
-    _iter_koch_records,
     _koch_readiness_state,
     _next_send_symbol_readiness,
     _recognition_readiness_state,
-    _resolve_session_gears_and_rst,
 )
 from copy_653.server.validation import (
     _browser_midi_note_event,
@@ -90,13 +81,6 @@ from copy_653.server.wire_events import (
     _key_input_start_payload,
     _send_event,
 )
-from copy_653.sequence.listening_conditions import (
-    KOCH_CHALLENGE_END_SESSION,
-    KOCH_CHALLENGE_START_SESSION,
-    KOCH_PROBE_PHASE_CHALLENGE,
-)
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -181,177 +165,10 @@ class ConnectionState:
             self.copy_key = None
 
 
-def _reconstruct_set_state(state: ConnectionState) -> None:
-    """Restore the set state machine from persisted records on connect.
-
-    A page refresh creates a fresh ConnectionState, losing the in-memory
-    set position. This reads recent koch-exercise records and restores
-    warmup_remaining, main_session_next, set_id, and last_session_ended_at
-    so the learner resumes where they left off instead of restarting from
-    warm-up 1.
-    """
-    try:
-        save_directory = load_save_directory(state.config_path)
-    except Exception:
-        return
-
-    records = _iter_koch_records(save_directory)
-    if not records:
-        return
-
-    by_set: dict[str, list[dict[str, Any]]] = {}
-    for r in records:
-        gen = r.get("generation") or {}
-        sid = gen.get("set_id")
-        if isinstance(sid, str) and sid:
-            by_set.setdefault(sid, []).append(r)
-
-    if not by_set:
-        return
-
-    latest_set_id = max(by_set)
-    group = by_set[latest_set_id]
-
-    max_session = 0
-    latest_ended: datetime | None = None
-    for r in group:
-        gen = r.get("generation") or {}
-        ss = gen.get("set_session")
-        if isinstance(ss, int) and not isinstance(ss, bool) and ss > max_session:
-            max_session = ss
-        ended = r.get("ended_at")
-        if isinstance(ended, str):
-            try:
-                dt = datetime.fromisoformat(ended.replace("Z", "+00:00"))
-                if latest_ended is None or dt > latest_ended:
-                    latest_ended = dt
-            except ValueError:
-                continue
-
-    if max_session == 0 or max_session >= KOCH_CHALLENGE_END_SESSION or latest_ended is None:
-        return
-
-    elapsed = (datetime.now(timezone.utc) - latest_ended).total_seconds()
-    state.set_id = latest_set_id
-    state.last_session_ended_at = time.monotonic() - elapsed
-
-    if max_session <= 2:
-        state.warmup_remaining = 2 - max_session
-        state.main_session_next = 3
-    else:
-        state.warmup_remaining = 0
-        state.main_session_next = max_session + 1
-
-
-async def _run_start_session(state: ConnectionState) -> None:
-    """Wrap a `start` action with the set state machine, common
-    invalid-config and stop-was-requested handlers.
-
-    The state machine decides whether to run a warm-up or main session
-    based on :attr:`ConnectionState.warmup_remaining` and the elapsed
-    time since the last session ended. On natural end, stashes the path
-    of the freshly-written koch record on ``state`` so a subsequent
-    ``save-koch-answers`` can rewrite the same file with learner answers.
-    """
-    try:
-        timeout = load_warm_up_timeout_seconds(state.config_path)
-        if state.last_session_ended_at is not None:
-            elapsed = time.monotonic() - state.last_session_ended_at
-            if elapsed > timeout:
-                state.warmup_remaining = 2
-
-        if state.is_fresh_set:
-            state.set_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-
-        if state.warmup_remaining > 0:
-            set_session = 3 - state.warmup_remaining
-            record_path = await _start_warmup_action(
-                state.ws, state.config_path, set_session=set_session, set_id=state.set_id
-            )
-            state.warmup_remaining -= 1
-        else:
-            set_session = state.main_session_next
-            record_path = await _start_action(
-                state.ws, state.config_path, set_session=set_session, set_id=state.set_id
-            )
-            state.main_session_next += 1
-            if state.main_session_next > KOCH_CHALLENGE_END_SESSION:
-                state.warmup_remaining = 2
-                state.main_session_next = 3
-
-        state.pending_koch_record_path = record_path
-        state.last_session_ended_at = time.monotonic()
-    except ValueError as exc:
-        await _send_event(
-            state.ws,
-            {"type": "error", "reason": "invalid-config", "detail": str(exc)},
-        )
-    except asyncio.CancelledError:
-        # Stop was requested — send session-end so the UI knows the
-        # session is over (spec §1.5).
-        await _send_event(state.ws, {"type": "session-end"})
-
-
-def _next_koch_profile(state: ConnectionState, claimed: tuple[str, ...]) -> dict[str, Any]:
-    if not claimed:
-        return {}
-    if state.warmup_remaining > 0:
-        return {
-            **_next_koch_set_position(state),
-            "koch_gears": [0] * 5,
-        }
-    try:
-        save_directory = load_save_directory(state.config_path)
-        gears, _rst = _resolve_session_gears_and_rst(
-            save_directory,
-            " ".join(sorted(claimed)),
-            exercise_count=5,
-        )
-    except Exception:
-        logger.exception("could not resolve next Koch exercise profile")
-        return {
-            "koch_set_session": state.main_session_next,
-            "koch_warm_up": False,
-        }
-    profile = {
-        **_next_koch_set_position(state),
-        "koch_gears": gears,
-    }
-    if KOCH_CHALLENGE_START_SESSION <= state.main_session_next <= KOCH_CHALLENGE_END_SESSION:
-        profile["probe_phase"] = KOCH_PROBE_PHASE_CHALLENGE
-    return profile
-
-
-def _next_koch_set_position(state: ConnectionState) -> dict[str, Any]:
-    if state.warmup_remaining > 0:
-        return {
-            "koch_set_session": 3 - state.warmup_remaining,
-            "koch_warm_up": True,
-        }
-    return {
-        "koch_set_session": state.main_session_next,
-        "koch_warm_up": False,
-    }
-
-
 # Bare-delegation actions: no per-slot supersede, no special state. The
 # dispatch loop calls these directly. Stateful or task-owning actions
 # stay as explicit branches in :func:`handler`.
 _BARE_HANDLERS: dict[str, Callable[[ConnectionState, dict[str, Any]], Awaitable[None]]] = {
-    "claim-symbol": lambda state, msg: _claim_symbol_action(
-        state.ws,
-        msg.get("symbol", ""),
-        state.config_path,
-        set_is_fresh=state.is_fresh_set,
-        **_next_koch_set_position(state),
-    ),
-    "unclaim-symbol": lambda state, msg: _unclaim_symbol_action(
-        state.ws,
-        msg.get("symbol", ""),
-        state.config_path,
-        set_is_fresh=state.is_fresh_set,
-        **_next_koch_set_position(state),
-    ),
     "get-audio-settings": lambda state, msg: _get_audio_settings_action(
         state.ws, state.config_path
     ),
@@ -393,7 +210,8 @@ async def handler(
         anchors_dir=anchors_dir if anchors_dir is not None else find_anchors_dir(),
         key_note_source=key_note_source,
     )
-    _reconstruct_set_state(state)
+    koch = KochController(state)
+    koch.reconstruct_set_state()
     recognition = RecognitionController(state)
     recognition.reconstruct_set_state()
     playback = PlaybackController(state)
@@ -416,8 +234,8 @@ async def handler(
             evidence_ready_for_next=evidence_ready_for_next,
             ready_for_next=ready_for_next,
             ready_for_next_send=ready_for_next_send,
-            set_is_fresh=state.is_fresh_set,
-            **_next_koch_profile(state, claimed),
+            set_is_fresh=koch.is_fresh_set,
+            **koch.next_profile(claimed),
             **recognition.next_profile(claimed),
         ),
     )
@@ -436,20 +254,12 @@ async def handler(
                 await bare(state, message)
                 continue
 
-            if action == "start":
-                await supersede(state.session_task)
-                state.pending_koch_record_path = None
-                state.session_task = asyncio.create_task(_run_start_session(state))
-            elif action == "stop":
+            if action == "stop":
                 # session-end is sent by _run_start_session's CancelledError handler.
                 if state.session_task is not None and not state.session_task.done():
                     state.session_task.cancel()
-            elif action == "save-koch-answers":
-                saved = await _save_koch_answers_action(ws, message, state.pending_koch_record_path)
-                if saved:
-                    # One save per pending record. A subsequent save
-                    # without a new session-end is a no-op error.
-                    state.pending_koch_record_path = None
+            elif isinstance(action, str) and await koch.handle(action, message):
+                continue
             elif isinstance(action, str) and await recognition.handle(action, message):
                 continue
             elif action == "request-copy-exercises":
