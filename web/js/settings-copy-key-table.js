@@ -1,6 +1,7 @@
 // Settings page — saved Copy > Key sessions table.
 
 import { buildExerciseBlock } from "./rhythm-review.js";
+import { appendCell, formatDuration, formatStartedAt, fraction } from "./settings-formatters.js";
 
 const tbody = document.getElementById("settings-copy-key-tbody");
 const metaEl = document.getElementById("settings-copy-key-meta");
@@ -14,32 +15,6 @@ const countEl = document.getElementById("settings-copy-key-dialog-count");
 let openFilename = null;
 let currentRecords = [];
 const detailCache = new Map();
-
-function formatStartedAt(iso) {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return iso || "-";
-    return d.toLocaleString();
-}
-
-function formatDuration(startedIso, endedIso) {
-    const start = new Date(startedIso).getTime();
-    const end = new Date(endedIso).getTime();
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return "-";
-    const totalSec = Math.round((end - start) / 1000);
-    const mins = Math.floor(totalSec / 60);
-    const secs = totalSec % 60;
-    return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-}
-
-function appendCell(row, value) {
-    const cell = document.createElement("td");
-    cell.textContent = String(value);
-    row.appendChild(cell);
-}
-
-function fraction(value) {
-    return Number.isFinite(value) ? value.toFixed(3) : "-";
-}
 
 function formatSentWithGaps(bucket) {
     let out = "";
