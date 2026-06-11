@@ -43,11 +43,6 @@ from copy_653.server.voice_settings_actions import (
     _get_voice_settings_action,
     _set_voice_settings_action,
 )
-from copy_653.server.actions import (
-    _play_copy_key_exercise,
-    _request_copy_exercises_action,
-    _request_copy_key_exercises_action,
-)
 from copy_653.server.connection_context import supersede
 from copy_653.server.key_input_actions import (
     BrowserKeyInputState,
@@ -67,12 +62,11 @@ from copy_653.server.recognition_controller import RecognitionController
 from copy_653.server.records import (
     _ActiveCadenceSession,
     _ActiveCopyKeySession,
-    _finalize_cadence_session,
-    _finalize_copy_key_session,
     _koch_readiness_state,
     _next_send_symbol_readiness,
     _recognition_readiness_state,
 )
+from copy_653.server.send_controller import SendController
 from copy_653.server.validation import (
     _browser_midi_note_event,
 )
@@ -135,35 +129,6 @@ class ConnectionState:
     def is_recognition_fresh_set(self) -> bool:
         return self.recognition_session_next == 1
 
-    def cadence_recorder(self, event: dict[str, Any]) -> None:
-        """Forward an outbound key/sent event to the active Cadence record."""
-        if self.cadence is not None:
-            self.cadence.record_event(event)
-
-    def copy_key_recorder(self, event: dict[str, Any]) -> None:
-        """Forward an outbound key/sent event to the active Copy Key record."""
-        if self.copy_key is not None:
-            self.copy_key.record_event(event)
-
-    def active_recorder(self, event: dict[str, Any]) -> None:
-        """Forward a key/sent event to whichever session is active."""
-        if self.copy_key is not None:
-            self.copy_key.record_event(event)
-        elif self.cadence is not None:
-            self.cadence.record_event(event)
-
-    def close_active_cadence_session(self) -> None:
-        """Persist and clear any in-flight Cadence session."""
-        if self.cadence is not None:
-            _finalize_cadence_session(self.cadence, self.config_path)
-            self.cadence = None
-
-    def close_active_copy_key_session(self) -> None:
-        """Persist and clear any in-flight Copy Key session."""
-        if self.copy_key is not None:
-            _finalize_copy_key_session(self.copy_key, self.config_path)
-            self.copy_key = None
-
 
 # Bare-delegation actions: no per-slot supersede, no special state. The
 # dispatch loop calls these directly. Stateful or task-owning actions
@@ -215,6 +180,7 @@ async def handler(
     recognition = RecognitionController(state)
     recognition.reconstruct_set_state()
     playback = PlaybackController(state)
+    send = SendController(state)
 
     # Push current state on connect so the UI does not need to ask.
     claimed = load_claimed_symbols(state.config_path)
@@ -262,43 +228,8 @@ async def handler(
                 continue
             elif isinstance(action, str) and await recognition.handle(action, message):
                 continue
-            elif action == "request-copy-exercises":
-                # A fresh request closes any in-flight Cadence session
-                # before opening a new one — we never silently merge
-                # two separate rounds of keying into one record.
-                state.close_active_cadence_session()
-                new_session = await _request_copy_exercises_action(ws, message, state.config_path)
-                if new_session is not None:
-                    state.cadence = new_session
-            elif action == "complete-cadence-session":
-                state.close_active_cadence_session()
-            elif action == "request-copy-key-exercises":
-                state.close_active_copy_key_session()
-                await supersede(state.copy_key_play_task)
-                new_session = await _request_copy_key_exercises_action(ws, state.config_path)
-                if new_session is not None:
-                    state.copy_key = new_session
-            elif action == "play-copy-key-exercise":
-                if state.copy_key is None:
-                    await _send_event(ws, {"type": "error", "reason": "no-active-copy-key-session"})
-                else:
-                    exercise_index = message.get("exercise_index")
-                    if not isinstance(exercise_index, int) or isinstance(exercise_index, bool):
-                        await _send_event(
-                            ws,
-                            {"type": "error", "reason": "invalid-copy-key-exercise-index"},
-                        )
-                    else:
-                        await supersede(state.copy_key_play_task)
-                        state.copy_key_play_task = asyncio.create_task(
-                            _play_copy_key_exercise(ws, state.copy_key, exercise_index)
-                        )
-            elif action == "complete-copy-key-session":
-                await supersede(state.copy_key_play_task)
-                state.close_active_copy_key_session()
-            elif action == "abort-copy-key-session":
-                await supersede(state.copy_key_play_task)
-                state.copy_key = None
+            elif isinstance(action, str) and await send.handle(action, message):
+                continue
             elif action == "start-key-input":
                 await supersede(state.key_input_task)
                 state.key_input_task = asyncio.create_task(
@@ -306,7 +237,7 @@ async def handler(
                         ws,
                         state.config_path,
                         state.key_note_source,
-                        recorder=state.active_recorder,
+                        recorder=send.active_recorder,
                     )
                 )
             elif action == "start-browser-key-input":
@@ -346,7 +277,7 @@ async def handler(
                         ),
                     ),
                     clock_offset=clock_offset,
-                    recorder=state.active_recorder,
+                    recorder=send.active_recorder,
                 )
                 await _send_event(
                     ws,
@@ -380,7 +311,7 @@ async def handler(
                     audio_params=state.browser.audio_params,
                     assembler=state.browser.assembler,
                     decoder=state.browser.decoder,
-                    recorder=state.active_recorder,
+                    recorder=send.active_recorder,
                 )
                 # Only arm the character-gap flush after a completed element
                 # (note-off). On note-on we're mid-stroke; rearming the timer
@@ -400,8 +331,7 @@ async def handler(
                     state.browser = None
                 if state.key_input_task is not None and not state.key_input_task.done():
                     state.key_input_task.cancel()
-                state.close_active_cadence_session()
-                state.close_active_copy_key_session()
+                send.close_all()
             elif isinstance(action, str) and await playback.handle(action, message):
                 continue
             else:
@@ -422,5 +352,4 @@ async def handler(
         await supersede(state.recognition_floor_task)
         if state.browser is not None:
             await state.browser.cancel_flush()
-        state.close_active_cadence_session()
-        state.close_active_copy_key_session()
+        send.close_all()
