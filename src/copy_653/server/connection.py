@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -21,16 +20,12 @@ from typing import Any, Awaitable, Callable
 from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol
 
-from copy_653.audio import timing
 from copy_653.config import (
     DEFAULT_CONFIG_PATH,
-    load_audio_parameters,
     load_claimed_symbols,
-    load_keyer_settings,
     load_save_directory,
 )
 from copy_653.letters import find_anchors_dir
-from copy_653.midi import KeyDecoder, KeyElementAssembler
 from copy_653.server.audio_settings_actions import (
     _get_audio_settings_action,
     _get_audio_output_devices_action,
@@ -47,9 +42,8 @@ from copy_653.server.connection_context import supersede
 from copy_653.server.key_input_actions import (
     BrowserKeyInputState,
     KeyNoteSource,
-    _push_key_note_event,
-    _run_key_input_action,
 )
+from copy_653.server.key_input_controller import KeyInputController
 from copy_653.server.test_message_actions import (
     _save_test_message_action,
 )
@@ -67,12 +61,8 @@ from copy_653.server.records import (
     _recognition_readiness_state,
 )
 from copy_653.server.send_controller import SendController
-from copy_653.server.validation import (
-    _browser_midi_note_event,
-)
 from copy_653.server.wire_events import (
     _claimed_symbols_event,
-    _key_input_start_payload,
     _send_event,
 )
 
@@ -181,6 +171,11 @@ async def handler(
     recognition.reconstruct_set_state()
     playback = PlaybackController(state)
     send = SendController(state)
+    key_input = KeyInputController(
+        state,
+        recorder=send.active_recorder,
+        close_send_sessions=send.close_all,
+    )
 
     # Push current state on connect so the UI does not need to ask.
     claimed = load_claimed_symbols(state.config_path)
@@ -230,108 +225,8 @@ async def handler(
                 continue
             elif isinstance(action, str) and await send.handle(action, message):
                 continue
-            elif action == "start-key-input":
-                await supersede(state.key_input_task)
-                state.key_input_task = asyncio.create_task(
-                    _run_key_input_action(
-                        ws,
-                        state.config_path,
-                        state.key_note_source,
-                        recorder=send.active_recorder,
-                    )
-                )
-            elif action == "start-browser-key-input":
-                await supersede(state.key_input_task)
-                if state.browser is not None:
-                    await state.browser.cancel_flush()
-                try:
-                    browser_settings = load_keyer_settings(state.config_path)
-                    browser_audio_params = load_audio_parameters(state.config_path)
-                except ValueError as exc:
-                    await _send_event(
-                        ws,
-                        {"type": "error", "reason": "invalid-config", "detail": str(exc)},
-                    )
-                    continue
-                # Calibrate browser performance.now() → server time.monotonic()
-                # so event timestamps and tick() flush times share one clock.
-                perf_now = message.get("perf_now")
-                clock_offset: float | None = None
-                if isinstance(perf_now, (int, float)) and not isinstance(perf_now, bool):
-                    clock_offset = time.monotonic() - float(perf_now)
-                input_name = message.get("input_name")
-                if not isinstance(input_name, str) or not input_name.strip():
-                    input_name = "browser MIDI"
-                state.browser = BrowserKeyInputState(
-                    ws=ws,
-                    settings=browser_settings,
-                    audio_params=browser_audio_params,
-                    assembler=KeyElementAssembler(),
-                    decoder=KeyDecoder(
-                        dit_seconds=timing.dit_seconds(browser_audio_params.character_speed_wpm),
-                        character_gap_seconds=timing.send_inter_character_seconds(
-                            browser_audio_params.character_speed_wpm
-                        ),
-                        word_gap_seconds=timing.send_inter_word_seconds(
-                            browser_audio_params.character_speed_wpm
-                        ),
-                    ),
-                    clock_offset=clock_offset,
-                    recorder=send.active_recorder,
-                )
-                await _send_event(
-                    ws,
-                    _key_input_start_payload(
-                        state.browser.settings,
-                        state.browser.audio_params,
-                        input_name=input_name.strip(),
-                        source="browser",
-                    ),
-                )
-            elif action == "key-note-event":
-                if state.browser is None:
-                    await _send_event(ws, {"type": "error", "reason": "key-input-not-started"})
-                    continue
-                try:
-                    note_event = _browser_midi_note_event(
-                        message,
-                        fallback_timestamp=asyncio.get_running_loop().time(),
-                        clock_offset=state.browser.clock_offset,
-                    )
-                except ValueError as exc:
-                    await _send_event(
-                        ws,
-                        {"type": "error", "reason": "invalid-key-event", "detail": str(exc)},
-                    )
-                    continue
-                formed_element = await _push_key_note_event(
-                    ws,
-                    note_event,
-                    settings=state.browser.settings,
-                    audio_params=state.browser.audio_params,
-                    assembler=state.browser.assembler,
-                    decoder=state.browser.decoder,
-                    recorder=send.active_recorder,
-                )
-                # Only arm the character-gap flush after a completed element
-                # (note-off). On note-on we're mid-stroke; rearming the timer
-                # there races the next note-off and prematurely flushes the
-                # in-progress character. Cancel any pending flush instead.
-                if formed_element:
-                    state.browser.schedule_flush()
-                else:
-                    await state.browser.cancel_flush()
-            elif action == "reset-key-input":
-                if state.browser is not None:
-                    reason = message.get("reason")
-                    await state.browser.reset(reason if isinstance(reason, str) else "manual")
-            elif action == "stop-key-input":
-                if state.browser is not None:
-                    await state.browser.cancel_flush()
-                    state.browser = None
-                if state.key_input_task is not None and not state.key_input_task.done():
-                    state.key_input_task.cancel()
-                send.close_all()
+            elif isinstance(action, str) and await key_input.handle(action, message):
+                continue
             elif isinstance(action, str) and await playback.handle(action, message):
                 continue
             else:
@@ -350,6 +245,5 @@ async def handler(
             if task is not None and not task.done():
                 task.cancel()
         await supersede(state.recognition_floor_task)
-        if state.browser is not None:
-            await state.browser.cancel_flush()
+        await key_input.cleanup()
         send.close_all()
