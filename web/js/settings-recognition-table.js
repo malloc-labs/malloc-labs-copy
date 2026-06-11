@@ -14,6 +14,7 @@
 // editable Answer by design. Backend evidence, not a score (spec §9).
 
 import { appendCell, formatDuration, formatStartedAt } from "./settings-formatters.js";
+import { createRecordTableController } from "./settings-record-table.js";
 
 const tbody = document.getElementById("settings-recognition-tbody");
 const metaEl = document.getElementById("settings-recognition-records-meta");
@@ -23,10 +24,6 @@ const detailDialogBody = document.getElementById("settings-recognition-dialog-bo
 const prevButton = document.getElementById("settings-recognition-dialog-prev");
 const nextButton = document.getElementById("settings-recognition-dialog-next");
 const countEl = document.getElementById("settings-recognition-dialog-count");
-
-let openFilename = null;
-let currentRecords = [];
-const detailCache = new Map();
 
 function buildMetaGrid(record) {
     const grid = document.createElement("dl");
@@ -408,82 +405,9 @@ function renderDetail(record) {
     detailDialogBody.appendChild(buildExercisesTable(record));
 }
 
-async function loadRecord(filename) {
-    if (detailCache.has(filename)) return detailCache.get(filename);
-    const res = await fetch(`/api/recognition?file=${encodeURIComponent(filename)}`, {
-        cache: "no-store",
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    detailCache.set(filename, data);
-    return data;
-}
-
-async function deleteRecord(filename) {
-    // GET, not POST: the websockets legacy server we ride on accepts
-    // only GET; the server-side handler is method-agnostic.
-    const res = await fetch(
-        `/api/delete-recognition?file=${encodeURIComponent(filename)}`,
-        { cache: "no-store" },
-    );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    detailCache.delete(filename);
-    if (openFilename === filename) {
-        detailDialog.close();
-    }
-    await loadRecognitionSessions();
-    window.dispatchEvent(new CustomEvent("copy-settings-records-changed", {
-        detail: { kind: "recognition" },
-    }));
-}
-
-function clearOpenDetail() {
-    if (!openFilename) return;
-    const prevRow = rowForFilename(openFilename);
-    if (prevRow) {
-        prevRow.dataset.expanded = "false";
-        prevRow.setAttribute("aria-expanded", "false");
-    }
-    openFilename = null;
-}
-
-function rowForFilename(filename) {
-    return tbody.querySelector(`tr[data-filename="${cssEscape(filename)}"]`);
-}
-
-function cssEscape(value) {
-    if (window.CSS && typeof window.CSS.escape === "function") {
-        return window.CSS.escape(value);
-    }
-    return value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
-}
-
-function openRecordByOffset(offset) {
-    if (!openFilename || offset === 0) return;
-    const idx = currentRecords.findIndex((rec) => rec.filename === openFilename);
-    const nextRecord = currentRecords[idx + offset];
-    if (!nextRecord) return;
-    const row = rowForFilename(nextRecord.filename);
-    if (row) {
-        openDetail(nextRecord.filename, row);
-    }
-}
-
-function updateNavButtons() {
-    const idx = currentRecords.findIndex((rec) => rec.filename === openFilename);
-    const hasOpenRecord = idx >= 0;
-    if (prevButton) prevButton.disabled = !hasOpenRecord || idx === 0;
-    if (nextButton) nextButton.disabled = !hasOpenRecord || idx === currentRecords.length - 1;
-    if (countEl) {
-        countEl.textContent = hasOpenRecord
-            ? `${idx + 1} of ${currentRecords.length}`
-            : `0 of ${currentRecords.length}`;
-    }
-}
-
-function detailTitle(record) {
+function detailTitle(record, { records }) {
     const parts = [formatStartedAt(record.started_at)];
-    const sessionIndex = groupedSetIndex(record);
+    const sessionIndex = groupedSetIndex(record, records);
     const setIndex = record?.generation?.set_session ?? record?.set_session;
     if (Number.isInteger(sessionIndex) && Number.isInteger(setIndex)) {
         parts.push(`Session ${sessionIndex}`);
@@ -496,84 +420,16 @@ function detailTitle(record) {
     return parts.join(" · ");
 }
 
-function groupedSetIndex(record) {
+function groupedSetIndex(record, records) {
     const setId = record?.generation?.set_id ?? record?.set_id;
     if (!setId) return null;
-    const groups = groupBySet(currentRecords).filter((group) => group.set_id);
+    const groups = groupBySet(records).filter((group) => group.set_id);
     let sessionIndex = groups.length;
     for (const group of groups) {
         if (group.set_id === setId) return sessionIndex;
         sessionIndex -= 1;
     }
     return null;
-}
-
-async function openDetail(filename, row) {
-    clearOpenDetail();
-    openFilename = filename;
-    row.dataset.expanded = "true";
-    row.setAttribute("aria-expanded", "true");
-    detailDialogTitle.textContent = "Recognition session";
-    detailDialogBody.textContent = "Loading session...";
-    updateNavButtons();
-    if (!detailDialog.open) detailDialog.showModal();
-    try {
-        const record = await loadRecord(filename);
-        if (openFilename !== filename) return;
-        detailDialogTitle.textContent = detailTitle(record);
-        renderDetail(record);
-        updateNavButtons();
-    } catch (err) {
-        detailDialogBody.textContent = `Could not load session: ${err.message}`;
-        updateNavButtons();
-    }
-}
-
-function attachRowHandler(row, filename) {
-    row.classList.add("settings-koch-row");
-    row.dataset.filename = filename;
-    row.dataset.expanded = "false";
-    row.setAttribute("role", "button");
-    row.setAttribute("tabindex", "0");
-    row.setAttribute("aria-expanded", "false");
-    const toggle = () => {
-        if (openFilename === filename) detailDialog.close();
-        else openDetail(filename, row);
-    };
-    row.addEventListener("click", toggle);
-    row.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            toggle();
-        }
-    });
-}
-
-function appendDeleteCell(row, filename) {
-    const cell = document.createElement("td");
-    cell.className = "settings-koch-table__delete-cell";
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "settings-koch-table__delete";
-    button.textContent = "Delete";
-    button.setAttribute("aria-label", "Delete recognition session record");
-    button.addEventListener("click", async (event) => {
-        event.stopPropagation();
-        const ok = window.confirm("Delete this recognition session record?");
-        if (!ok) return;
-        try {
-            button.disabled = true;
-            await deleteRecord(filename);
-        } catch (err) {
-            button.disabled = false;
-            window.alert(`Could not delete recognition session: ${err.message}`);
-        }
-    });
-    button.addEventListener("keydown", (event) => {
-        event.stopPropagation();
-    });
-    cell.appendChild(button);
-    row.appendChild(cell);
 }
 
 function groupBySet(records) {
@@ -592,7 +448,7 @@ function groupBySet(records) {
     return groups;
 }
 
-function renderSetHeader(group, sessionIndex) {
+function renderSetHeader(group, sessionIndex, { cssEscape }) {
     const row = document.createElement("tr");
     row.className = "settings-koch-set-header";
     row.dataset.setId = group.set_id;
@@ -640,19 +496,14 @@ function renderSetHeader(group, sessionIndex) {
     return row;
 }
 
-function renderRows(records) {
-    tbody.replaceChildren();
-    currentRecords = records;
-    openFilename = null;
-    updateNavButtons();
-
+function renderGroupedRows(records, { appendDeleteCell, attachRowHandler, cssEscape }) {
     const groups = groupBySet(records);
     let globalIdx = 0;
     let sessionIndex = groups.filter((group) => group.set_id).length;
 
     groups.forEach((group) => {
         if (group.set_id) {
-            tbody.appendChild(renderSetHeader(group, sessionIndex));
+            tbody.appendChild(renderSetHeader(group, sessionIndex, { cssEscape }));
             sessionIndex -= 1;
         }
 
@@ -674,55 +525,31 @@ function renderRows(records) {
     });
 }
 
-async function loadRecognitionSessions() {
-    try {
-        const res = await fetch("/api/recognitions", { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const records = Array.isArray(data.records) ? data.records : [];
-        if (records.length === 0) {
-            metaEl.textContent = `No saved recognition sessions in ${data.save_directory || "save directory"}.`;
-            currentRecords = [];
-            openFilename = null;
-            updateNavButtons();
-            tbody.replaceChildren();
-            return;
-        }
-        metaEl.textContent = `${records.length} saved session${records.length === 1 ? "" : "s"} in ${data.save_directory}`;
-        renderRows(records);
-    } catch (err) {
-        metaEl.textContent = `Could not load saved recognition sessions: ${err.message}`;
-        currentRecords = [];
-        openFilename = null;
-        updateNavButtons();
-        tbody.replaceChildren();
-    }
-}
-
-if (tbody) loadRecognitionSessions();
-
-detailDialog.addEventListener("close", () => {
-    detailDialogTitle.textContent = "Recognition session";
-    detailDialogBody.replaceChildren();
-    clearOpenDetail();
-    updateNavButtons();
-});
-
-detailDialog.addEventListener("click", (event) => {
-    if (event.target === detailDialog) detailDialog.close();
-});
-
-prevButton?.addEventListener("click", () => openRecordByOffset(-1));
-nextButton?.addEventListener("click", () => openRecordByOffset(1));
-
-document.addEventListener("keydown", (event) => {
-    if (!detailDialog.open || event.altKey || event.ctrlKey || event.metaKey) return;
-    const key = event.key.toLowerCase();
-    if (event.key === "ArrowLeft" || event.key === "<" || key === "h") {
-        event.preventDefault();
-        openRecordByOffset(-1);
-    } else if (event.key === "ArrowRight" || event.key === ">" || key === "l") {
-        event.preventDefault();
-        openRecordByOffset(1);
-    }
+createRecordTableController({
+    tbody,
+    metaEl,
+    detailDialog,
+    detailDialogTitle,
+    detailDialogBody,
+    prevButton,
+    nextButton,
+    countEl,
+    listEndpoint: "/api/recognitions",
+    recordEndpoint: "/api/recognition",
+    deleteEndpoint: "/api/delete-recognition",
+    changedKind: "recognition",
+    dialogTitle: "Recognition session",
+    loadingText: "Loading session...",
+    emptyText: (data) =>
+        `No saved recognition sessions in ${data.save_directory || "save directory"}.`,
+    countText: (records, data) =>
+        `${records.length} saved session${records.length === 1 ? "" : "s"} in ${data.save_directory}`,
+    listErrorText: (err) => `Could not load saved recognition sessions: ${err.message}`,
+    loadErrorText: (err) => `Could not load session: ${err.message}`,
+    deleteConfirmText: "Delete this recognition session record?",
+    deleteAriaLabel: "Delete recognition session record",
+    deleteErrorText: (err) => `Could not delete recognition session: ${err.message}`,
+    detailTitle,
+    renderDetail,
+    renderRows: renderGroupedRows,
 });

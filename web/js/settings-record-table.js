@@ -32,6 +32,7 @@ export function createRecordTableController(options) {
         deleteErrorText,
         renderDetail,
         renderRowCells,
+        renderRows: renderRowsOption,
         detailTitle,
     } = options;
 
@@ -114,7 +115,7 @@ export function createRecordTableController(options) {
         try {
             const record = await loadRecord(filename);
             if (openFilename !== filename) return;
-            detailDialogTitle.textContent = detailTitle(record);
+            detailDialogTitle.textContent = detailTitle(record, { records: currentRecords });
             renderDetail(record);
             updateNavButtons();
         } catch (err) {
@@ -175,6 +176,15 @@ export function createRecordTableController(options) {
         currentRecords = records;
         openFilename = null;
         updateNavButtons();
+        if (renderRowsOption) {
+            renderRowsOption(records, {
+                appendCell,
+                appendDeleteCell,
+                attachRowHandler,
+                cssEscape,
+            });
+            return;
+        }
         records.forEach((rec, idx) => {
             const row = document.createElement("tr");
             renderRowCells(row, rec, idx, { appendCell });
