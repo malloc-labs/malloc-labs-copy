@@ -176,6 +176,7 @@ async def handler(
         recorder=send.active_recorder,
         close_send_sessions=send.close_all,
     )
+    controllers = (koch, recognition, send, key_input, playback)
 
     # Push current state on connect so the UI does not need to ask.
     claimed = load_claimed_symbols(state.config_path)
@@ -219,18 +220,18 @@ async def handler(
                 # session-end is sent by _run_start_session's CancelledError handler.
                 if state.session_task is not None and not state.session_task.done():
                     state.session_task.cancel()
-            elif isinstance(action, str) and await koch.handle(action, message):
                 continue
-            elif isinstance(action, str) and await recognition.handle(action, message):
-                continue
-            elif isinstance(action, str) and await send.handle(action, message):
-                continue
-            elif isinstance(action, str) and await key_input.handle(action, message):
-                continue
-            elif isinstance(action, str) and await playback.handle(action, message):
-                continue
-            else:
-                await _send_event(ws, {"type": "error", "reason": "unknown-action"})
+
+            if isinstance(action, str):
+                handled = False
+                for controller in controllers:
+                    if await controller.handle(action, message):
+                        handled = True
+                        break
+                if handled:
+                    continue
+
+            await _send_event(ws, {"type": "error", "reason": "unknown-action"})
     except ConnectionClosed:
         pass
     finally:
