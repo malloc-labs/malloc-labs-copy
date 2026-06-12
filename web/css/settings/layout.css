@@ -1,0 +1,166 @@
+/*
+ * settings.css — styles for web/settings/*.html.
+ *
+ * Owns the settings surfaces: tabs, the quiet exercise review hub,
+ * saved-session tables, expanded dialogs, lifetime rollup grids, the
+ * timing form, and the save/status row. Shared shell tokens live in core.css.
+ */
+
+.settings-tabs {
+    flex: 0 0 auto;
+    display: flex;
+    gap: var(--mr-space-2);
+    margin-top: var(--mr-space-4);
+}
+
+.settings-tab {
+    padding: var(--mr-space-1) var(--mr-space-3);
+    border: var(--mr-border-rule);
+    background: none;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    cursor: pointer;
+    opacity: 0.7;
+    transition: color 0.1s ease, border-color 0.1s ease, opacity 0.1s ease;
+}
+
+.settings-tab:hover {
+    color: var(--mr-text);
+    opacity: 1;
+}
+
+.settings-tab[data-selected="true"] {
+    color: var(--mr-text);
+    border-color: var(--mr-anchor);
+    opacity: 1;
+}
+
+.settings-panel[hidden] {
+    display: none;
+}
+
+.settings-panel:not([hidden]) {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.landing-body:has(.settings-tabs) {
+    --settings-page-top-space: clamp(1.5rem, 4vh, 3rem);
+    --settings-page-footer-space: clamp(2rem, 6vh, 4rem);
+    align-items: start;
+    height: 100dvh;
+    padding-top: var(--settings-page-top-space);
+    padding-bottom: var(--settings-page-footer-space);
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.landing-body:has(.settings-tabs) .landing-shell {
+    display: flex;
+    flex-direction: column;
+    height: calc(
+        100dvh
+        - var(--settings-page-top-space)
+        - var(--settings-page-footer-space)
+    );
+    min-height: 0;
+}
+
+.landing-body:has(.settings-tabs) .landing-header {
+    flex: 0 0 auto;
+}
+
+#settings-panel-koch:not([hidden]),
+#settings-panel-key:not([hidden]),
+#settings-panel-copy-key:not([hidden]),
+#settings-panel-recognition:not([hidden]),
+.settings-review-panel {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#settings-panel-app:not([hidden]),
+#settings-panel-voice:not([hidden]),
+#settings-panel-exercises:not([hidden]) {
+    overflow: auto;
+}
+
+.settings-review-body {
+    --settings-page-top-space: clamp(1.5rem, 4vh, 3rem);
+    --settings-page-footer-space: clamp(2rem, 6vh, 4rem);
+    align-items: start;
+    height: 100dvh;
+    padding-top: var(--settings-page-top-space);
+    padding-bottom: var(--settings-page-footer-space);
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.settings-review-body:has(#settings-panel-koch),
+.settings-review-body:has(#settings-panel-recognition) {
+    height: auto;
+    min-height: 100dvh;
+    overflow: auto;
+}
+
+.settings-review-body .landing-shell {
+    display: flex;
+    flex-direction: column;
+    height: calc(
+        100dvh
+        - var(--settings-page-top-space)
+        - var(--settings-page-footer-space)
+    );
+    min-height: 0;
+}
+
+.settings-review-body:has(#settings-panel-koch) .landing-shell,
+.settings-review-body:has(#settings-panel-recognition) .landing-shell {
+    height: auto;
+    min-height: calc(
+        100dvh
+        - var(--settings-page-top-space)
+        - var(--settings-page-footer-space)
+    );
+}
+
+.settings-review-body:has(#settings-panel-koch) #settings-panel-koch:not([hidden]) {
+    flex: 0 0 auto;
+    overflow: visible;
+}
+
+.settings-review-body .landing-header {
+    flex: 0 0 auto;
+}
+
+.settings-exercise-hub {
+    display: grid;
+    gap: var(--mr-space-2);
+    margin-top: var(--mr-space-4);
+}
+
+.settings-exercise-hub__link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--mr-space-3);
+    padding: var(--mr-space-3) 0;
+    border-bottom: var(--mr-border-rule);
+    color: var(--mr-text);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    text-decoration: none;
+}
+
+.settings-exercise-hub__link:first-child {
+    border-top: var(--mr-border-rule);
+}
+
+.settings-exercise-hub__link:hover,
+.settings-exercise-hub__link:focus-visible {
+    color: var(--mr-anchor);
+}

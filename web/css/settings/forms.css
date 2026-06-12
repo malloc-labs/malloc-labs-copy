@@ -1,0 +1,286 @@
+.settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--mr-space-5);
+    margin-top: var(--mr-space-5);
+}
+
+.settings-field {
+    display: grid;
+    grid-template-columns: minmax(8rem, 0.45fr) minmax(8rem, 0.55fr);
+    gap: var(--mr-space-2) var(--mr-space-4);
+    align-items: start;
+    padding: var(--mr-space-4) 0;
+    border-top: var(--mr-border-rule);
+}
+
+.settings-section {
+    margin: var(--mr-space-2) 0 0;
+    padding: 0;
+    border: 0;
+}
+
+.settings-section > summary {
+    padding: var(--mr-space-3) var(--mr-space-5) var(--mr-space-3) 0;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-text);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    list-style: none;
+    position: relative;
+    border-top: var(--mr-border-rule);
+}
+
+.settings-section > summary::-webkit-details-marker {
+    display: none;
+}
+
+.settings-section > summary::after {
+    content: "+";
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: var(--mr-font-mono);
+    color: var(--mr-muted);
+}
+
+.settings-section[open] > summary::after {
+    content: "−";
+}
+
+.settings-section__desc {
+    margin: var(--mr-space-2) 0 var(--mr-space-3);
+    color: var(--mr-muted);
+    font-size: var(--mr-size-small);
+    line-height: var(--mr-line-body);
+}
+
+.settings-field label {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-anchor);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.settings-field input {
+    width: 100%;
+    font-family: var(--mr-font-mono);
+    font-size: 1.25rem;
+    color: var(--mr-text);
+    background: var(--mr-mono-bg);
+    border: var(--mr-border-rule);
+    padding: var(--mr-space-2) var(--mr-space-3);
+}
+
+.settings-field input:disabled {
+    opacity: 0.45;
+}
+
+/* Placeholders read at near-foreground brightness on dark themes by
+ * default; muted + italic makes "e.g. …" hints obviously not a value. */
+.settings-field input::placeholder {
+    color: var(--mr-muted);
+    opacity: 0.6;
+    font-style: italic;
+}
+
+.settings-field--check input {
+    width: auto;
+    justify-self: start;
+    margin: 0;
+}
+
+.settings-field p {
+    grid-column: 1 / -1;
+    color: var(--mr-muted);
+    font-size: var(--mr-size-small);
+    line-height: var(--mr-line-body);
+    max-width: none;
+}
+
+.settings-field__label {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-anchor);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.settings-field__radios {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--mr-space-3);
+}
+
+.settings-field__radio {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--mr-space-2);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-text);
+    letter-spacing: 0;
+    text-transform: none;
+    cursor: pointer;
+}
+
+.settings-field__radio input {
+    width: auto;
+    margin: 0;
+}
+
+.settings-field__inline-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--mr-space-3);
+}
+
+.settings-field__status {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+}
+
+.settings-field__readout {
+    grid-column: 1 / -1;
+    margin: 0;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-body);
+    color: var(--mr-fg);
+}
+
+.settings-field__readout[data-state="match"] {
+    color: var(--mr-fg);
+}
+
+.settings-field__readout[data-state="drift"] {
+    color: var(--mr-warning);
+}
+
+.settings-field__readout[data-state="idle"] {
+    color: var(--mr-muted);
+}
+
+.settings-field--rst {
+    grid-template-columns: auto minmax(4rem, 6rem) auto minmax(4rem, 6rem);
+    align-items: center;
+    column-gap: var(--mr-space-4);
+}
+
+.settings-field--rst input {
+    width: 100%;
+}
+
+.rst-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    margin-top: var(--mr-space-3);
+}
+
+.rst-table th,
+.rst-table td {
+    border-top: var(--mr-border-rule);
+    padding: var(--mr-space-2);
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+
+.rst-table thead th {
+    color: var(--mr-muted);
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.rst-table tbody th {
+    color: var(--mr-muted);
+    font-weight: 400;
+    width: 2.5rem;
+    text-align: right;
+}
+
+.rst-table tbody td {
+    color: var(--mr-text);
+}
+
+.rst-table tbody td[aria-hidden="true"] {
+    color: var(--mr-muted);
+}
+
+.rst-table tbody tr[data-mark-s="true"] td:nth-of-type(2) {
+    color: var(--mr-anchor);
+    font-weight: 600;
+}
+
+.rst-table tbody tr[data-mark-t="true"] td:nth-of-type(3) {
+    color: var(--mr-anchor);
+    font-weight: 600;
+}
+
+.rst-table tbody tr[data-mark-s="true"] th,
+.rst-table tbody tr[data-mark-t="true"] th {
+    color: var(--mr-text);
+}
+
+.settings-test {
+    display: grid;
+    gap: var(--mr-space-3);
+    padding: var(--mr-space-4) 0;
+    border-top: var(--mr-border-rule);
+}
+
+.settings-test p {
+    margin: 0;
+    color: var(--mr-muted);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    line-height: var(--mr-line-body);
+}
+
+.settings-test-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--mr-space-3);
+}
+
+.settings-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--mr-space-4);
+    border-top: var(--mr-border-rule);
+    padding-top: var(--mr-space-4);
+}
+
+.settings-status {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+}
+
+.settings-status[data-status="connected"] {
+    color: var(--mr-anchor);
+}
+
+.settings-status[data-status="error"] {
+    color: var(--mr-warning);
+}
+
+@media (max-width: 520px) {
+    .settings-field {
+        grid-template-columns: 1fr;
+    }
+
+    .settings-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}
