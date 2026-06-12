@@ -5,7 +5,7 @@ from copy_653.sequence.listening_conditions import (
     listening_condition_for_session,
     rst_fields_for_audio_params,
 )
-from copy_653.server.actions import (
+from copy_653.server.koch_actions import (
     _apply_koch_listening_probe_metadata,
     _koch_challenge_rst_draws,
 )
