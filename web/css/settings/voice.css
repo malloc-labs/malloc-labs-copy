@@ -1,0 +1,108 @@
+/* ────────────────────────────────────────────────────────────────────────
+   Voice tab
+   ──────────────────────────────────────────────────────────────────────── */
+
+.settings-section__desc {
+    color: var(--mr-muted);
+    font-size: var(--mr-size-small);
+    margin-bottom: var(--mr-space-3);
+}
+
+.settings-section__action {
+    margin-top: var(--mr-space-3);
+}
+
+.settings-voice-status {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: var(--mr-space-4);
+    row-gap: var(--mr-space-2);
+    align-items: baseline;
+    margin: 0;
+}
+
+.settings-voice-status dt {
+    color: var(--mr-muted);
+    font-size: var(--mr-size-small);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.settings-voice-status dd {
+    color: var(--mr-text);
+    margin: 0;
+    word-break: break-all;
+}
+
+.settings-voice-file {
+    border-top: var(--mr-border-rule);
+    margin-top: var(--mr-space-3);
+    padding-top: var(--mr-space-3);
+}
+
+.settings-voice-file > summary {
+    color: var(--mr-anchor);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    cursor: pointer;
+    padding: var(--mr-space-1) 0;
+}
+
+.settings-voice-file > pre {
+    margin-top: var(--mr-space-2);
+}
+
+/* Test dialog */
+
+.settings-voice-test {
+    display: flex;
+    flex-direction: column;
+    gap: var(--mr-space-4);
+    min-width: 32rem;
+}
+
+.settings-voice-test__row {
+    display: flex;
+    align-items: center;
+    gap: var(--mr-space-4);
+}
+
+.settings-voice-test__state {
+    color: var(--mr-muted);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+}
+
+.settings-voice-test__meter {
+    height: 12px;
+    background: var(--mr-mono-bg);
+    border: var(--mr-border-rule);
+    overflow: hidden;
+}
+
+.settings-voice-test__meter-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--mr-anchor);
+    transition: width 60ms linear;
+}
+
+.settings-voice-test__readout {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: var(--mr-space-4);
+    row-gap: var(--mr-space-2);
+    margin: 0;
+}
+
+.settings-voice-test__readout dt {
+    color: var(--mr-muted);
+    font-size: var(--mr-size-small);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.settings-voice-test__readout dd {
+    margin: 0;
+    color: var(--mr-text);
+}
