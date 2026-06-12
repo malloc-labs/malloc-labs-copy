@@ -12,12 +12,14 @@ from typing import Any, Protocol
 from websockets.server import WebSocketServerProtocol
 
 from copy_653.config import load_save_directory, load_warm_up_timeout_seconds
-from copy_653.server.actions import (
+from copy_653.server.claimed_symbols_actions import (
     _claim_symbol_action,
+    _unclaim_symbol_action,
+)
+from copy_653.server.koch_actions import (
     _save_koch_answers_action,
     _start_action,
     _start_warmup_action,
-    _unclaim_symbol_action,
 )
 from copy_653.server.connection_context import supersede
 from copy_653.server.records import (

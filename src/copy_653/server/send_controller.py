@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 from websockets.server import WebSocketServerProtocol
 
-from copy_653.server.actions import (
+from copy_653.server.send_actions import (
     _play_copy_key_exercise,
     _request_copy_exercises_action,
     _request_copy_key_exercises_action,
