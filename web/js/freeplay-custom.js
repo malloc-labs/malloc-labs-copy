@@ -6,7 +6,11 @@
 // sent-symbol and key-input-start CustomEvents that key-timing.js
 // dispatches; no direct coupling beyond the event names.
 
-import { buildExerciseBlock, buildExpectedSteps } from "./rhythm-review.js";
+import {
+    buildExerciseBlock,
+    buildExpectedSteps,
+    syncRhythmReviewPresentation,
+} from "./rhythm-review.js";
 
 const STORAGE_KEY = "copy-653.freeplay-custom-input";
 const APPLY_DEBOUNCE_MS = 200;
@@ -145,6 +149,7 @@ function initialise() {
         if (reviewTabsEl) reviewTabsEl.replaceChildren();
         if (!exercise) {
             reviewMetaEl.textContent = "no input";
+            syncRhythmReviewPresentation(null);
             return;
         }
         reviewMetaEl.textContent = "1 sequence";
@@ -157,6 +162,16 @@ function initialise() {
                 ditMs,
             }),
         );
+        syncRhythmReviewPresentation(() => ({
+            title: `Custom / ${exercise}`,
+            content: buildExerciseBlock({
+                exercise,
+                title: `Custom / ${exercise}`,
+                ariaLabel: "Custom expanded baseline",
+                events,
+                ditMs,
+            }),
+        }));
     }
 
     function setSectionExpanded(expanded) {

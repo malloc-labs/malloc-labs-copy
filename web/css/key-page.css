@@ -383,6 +383,86 @@
     --zone-red-frac: 2.2fr;
     --zone-group-height: 0.9rem;
     width: 100%;
+    position: relative;
+    overflow: hidden;
+    box-sizing: border-box;
+    padding: var(--mr-space-2) var(--mr-space-3) 0;
+}
+
+.key-rhythm-review__symbols[data-inline="true"] .key-rhythm-baseline__cols {
+    flex-wrap: nowrap;
+}
+
+.key-rhythm-review__symbols[data-overflowing="true"]::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 3rem;
+    pointer-events: none;
+    background: linear-gradient(to right, transparent, var(--mr-bg));
+}
+
+.key-rhythm-review__symbols[data-density="compact"] .key-rhythm-baseline__exercise {
+    --zone-group-width: 4.2ch;
+    --zone-group-height: 0.75rem;
+}
+
+.key-rhythm-review__symbols[data-density="compact"] .key-rhythm-baseline__symbol,
+.key-rhythm-review__symbols[data-density="compact"] .key-rhythm-baseline__attempt-symbol,
+.key-rhythm-review__symbols[data-density="compact"] .key-rhythm-baseline__exercise-label {
+    font-size: 0.805rem;
+}
+
+.key-rhythm-review__symbols[data-density="dense"] .key-rhythm-baseline__exercise {
+    --zone-group-width: 3.4ch;
+    --zone-group-height: 0.62rem;
+}
+
+.key-rhythm-review__symbols[data-density="dense"] .key-rhythm-baseline__symbol,
+.key-rhythm-review__symbols[data-density="dense"] .key-rhythm-baseline__attempt-symbol,
+.key-rhythm-review__symbols[data-density="dense"] .key-rhythm-baseline__exercise-label {
+    font-size: 0.735rem;
+}
+
+.key-rhythm-review__symbols[data-density="micro"] .key-rhythm-baseline__exercise {
+    --zone-group-width: 2.7ch;
+    --zone-group-height: 0.5rem;
+}
+
+.key-rhythm-review__symbols[data-density="micro"] .key-rhythm-baseline__symbol,
+.key-rhythm-review__symbols[data-density="micro"] .key-rhythm-baseline__attempt-symbol,
+.key-rhythm-review__symbols[data-density="micro"] .key-rhythm-baseline__exercise-label {
+    font-size: 0.65rem;
+}
+
+.key-rhythm-review__symbols[data-density="dense"] .key-rhythm-baseline__col,
+.key-rhythm-review__symbols[data-density="micro"] .key-rhythm-baseline__col {
+    gap: 0.28rem;
+}
+
+.key-rhythm-review__symbols[data-density="dense"] .key-rhythm-baseline__attempt,
+.key-rhythm-review__symbols[data-density="micro"] .key-rhythm-baseline__attempt {
+    height: 1.25rem;
+}
+
+.key-rhythm-review__expand {
+    align-self: flex-start;
+    margin: var(--mr-space-3) var(--mr-space-3) 0;
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-anchor);
+    cursor: pointer;
+    opacity: 0.82;
+}
+
+.key-rhythm-review__expand:hover {
+    color: var(--mr-text);
+    opacity: 1;
 }
 
 .key-rhythm-baseline__exercise {
@@ -513,6 +593,11 @@
     opacity: 0.72;
 }
 
+.key-rhythm-review__body > .key-rhythm-review__legend {
+    padding: var(--mr-space-2) var(--mr-space-3) var(--mr-space-3);
+    box-sizing: border-box;
+}
+
 .key-rhythm-review__legend span {
     display: inline-flex;
     align-items: center;
@@ -538,6 +623,77 @@
 
 .key-rhythm-review__swatch--red {
     background: var(--key-rhythm-red);
+}
+
+.key-rhythm-review-dialog {
+    position: fixed;
+    inset: 0;
+    width: min(92vw, 72rem);
+    max-height: 86vh;
+    margin: auto;
+    border: var(--mr-border-rule);
+    background: var(--mr-bg);
+    color: var(--mr-text);
+    padding: 0;
+}
+
+.key-rhythm-review-dialog[open] {
+    display: flex;
+    flex-direction: column;
+}
+
+.key-rhythm-review-dialog::backdrop {
+    background: color-mix(in srgb, var(--mr-bg) 76%, transparent);
+}
+
+.key-rhythm-review-dialog__bar {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--mr-space-4);
+    padding: var(--mr-space-4);
+    border-bottom: var(--mr-border-rule);
+}
+
+.key-rhythm-review-dialog__title {
+    margin: 0;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    font-weight: 500;
+    color: var(--mr-text);
+}
+
+.key-rhythm-review-dialog__close {
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    cursor: pointer;
+}
+
+.key-rhythm-review-dialog__close:hover {
+    color: var(--mr-text);
+}
+
+.key-rhythm-review-dialog__body {
+    overflow: auto;
+    padding: var(--mr-space-4);
+}
+
+.key-rhythm-review-dialog__body .key-rhythm-baseline__exercise {
+    min-width: max-content;
+}
+
+.key-rhythm-review-dialog__body .key-rhythm-baseline__cols {
+    flex-wrap: nowrap;
+}
+
+.key-rhythm-review-dialog__legend {
+    margin: 0;
+    padding: var(--mr-space-3) var(--mr-space-4);
+    border-top: var(--mr-border-rule);
 }
 
 .key-diagnostics {

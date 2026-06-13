@@ -29,12 +29,25 @@ class CopyRhythmReview extends HTMLElement {
     <div class="timeline-body key-rhythm-review__body" id="key-rhythm-review-body" hidden>
         <div class="key-rhythm-review__tabs" id="key-rhythm-review-tabs" role="tablist" aria-label="${tabsLabel}"></div>
         <div class="key-rhythm-review__symbols" id="key-rhythm-review-symbols" aria-label="${symbolsLabel}"></div>
+        <button type="button" class="key-rhythm-review__expand" id="key-rhythm-review-expand" hidden>Open wider view</button>
         <div class="key-rhythm-review__legend" aria-label="Perceptual timing-zone legend">
             <span><i class="key-rhythm-review__swatch key-rhythm-review__swatch--green"></i>Green Zone</span>
             <span><i class="key-rhythm-review__swatch key-rhythm-review__swatch--amber"></i>Amber Zone</span>
             <span><i class="key-rhythm-review__swatch key-rhythm-review__swatch--red"></i>Red Zone</span>
         </div>
     </div>
+    <dialog class="key-rhythm-review-dialog" id="key-rhythm-review-dialog" aria-labelledby="key-rhythm-review-dialog-title">
+        <div class="key-rhythm-review-dialog__bar">
+            <h2 class="key-rhythm-review-dialog__title" id="key-rhythm-review-dialog-title">Rhythm review</h2>
+            <button type="button" class="key-rhythm-review-dialog__close" id="key-rhythm-review-dialog-close" aria-label="Close rhythm review">Close</button>
+        </div>
+        <div class="key-rhythm-review-dialog__body" id="key-rhythm-review-dialog-body"></div>
+        <div class="key-rhythm-review__legend key-rhythm-review-dialog__legend" aria-label="Perceptual timing-zone legend">
+            <span><i class="key-rhythm-review__swatch key-rhythm-review__swatch--green"></i>Green Zone</span>
+            <span><i class="key-rhythm-review__swatch key-rhythm-review__swatch--amber"></i>Amber Zone</span>
+            <span><i class="key-rhythm-review__swatch key-rhythm-review__swatch--red"></i>Red Zone</span>
+        </div>
+    </dialog>
 </section>`;
     }
 }
