@@ -16,6 +16,11 @@
 // column. ~3x ideal lands at the right edge of red; perceptual mapping,
 // not a hard tolerance.
 const X_SPAN_RATIO = 3.0;
+const INLINE_DENSITIES = ["normal", "compact", "dense", "micro"];
+
+let rhythmReviewResizeObserver = null;
+let rhythmReviewPresentationWired = false;
+let currentRhythmReviewDetail = null;
 
 export function buildExerciseBlock({ exercise, title, ariaLabel, events, ditMs }) {
     const charGapMs = 3 * ditMs;
@@ -101,6 +106,7 @@ export function buildExerciseBlock({ exercise, title, ariaLabel, events, ditMs }
             charColExpected.push(expected);
         }
     });
+    block.dataset.columns = String(charCols.length + wordGapCols.length);
 
     // Segment events into attempt rows. Each event flagged
     // isAttemptStart begins a new row; subsequent events fill the row
@@ -179,4 +185,103 @@ export function buildExpectedSteps(exercise) {
         }
     });
     return steps;
+}
+
+export function syncRhythmReviewPresentation(renderDetail) {
+    const symbolsEl = document.getElementById("key-rhythm-review-symbols");
+    const expandEl = document.getElementById("key-rhythm-review-expand");
+    const dialogEl = document.getElementById("key-rhythm-review-dialog");
+    const dialogTitleEl = document.getElementById("key-rhythm-review-dialog-title");
+    const dialogBodyEl = document.getElementById("key-rhythm-review-dialog-body");
+    const dialogCloseEl = document.getElementById("key-rhythm-review-dialog-close");
+    if (!symbolsEl || !expandEl || !dialogEl || !dialogTitleEl || !dialogBodyEl) return;
+
+    currentRhythmReviewDetail = renderDetail;
+    wireRhythmReviewPresentation({
+        symbolsEl,
+        expandEl,
+        dialogEl,
+        dialogTitleEl,
+        dialogBodyEl,
+        dialogCloseEl,
+    });
+    queueRhythmReviewLayout(symbolsEl, expandEl);
+}
+
+function wireRhythmReviewPresentation({
+    symbolsEl,
+    expandEl,
+    dialogEl,
+    dialogTitleEl,
+    dialogBodyEl,
+    dialogCloseEl,
+}) {
+    if (!rhythmReviewResizeObserver) {
+        rhythmReviewResizeObserver = new ResizeObserver(() => {
+            const currentSymbolsEl = document.getElementById("key-rhythm-review-symbols");
+            const currentExpandEl = document.getElementById("key-rhythm-review-expand");
+            if (currentSymbolsEl && currentExpandEl) {
+                queueRhythmReviewLayout(currentSymbolsEl, currentExpandEl);
+            }
+        });
+    }
+    rhythmReviewResizeObserver.observe(symbolsEl);
+
+    if (rhythmReviewPresentationWired) return;
+    rhythmReviewPresentationWired = true;
+
+    expandEl.addEventListener("click", () => {
+        if (!currentRhythmReviewDetail) return;
+        const detail = currentRhythmReviewDetail();
+        if (!detail || !detail.content) return;
+        dialogTitleEl.textContent = detail.title || "Rhythm review";
+        dialogBodyEl.replaceChildren(detail.content);
+        if (!dialogEl.open) dialogEl.showModal();
+    });
+    if (dialogCloseEl) {
+        dialogCloseEl.addEventListener("click", () => dialogEl.close());
+    }
+    dialogEl.addEventListener("click", (event) => {
+        if (event.target === dialogEl) dialogEl.close();
+    });
+}
+
+function queueRhythmReviewLayout(symbolsEl, expandEl) {
+    window.requestAnimationFrame(() => applyRhythmReviewLayout(symbolsEl, expandEl));
+}
+
+function applyRhythmReviewLayout(symbolsEl, expandEl) {
+    const block = symbolsEl.querySelector(".key-rhythm-baseline__exercise");
+    if (!block) {
+        symbolsEl.removeAttribute("data-density");
+        delete symbolsEl.dataset.inline;
+        delete symbolsEl.dataset.overflowing;
+        expandEl.hidden = true;
+        return;
+    }
+
+    const maxWidth = symbolsEl.clientWidth;
+    if (maxWidth <= 0) return;
+
+    symbolsEl.dataset.inline = "true";
+    let selectedDensity = INLINE_DENSITIES[0];
+    let overflow = false;
+
+    for (const density of INLINE_DENSITIES) {
+        symbolsEl.dataset.density = density;
+        const contentWidth = rhythmReviewContentWidth(symbolsEl);
+        selectedDensity = density;
+        overflow = contentWidth > maxWidth + 1;
+        if (!overflow) break;
+    }
+
+    symbolsEl.dataset.density = selectedDensity;
+    symbolsEl.dataset.overflowing = overflow ? "true" : "false";
+    expandEl.hidden = selectedDensity === "normal" && !overflow;
+}
+
+function rhythmReviewContentWidth(symbolsEl) {
+    const widths = [...symbolsEl.querySelectorAll(".key-rhythm-baseline__exercise")]
+        .map((block) => block.scrollWidth);
+    return widths.length ? Math.max(...widths) : 0;
 }

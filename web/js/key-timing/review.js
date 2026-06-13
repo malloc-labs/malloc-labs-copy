@@ -19,7 +19,7 @@
 // accessor callbacks installed at startup so the same source of truth
 // is preserved.
 
-import { buildExerciseBlock } from "../rhythm-review.js";
+import { buildExerciseBlock, syncRhythmReviewPresentation } from "../rhythm-review.js";
 import {
     copyHistoryEl,
     rhythmReviewMetaEl,
@@ -61,7 +61,10 @@ export function renderRhythmReview() {
             ? "no exercises"
             : `${validIndices.length} ${validIndices.length === 1 ? "exercise" : "exercises"}`;
 
-    if (validIndices.length === 0) return;
+    if (validIndices.length === 0) {
+        syncRhythmReviewPresentation(null);
+        return;
+    }
 
     if (!validIndices.includes(selectedReviewIndex)) {
         selectedReviewIndex = validIndices[0];
@@ -101,4 +104,14 @@ export function renderRhythmReview() {
             ditMs,
         }),
     );
+    syncRhythmReviewPresentation(() => ({
+        title: `Exercise ${selectedReviewIndex + 1} / ${exercise}`,
+        content: buildExerciseBlock({
+            exercise,
+            title: `Exercise ${selectedReviewIndex + 1} / ${exercise}`,
+            ariaLabel: `Exercise ${selectedReviewIndex + 1} expanded baseline`,
+            events,
+            ditMs,
+        }),
+    }));
 }
