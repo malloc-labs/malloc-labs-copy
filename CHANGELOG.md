@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.14.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.13.0...v0.14.0) (2026-06-13)
+
+
+### Features
+
+* add recognition burden profile API ([0f3055d](https://github.com/malloc-labs/malloc-labs-copy/commit/0f3055d606ed78a41bfd84385fbe1bbd82088d82))
+* **koch:** add burden debt panel ([#207](https://github.com/malloc-labs/malloc-labs-copy/issues/207)) ([793969f](https://github.com/malloc-labs/malloc-labs-copy/commit/793969f8bbc4f08f6eef301bd8985d1e4312f96b))
+* **koch:** humanise practice need evidence ([3c6ab4d](https://github.com/malloc-labs/malloc-labs-copy/commit/3c6ab4df8b413e89392765ed464fda8bfa79d557))
+* **koch:** show symbol stats in practice needs ([0782e26](https://github.com/malloc-labs/malloc-labs-copy/commit/0782e26e185d1052bc02620fc51a7f589e906892))
+* **recognition:** add practice transfer burden ([#224](https://github.com/malloc-labs/malloc-labs-copy/issues/224)) ([4149ee7](https://github.com/malloc-labs/malloc-labs-copy/commit/4149ee7d13920d2777feadd148a4444111cbb599))
+* **recognition:** add rhythm probes ([5ef99dc](https://github.com/malloc-labs/malloc-labs-copy/commit/5ef99dc4b7330f5fd2e4cc8a2da934bc672d53f7))
+* **recognition:** align cadence rhythm previews ([51e5786](https://github.com/malloc-labs/malloc-labs-copy/commit/51e57867ec8cb1cd6128dfe1d424ff294e43b299))
+* **recognition:** estimate time to next symbol ([5f1543a](https://github.com/malloc-labs/malloc-labs-copy/commit/5f1543a226a3175ffb4178016816814db137abb6))
+* refine recognition burden sections ([91895b2](https://github.com/malloc-labs/malloc-labs-copy/commit/91895b29843ca16148f99eeb460065991b61f49b))
+* show recognition burden profile ([3bb0f67](https://github.com/malloc-labs/malloc-labs-copy/commit/3bb0f67592e6926a98e7db618347e1a2650cad49))
+* **web:** compact rhythm review overflow ([#254](https://github.com/malloc-labs/malloc-labs-copy/issues/254)) ([efb20b3](https://github.com/malloc-labs/malloc-labs-copy/commit/efb20b33b28f0043b4caaca8fed0609a276533e3))
+
+
+### Bug Fixes
+
+* **koch:** add attention response profile ([#209](https://github.com/malloc-labs/malloc-labs-copy/issues/209)) ([e5abafd](https://github.com/malloc-labs/malloc-labs-copy/commit/e5abafde7d320ef3e903f637fd804e0640f311e3))
+* **koch:** label burden debt by burden axis ([#208](https://github.com/malloc-labs/malloc-labs-copy/issues/208)) ([74a7cd6](https://github.com/malloc-labs/malloc-labs-copy/commit/74a7cd6b8ff5e8e3a15479250a61bb62d1136bad))
+* **koch:** show and organize set sessions ([#206](https://github.com/malloc-labs/malloc-labs-copy/issues/206)) ([8043be7](https://github.com/malloc-labs/malloc-labs-copy/commit/8043be74f6bc6846d8631e18d0f12ffe583cb8d5))
+* **recognition:** clarify anchor practice status ([e3e8755](https://github.com/malloc-labs/malloc-labs-copy/commit/e3e8755e391e20e47f560654ca178df4ae0bd390))
+* **recognition:** ramp set listening conditions ([3d2daf4](https://github.com/malloc-labs/malloc-labs-copy/commit/3d2daf459f326839fabaa6ad6dd10b6f13fdc466))
+* **recognition:** reset end state and show trends ([39c2840](https://github.com/malloc-labs/malloc-labs-copy/commit/39c284053f1082c092d781bda680e64395cf394f))
+* **recognition:** soften recovered errors in review analytics ([#205](https://github.com/malloc-labs/malloc-labs-copy/issues/205)) ([349776a](https://github.com/malloc-labs/malloc-labs-copy/commit/349776a74e293dab32428be53d85c89c406effdd))
+* **recognition:** tighten UI and port cleanup ([e4e7a27](https://github.com/malloc-labs/malloc-labs-copy/commit/e4e7a277c639c0d68e0c74625a374aacd3fc4b5a))
+* **settings:** label review groups as sessions ([8fb51f3](https://github.com/malloc-labs/malloc-labs-copy/commit/8fb51f305002ab0fc5caf4ee437bc717ea3d1668))
+
 ## [0.13.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.12.0...v0.13.0) (2026-06-02)
 
 
