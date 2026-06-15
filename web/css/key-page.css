@@ -137,12 +137,20 @@
     opacity: 0.7;
 }
 
+.key-training-queue-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--mr-space-3);
+    margin-bottom: var(--mr-space-2);
+}
+
 .key-training-queue {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.1rem;
-    margin-bottom: var(--mr-space-2);
+    min-width: 0;
 }
 
 .key-training-queue__item {
@@ -187,6 +195,30 @@
     min-height: 1.6rem;
     width: 0.45rem;
     opacity: 0.35;
+}
+
+.key-training-play {
+    flex: 0 0 auto;
+    border: 0;
+    background: transparent;
+    color: var(--mr-muted);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    line-height: 1.6rem;
+    padding: 0 0 0 var(--mr-space-2);
+    text-align: right;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.key-training-play:hover,
+.key-training-play[data-playing="true"] {
+    color: var(--mr-text);
+}
+
+.key-training-play:disabled {
+    cursor: default;
+    opacity: 0.45;
 }
 
 .key-training-last-keyed {
@@ -333,6 +365,54 @@
     color: #d5a956;
 }
 
+.key-training-chart__event[data-playing="true"] {
+    border-color: currentColor;
+    background: color-mix(in srgb, currentColor 18%, var(--mr-bg));
+    box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 45%, transparent);
+}
+
+.key-training-chart__observed {
+    position: absolute;
+    bottom: var(--observed-bottom);
+    width: 1.4rem;
+    border-top: 2px solid currentColor;
+    transform: translateY(50%);
+    opacity: 0.85;
+}
+
+.key-training-chart__observed::after {
+    content: "";
+    position: absolute;
+    top: -0.28rem;
+    width: 0.42rem;
+    height: 0.42rem;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.key-training-chart__observed--dit {
+    right: calc(50% + 4.9rem);
+    color: #a8c2cf;
+}
+
+.key-training-chart__observed--dit::after {
+    right: 0;
+}
+
+.key-training-chart__observed--dah {
+    left: calc(50% + 4.9rem);
+    color: #d5a956;
+}
+
+.key-training-chart__observed--dah::after {
+    left: 0;
+}
+
+.key-training-chart__observed[data-fit="wide"] {
+    opacity: 0.5;
+    border-top-style: dotted;
+}
+
 .key-training-chart__tick {
     position: absolute;
     right: 0;
@@ -371,6 +451,15 @@
 
     .key-training-chart__axis {
         display: none;
+    }
+
+    .key-training-queue-row {
+        display: block;
+    }
+
+    .key-training-play {
+        padding-left: 0;
+        margin-top: var(--mr-space-1);
     }
 }
 

@@ -167,6 +167,14 @@ async function togglePower() {
     updateAudioDiagnostic();
 }
 
+export async function enableSidetone() {
+    if (!soundEnabled) {
+        soundEnabled = await sidetone.unlock();
+        updateAudioDiagnostic();
+    }
+    return soundEnabled;
+}
+
 export function toggleSidetone() {
     togglePower();
 }
