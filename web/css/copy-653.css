@@ -506,7 +506,8 @@ copy-top-menu {
  * diagram floats to the right edge. align-items: center keeps the
  * SVG vertically balanced against the h1 baseline. */
 .cadence-shell .landing-title,
-.copy-key-shell .landing-title {
+.copy-key-shell .landing-title,
+.training-shell .landing-title {
     display: flex;
     align-items: center;
     gap: var(--mr-space-3);
