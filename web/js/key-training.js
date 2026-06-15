@@ -60,6 +60,7 @@ const titleEl = document.getElementById("training-focus-title");
 const metaEl = document.getElementById("training-focus-meta");
 const queueEl = document.getElementById("training-symbol-queue");
 const playSequenceEl = document.getElementById("training-play-sequence");
+const restartEl = document.getElementById("training-restart");
 const lastKeyedEl = document.getElementById("training-last-keyed-symbol");
 const chartEl = document.getElementById("training-paddle-chart");
 const eventsEl = document.getElementById("training-chart-events");
@@ -83,6 +84,7 @@ let playbackResolve = null;
 let playbackRestoreIndex = null;
 let pendingObservedElements = [];
 let observedAttemptsByIndex = new Map();
+let leftAltUsedWithPreview = false;
 
 const KEYER_MODE_DISPLAY = {
     iambic_a: "Iambic A",
@@ -282,6 +284,33 @@ function renderQueue() {
     });
 }
 
+function restartTrainingRun() {
+    stopSequencePlayback();
+    activeIndex = firstSymbolIndex(symbolQueue);
+    completedThroughIndex = -1;
+    lastKeyedSymbol = "";
+    pendingObservedElements = [];
+    observedAttemptsByIndex = new Map();
+    renderTrainingFocus();
+    renderLastKeyed();
+}
+
+function navigateTrainingReview(direction) {
+    stopSequencePlayback();
+    const currentIndex = currentReviewIndex();
+    const nextIndex = direction < 0
+        ? previousSymbolIndex(symbolQueue, currentIndex - 1)
+        : nextSymbolIndex(symbolQueue, currentIndex + 1);
+    if (nextIndex === -1 || nextIndex === currentIndex) return;
+    activeIndex = nextIndex;
+    renderTrainingFocus();
+}
+
+function currentReviewIndex() {
+    if (symbolQueue[activeIndex] && symbolQueue[activeIndex] !== " ") return activeIndex;
+    return previousSymbolIndex(symbolQueue, activeIndex - 1);
+}
+
 function noteTrainingAttempt(symbol) {
     if (!symbol) return;
     lastKeyedSymbol = String(symbol).toUpperCase();
@@ -308,6 +337,31 @@ function renderLastKeyed() {
     if (!lastKeyedEl) return;
     lastKeyedEl.textContent = lastKeyedSymbol || "—";
     lastKeyedEl.dataset.empty = lastKeyedSymbol ? "false" : "true";
+}
+
+function installTrainingNavigationControls() {
+    if (restartEl) {
+        restartEl.addEventListener("click", restartTrainingRun);
+    }
+    window.addEventListener("keydown", (event) => {
+        if (event.altKey || event.ctrlKey || event.metaKey) return;
+        const target = event.target;
+        if (target instanceof HTMLElement) {
+            const tag = target.tagName;
+            if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) return;
+        }
+        const key = event.key.toLowerCase();
+        if (key === "r") {
+            event.preventDefault();
+            restartTrainingRun();
+        } else if (key === "h") {
+            event.preventDefault();
+            navigateTrainingReview(-1);
+        } else if (key === "l") {
+            event.preventDefault();
+            navigateTrainingReview(1);
+        }
+    });
 }
 
 function firstSymbolIndex(tokens) {
@@ -483,13 +537,34 @@ function buildTrainingPlan(symbol, pattern, mode) {
 }
 
 function buildLaneBars(symbol, elements, mode) {
-    const bars = mode === "iambic_b"
-        ? buildGenericBars(elements)
-        : buildEfficientBars(symbol, elements);
+    const bars = mode === "iambic_a"
+        ? buildIambicAModeBars(elements)
+        : mode === "iambic_b"
+            ? buildGenericBars(elements)
+            : buildEfficientBars(symbol, elements);
     return bars.map((bar) => ({
         ...bar,
         label: bar.label || (bar.action === "squeeze" ? "SQUEEZED" : "HELD"),
     }));
+}
+
+function buildIambicAModeBars(elements) {
+    if (!elements.length) return [];
+
+    return ["dit", "dah"].flatMap((kind) => {
+        const laneElements = elements.filter((element) => element.kind === kind);
+        if (!laneElements.length) return [];
+        const first = laneElements[0];
+        const last = laneElements[laneElements.length - 1];
+        const startsSequence = first.index === 0;
+        return {
+            lane: kind,
+            start: first.start,
+            end: last.end,
+            action: startsSequence ? "press" : "squeeze",
+            label: startsSequence ? "HELD" : "SQUEEZED",
+        };
+    });
 }
 
 function buildEfficientBars(symbol, elements) {
@@ -762,6 +837,7 @@ async function copyDiagnostics() {
 
 window.addEventListener("keydown", (event) => {
     if (event.code === "AltLeft") {
+        if (!leftAltDown) leftAltUsedWithPreview = false;
         leftAltDown = true;
         return;
     }
@@ -776,24 +852,32 @@ window.addEventListener("keydown", (event) => {
     if (!symbol || !claimedSymbolSet.has(symbol)) return;
     event.preventDefault();
     if (event.repeat) return;
+    leftAltUsedWithPreview = true;
     showSymbolPreview(symbol);
     socket.send(JSON.stringify({ action: "play-morse-repeat", symbol }));
 });
 
 window.addEventListener("keyup", (event) => {
     if (event.code === "AltLeft") {
+        if (leftAltDown && !leftAltUsedWithPreview) {
+            event.preventDefault();
+            restartTrainingRun();
+        }
         leftAltDown = false;
+        leftAltUsedWithPreview = false;
     }
 });
 
 window.addEventListener("blur", () => {
     leftAltDown = false;
+    leftAltUsedWithPreview = false;
     stopSequencePlayback();
     hideSymbolPreview();
 });
 
 initialiseTrainingInput();
 installPlaybackControls();
+installTrainingNavigationControls();
 installKeyControls();
 installClaimHandlers(sequenceRow, () => socket);
 socket = connectKoch({
