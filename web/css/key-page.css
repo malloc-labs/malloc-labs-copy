@@ -224,10 +224,18 @@
 .key-training-last-keyed {
     display: flex;
     align-items: baseline;
-    gap: var(--mr-space-2);
+    justify-content: space-between;
+    gap: var(--mr-space-4);
     min-height: 1.8rem;
     margin-bottom: var(--mr-space-4);
     font-family: var(--mr-font-mono);
+}
+
+.key-training-last-keyed__body {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--mr-space-2);
+    min-width: 0;
 }
 
 .key-training-last-keyed__label {
@@ -244,6 +252,24 @@
 .key-training-last-keyed__value[data-empty="true"] {
     color: var(--mr-muted);
     opacity: 0.45;
+}
+
+.key-training-restart {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--mr-muted);
+    font: inherit;
+    font-size: var(--mr-size-small);
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.key-training-restart:hover,
+.key-training-restart:focus-visible {
+    color: var(--mr-text);
+    text-decoration: underline;
+    text-underline-offset: 0.25em;
 }
 
 .key-training-chart {
