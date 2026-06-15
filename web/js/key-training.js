@@ -252,6 +252,7 @@ function renderTrainingFocus() {
     }
     renderQueue();
     renderPaddleChart(symbol, pattern, resolvedIndex);
+    renderRestartState();
 }
 
 function renderQueue() {
@@ -337,6 +338,15 @@ function renderLastKeyed() {
     if (!lastKeyedEl) return;
     lastKeyedEl.textContent = lastKeyedSymbol || "—";
     lastKeyedEl.dataset.empty = lastKeyedSymbol ? "false" : "true";
+}
+
+function renderRestartState() {
+    if (!restartEl) return;
+    restartEl.dataset.completed = trainingSequenceCompleted() ? "true" : "false";
+}
+
+function trainingSequenceCompleted() {
+    return completedThroughIndex >= symbolQueue.length - 1;
 }
 
 function installTrainingNavigationControls() {
