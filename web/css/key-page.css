@@ -265,6 +265,16 @@
     cursor: pointer;
 }
 
+.key-training-restart[data-completed="false"] {
+    color: var(--mr-muted);
+    opacity: 0.38;
+}
+
+.key-training-restart[data-completed="true"] {
+    color: var(--mr-text);
+    opacity: 1;
+}
+
 .key-training-restart:hover,
 .key-training-restart:focus-visible {
     color: var(--mr-text);
