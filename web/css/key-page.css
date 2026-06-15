@@ -140,32 +140,78 @@
 .key-training-queue {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--mr-space-2);
-    margin-bottom: var(--mr-space-4);
+    align-items: center;
+    gap: 0.1rem;
+    margin-bottom: var(--mr-space-2);
 }
 
 .key-training-queue__item {
     display: inline-flex;
     justify-content: center;
     align-items: center;
-    min-width: 2.2rem;
-    min-height: 2.2rem;
-    border: 1px solid var(--mr-border);
+    min-width: 0;
+    min-height: 1.6rem;
+    border: 1px solid transparent;
     background: none;
     color: var(--mr-muted);
     font-family: var(--mr-font-mono);
     font-size: var(--mr-size-mono);
+    line-height: 1;
+    padding: 0 0.12rem;
     cursor: pointer;
+    opacity: 0.35;
 }
 
-.key-training-queue__item:hover,
-.key-training-queue__item[data-active="true"] {
-    border-color: var(--mr-anchor);
+.key-training-queue__item:hover {
+    opacity: 0.75;
+    color: var(--mr-text);
+}
+
+.key-training-queue__item[data-completed="true"],
+.key-training-queue__space[data-completed="true"] {
+    opacity: 1;
     color: var(--mr-text);
 }
 
 .key-training-queue__item[data-active="true"] {
-    background: color-mix(in srgb, var(--mr-anchor) 15%, transparent);
+    color: var(--mr-text);
+    opacity: 1;
+    text-decoration: underline;
+    text-decoration-color: var(--mr-anchor);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.35rem;
+}
+
+.key-training-queue__space {
+    display: inline-block;
+    min-height: 1.6rem;
+    width: 0.45rem;
+    opacity: 0.35;
+}
+
+.key-training-last-keyed {
+    display: flex;
+    align-items: baseline;
+    gap: var(--mr-space-2);
+    min-height: 1.8rem;
+    margin-bottom: var(--mr-space-4);
+    font-family: var(--mr-font-mono);
+}
+
+.key-training-last-keyed__label {
+    color: var(--mr-muted);
+    font-size: var(--mr-size-small);
+    text-transform: uppercase;
+}
+
+.key-training-last-keyed__value {
+    color: var(--mr-text);
+    font-size: var(--mr-size-mono);
+}
+
+.key-training-last-keyed__value[data-empty="true"] {
+    color: var(--mr-muted);
+    opacity: 0.45;
 }
 
 .key-training-chart {

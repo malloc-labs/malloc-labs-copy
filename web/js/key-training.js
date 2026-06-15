@@ -58,6 +58,7 @@ const labelEl = document.getElementById("training-custom-label");
 const titleEl = document.getElementById("training-focus-title");
 const metaEl = document.getElementById("training-focus-meta");
 const queueEl = document.getElementById("training-symbol-queue");
+const lastKeyedEl = document.getElementById("training-last-keyed-symbol");
 const chartEl = document.getElementById("training-paddle-chart");
 const eventsEl = document.getElementById("training-chart-events");
 const axisEl = document.getElementById("training-chart-axis");
@@ -70,7 +71,9 @@ let keyerMode = "iambic_a";
 let characterWpm = 20;
 let symbolQueue = [...DEFAULT_QUEUE];
 let activeIndex = 0;
+let completedThroughIndex = -1;
 let applyTimer = null;
+let lastKeyedSymbol = "";
 
 const KEYER_MODE_DISPLAY = {
     iambic_a: "Iambic A",
@@ -130,6 +133,7 @@ function appendEvent(event) {
     }
     if (event.type === "sent-symbol") {
         appendDiagnosticRow(event);
+        noteTrainingAttempt(event.symbol);
         return;
     }
     if (event.type === "error") {
@@ -179,16 +183,39 @@ function initialiseTrainingInput() {
 function applyInputImmediate(raw) {
     const nextQueue = normaliseSymbols(raw);
     symbolQueue = nextQueue.length ? nextQueue : [...DEFAULT_QUEUE];
-    activeIndex = Math.min(activeIndex, symbolQueue.length - 1);
+    activeIndex = firstSymbolIndex(symbolQueue);
+    completedThroughIndex = -1;
+    lastKeyedSymbol = "";
     renderTrainingFocus();
+    renderLastKeyed();
 }
 
 function normaliseSymbols(raw) {
-    return [...String(raw || "").toUpperCase()].filter((char) => PATTERNS[char]);
+    const tokens = [];
+    let pendingSpace = false;
+    [...String(raw || "").toUpperCase()].forEach((char) => {
+        if (/\s/.test(char)) {
+            pendingSpace = tokens.length > 0;
+            return;
+        }
+        if (!PATTERNS[char]) return;
+        if (pendingSpace) {
+            tokens.push(" ");
+            pendingSpace = false;
+        }
+        tokens.push(char);
+    });
+    return tokens;
 }
 
 function renderTrainingFocus() {
-    const symbol = symbolQueue[activeIndex] || DEFAULT_QUEUE[0];
+    const displayIndex = symbolQueue[activeIndex] === " "
+        ? nextSymbolIndex(symbolQueue, activeIndex)
+        : activeIndex;
+    const resolvedIndex = displayIndex !== -1 && PATTERNS[symbolQueue[displayIndex]]
+        ? displayIndex
+        : previousSymbolIndex(symbolQueue, activeIndex - 1);
+    const symbol = symbolQueue[resolvedIndex] || DEFAULT_QUEUE[0];
     const pattern = PATTERNS[symbol];
     if (!pattern) return;
 
@@ -203,27 +230,80 @@ function renderTrainingFocus() {
     if (noteEl) {
         noteEl.textContent = noteForMode(keyerMode);
     }
-    renderQueue(symbol);
+    renderQueue();
     renderPaddleChart(symbol, pattern);
 }
 
-function renderQueue(activeSymbol) {
+function renderQueue() {
     if (!queueEl) return;
     queueEl.replaceChildren();
     symbolQueue.forEach((symbol, idx) => {
+        if (symbol === " ") {
+            const space = document.createElement("span");
+            space.className = "key-training-queue__space";
+            space.dataset.completed = idx <= completedThroughIndex ? "true" : "false";
+            space.setAttribute("aria-label", "word space");
+            queueEl.appendChild(space);
+            return;
+        }
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "key-training-queue__item";
         btn.textContent = symbol;
         btn.dataset.active = idx === activeIndex ? "true" : "false";
-        btn.setAttribute("aria-pressed", String(symbol === activeSymbol && idx === activeIndex));
-        btn.title = `Show ${symbol}`;
+        btn.dataset.completed = idx <= completedThroughIndex ? "true" : "false";
+        btn.setAttribute("aria-pressed", String(idx === activeIndex));
+        btn.title = idx === activeIndex ? `Current target: ${symbol}` : `Train ${symbol}`;
         btn.addEventListener("click", () => {
             activeIndex = idx;
             renderTrainingFocus();
         });
         queueEl.appendChild(btn);
     });
+}
+
+function noteTrainingAttempt(symbol) {
+    if (!symbol) return;
+    lastKeyedSymbol = String(symbol).toUpperCase();
+    renderLastKeyed();
+
+    const target = symbolQueue[activeIndex];
+    if (target !== lastKeyedSymbol) return;
+
+    const nextIndex = nextSymbolIndex(symbolQueue, activeIndex + 1);
+    if (nextIndex === -1) {
+        completedThroughIndex = symbolQueue.length - 1;
+        activeIndex = symbolQueue.length;
+    } else {
+        completedThroughIndex = nextIndex - 1;
+        activeIndex = nextIndex;
+    }
+    renderTrainingFocus();
+}
+
+function renderLastKeyed() {
+    if (!lastKeyedEl) return;
+    lastKeyedEl.textContent = lastKeyedSymbol || "—";
+    lastKeyedEl.dataset.empty = lastKeyedSymbol ? "false" : "true";
+}
+
+function firstSymbolIndex(tokens) {
+    const idx = nextSymbolIndex(tokens, 0);
+    return idx === -1 ? 0 : idx;
+}
+
+function nextSymbolIndex(tokens, start) {
+    for (let idx = start; idx < tokens.length; idx += 1) {
+        if (tokens[idx] !== " ") return idx;
+    }
+    return -1;
+}
+
+function previousSymbolIndex(tokens, start) {
+    for (let idx = Math.min(start, tokens.length - 1); idx >= 0; idx -= 1) {
+        if (tokens[idx] !== " ") return idx;
+    }
+    return 0;
 }
 
 function renderPaddleChart(symbol, pattern) {
