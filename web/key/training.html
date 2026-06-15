@@ -16,11 +16,73 @@
     <main class="landing-shell exercises-shell training-shell">
         <copy-header eyebrow="Key" eyebrow-key="K" title="Training" speaker keyer-mode></copy-header>
 
+        <copy-top-menu hide-clear></copy-top-menu>
+
         <copy-koch-sequence section-label="Koch symbol sequence"></copy-koch-sequence>
+
+        <section class="key-custom-input training-custom-input" aria-label="Custom training sequence">
+            <button type="button"
+                    class="key-custom-input__toggle"
+                    id="training-custom-toggle"
+                    aria-expanded="true"
+                    aria-controls="training-custom-body">
+                <span class="key-custom-input__label" id="training-custom-label"></span>
+                <span class="key-custom-input__arrow" id="training-custom-arrow" aria-hidden="true">▼</span>
+            </button>
+            <div class="key-custom-input__body" id="training-custom-body">
+                <label class="key-custom-input__field-label" for="training-custom-input">Training sequence</label>
+                <input type="text"
+                       class="key-custom-input__field"
+                       id="training-custom-input"
+                       autocomplete="off"
+                       autocapitalize="characters"
+                       spellcheck="false"
+                       placeholder="e.g. KRU ? / ="
+                       aria-describedby="training-custom-hint">
+                <p class="key-custom-input__hint" id="training-custom-hint">
+                    Type one or more symbols to inspect their paddle sequence one at a time.
+                </p>
+            </div>
+        </section>
+
+        <section class="key-training-focus" aria-label="Paddle sequence visualizer">
+            <div class="key-training-focus__header">
+                <div>
+                    <p class="sequence-label">Paddle sequence</p>
+                    <h2 class="key-training-focus__title" id="training-focus-title">K: dah dit dah</h2>
+                </div>
+                <p class="key-training-focus__meta" id="training-focus-meta">Iambic A · 20 WPM</p>
+            </div>
+
+            <div class="key-training-queue" id="training-symbol-queue" aria-label="Selected training symbols"></div>
+
+            <div class="key-training-chart" id="training-paddle-chart" aria-live="polite">
+                <div class="key-training-chart__lane key-training-chart__lane--dit">
+                    <h3>DIT</h3>
+                    <p>LEFT</p>
+                    <div class="key-training-chart__rail" data-lane="dit"></div>
+                </div>
+                <div class="key-training-chart__events" id="training-chart-events"></div>
+                <div class="key-training-chart__lane key-training-chart__lane--dah">
+                    <h3>DAH</h3>
+                    <p>RIGHT</p>
+                    <div class="key-training-chart__rail" data-lane="dah"></div>
+                </div>
+                <div class="key-training-chart__axis" id="training-chart-axis" aria-hidden="true"></div>
+            </div>
+
+            <p class="key-training-focus__note" id="training-focus-note">
+                Canonical choreography is advisory. Correct symbol output remains the primary signal.
+            </p>
+        </section>
+
+        <copy-diagnostics></copy-diagnostics>
     </main>
+    <script type="module" src="../js/partials/diagnostics.js"></script>
     <script type="module" src="../js/partials/header.js"></script>
     <script type="module" src="../js/partials/koch-sequence.js"></script>
     <script type="module" src="../js/partials/theme-btn.js"></script>
+    <script type="module" src="../js/partials/top-menu.js"></script>
     <script type="module" src="../js/key-training.js"></script>
 </body>
 </html>
