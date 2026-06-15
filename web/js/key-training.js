@@ -35,6 +35,7 @@ import {
     startBrowserMidi,
 } from "./key-timing/midi-input.js";
 import {
+    enableSidetone,
     isSoundEnabled,
     sidetone,
     toggleSidetone,
@@ -58,6 +59,7 @@ const labelEl = document.getElementById("training-custom-label");
 const titleEl = document.getElementById("training-focus-title");
 const metaEl = document.getElementById("training-focus-meta");
 const queueEl = document.getElementById("training-symbol-queue");
+const playSequenceEl = document.getElementById("training-play-sequence");
 const lastKeyedEl = document.getElementById("training-last-keyed-symbol");
 const chartEl = document.getElementById("training-paddle-chart");
 const eventsEl = document.getElementById("training-chart-events");
@@ -74,6 +76,13 @@ let activeIndex = 0;
 let completedThroughIndex = -1;
 let applyTimer = null;
 let lastKeyedSymbol = "";
+let playbackIndex = null;
+let playbackRunId = 0;
+let playbackTimeout = null;
+let playbackResolve = null;
+let playbackRestoreIndex = null;
+let pendingObservedElements = [];
+let observedAttemptsByIndex = new Map();
 
 const KEYER_MODE_DISPLAY = {
     iambic_a: "Iambic A",
@@ -124,15 +133,20 @@ function appendEvent(event) {
         return;
     }
     if (event.type === "key-event") {
+        noteObservedKeyEvent(event);
         renderKeyEvent(event);
         return;
     }
     if (event.type === "key-input-reset") {
+        pendingObservedElements = [];
+        observedAttemptsByIndex = new Map();
         renderKeyInputReset(event);
+        renderTrainingFocus();
         return;
     }
     if (event.type === "sent-symbol") {
         appendDiagnosticRow(event);
+        captureObservedAttempt(event);
         noteTrainingAttempt(event.symbol);
         return;
     }
@@ -181,11 +195,14 @@ function initialiseTrainingInput() {
 }
 
 function applyInputImmediate(raw) {
+    if (playSequenceEl?.dataset.playing === "true") stopSequencePlayback();
     const nextQueue = normaliseSymbols(raw);
     symbolQueue = nextQueue.length ? nextQueue : [...DEFAULT_QUEUE];
     activeIndex = firstSymbolIndex(symbolQueue);
     completedThroughIndex = -1;
     lastKeyedSymbol = "";
+    pendingObservedElements = [];
+    observedAttemptsByIndex = new Map();
     renderTrainingFocus();
     renderLastKeyed();
 }
@@ -209,12 +226,13 @@ function normaliseSymbols(raw) {
 }
 
 function renderTrainingFocus() {
-    const displayIndex = symbolQueue[activeIndex] === " "
-        ? nextSymbolIndex(symbolQueue, activeIndex)
-        : activeIndex;
+    const focusIndex = playbackIndex ?? activeIndex;
+    const displayIndex = symbolQueue[focusIndex] === " "
+        ? nextSymbolIndex(symbolQueue, focusIndex)
+        : focusIndex;
     const resolvedIndex = displayIndex !== -1 && PATTERNS[symbolQueue[displayIndex]]
         ? displayIndex
-        : previousSymbolIndex(symbolQueue, activeIndex - 1);
+        : previousSymbolIndex(symbolQueue, focusIndex - 1);
     const symbol = symbolQueue[resolvedIndex] || DEFAULT_QUEUE[0];
     const pattern = PATTERNS[symbol];
     if (!pattern) return;
@@ -231,12 +249,13 @@ function renderTrainingFocus() {
         noteEl.textContent = noteForMode(keyerMode);
     }
     renderQueue();
-    renderPaddleChart(symbol, pattern);
+    renderPaddleChart(symbol, pattern, resolvedIndex);
 }
 
 function renderQueue() {
     if (!queueEl) return;
     queueEl.replaceChildren();
+    const focusIndex = playbackIndex ?? activeIndex;
     symbolQueue.forEach((symbol, idx) => {
         if (symbol === " ") {
             const space = document.createElement("span");
@@ -250,11 +269,12 @@ function renderQueue() {
         btn.type = "button";
         btn.className = "key-training-queue__item";
         btn.textContent = symbol;
-        btn.dataset.active = idx === activeIndex ? "true" : "false";
+        btn.dataset.active = idx === focusIndex ? "true" : "false";
         btn.dataset.completed = idx <= completedThroughIndex ? "true" : "false";
-        btn.setAttribute("aria-pressed", String(idx === activeIndex));
-        btn.title = idx === activeIndex ? `Current target: ${symbol}` : `Train ${symbol}`;
+        btn.setAttribute("aria-pressed", String(idx === focusIndex));
+        btn.title = idx === focusIndex ? `Current target: ${symbol}` : `Train ${symbol}`;
         btn.addEventListener("click", () => {
+            stopSequencePlayback();
             activeIndex = idx;
             renderTrainingFocus();
         });
@@ -268,7 +288,10 @@ function noteTrainingAttempt(symbol) {
     renderLastKeyed();
 
     const target = symbolQueue[activeIndex];
-    if (target !== lastKeyedSymbol) return;
+    if (target !== lastKeyedSymbol) {
+        renderTrainingFocus();
+        return;
+    }
 
     const nextIndex = nextSymbolIndex(symbolQueue, activeIndex + 1);
     if (nextIndex === -1) {
@@ -306,7 +329,7 @@ function previousSymbolIndex(tokens, start) {
     return 0;
 }
 
-function renderPaddleChart(symbol, pattern) {
+function renderPaddleChart(symbol, pattern, tokenIndex) {
     if (!chartEl || !eventsEl || !axisEl) return;
     chartEl.querySelectorAll(".key-training-chart__bar").forEach((el) => el.remove());
     eventsEl.replaceChildren();
@@ -334,9 +357,11 @@ function renderPaddleChart(symbol, pattern) {
         const el = document.createElement("div");
         el.className = `key-training-chart__event key-training-chart__event--${element.kind}`;
         el.style.setProperty("--event-bottom", `${((element.start + element.duration / 2) / totalUnits) * 100}%`);
+        el.dataset.eventIndex = String(element.index);
         el.textContent = `${element.kind.toUpperCase()} ${Math.round(element.duration * unitMs)} ms`;
         eventsEl.appendChild(el);
     });
+    renderObservedElements(tokenIndex, plan, unitMs);
 
     [0, 0.25, 0.5, 0.75, 1].forEach((ratio) => {
         const tick = document.createElement("span");
@@ -347,13 +372,105 @@ function renderPaddleChart(symbol, pattern) {
     });
 }
 
+function noteObservedKeyEvent(event) {
+    if (event.pressed) {
+        if (playSequenceEl?.dataset.playing === "true") stopSequencePlayback();
+        const targetIndex = observedTargetIndex();
+        if (observedAttemptsByIndex.has(targetIndex)) {
+            observedAttemptsByIndex.delete(targetIndex);
+            renderTrainingFocus();
+        }
+        return;
+    }
+    const durationMs = Number(event.duration_ms);
+    const endedAt = Number(event.timestamp);
+    if (!event.kind || !Number.isFinite(durationMs) || !Number.isFinite(endedAt)) return;
+    pendingObservedElements.push({
+        kind: event.kind,
+        startedAt: endedAt - durationMs / 1000,
+        endedAt,
+        durationMs,
+    });
+    if (pendingObservedElements.length > 16) {
+        pendingObservedElements = pendingObservedElements.slice(-16);
+    }
+}
+
+function captureObservedAttempt(event) {
+    const startedAt = Number(event.started_at);
+    const endedAt = Number(event.ended_at);
+    if (!Number.isFinite(startedAt) || !Number.isFinite(endedAt)) return;
+    const targetIndex = observedTargetIndex();
+
+    const elements = pendingObservedElements.filter((element) => (
+        element.endedAt >= startedAt && element.endedAt <= endedAt
+    ));
+    pendingObservedElements = pendingObservedElements.filter((element) => element.endedAt > endedAt);
+
+    if (elements.length) {
+        observedAttemptsByIndex.set(targetIndex, {
+            symbol: String(event.symbol || "").toUpperCase(),
+            startedAt,
+            endedAt,
+            elements,
+        });
+    } else {
+        observedAttemptsByIndex.delete(targetIndex);
+    }
+}
+
+function observedTargetIndex() {
+    if (symbolQueue[activeIndex] && symbolQueue[activeIndex] !== " ") return activeIndex;
+    const previous = previousSymbolIndex(symbolQueue, activeIndex - 1);
+    return symbolQueue[previous] && symbolQueue[previous] !== " " ? previous : firstSymbolIndex(symbolQueue);
+}
+
+function renderObservedElements(tokenIndex, plan, unitMs) {
+    if (!eventsEl) return;
+    const attempt = observedAttemptsByIndex.get(tokenIndex);
+    if (!attempt) return;
+
+    const unitSeconds = unitMs / 1000;
+    attempt.elements.forEach((element, idx) => {
+        const centerUnits = (
+            ((element.startedAt + element.endedAt) / 2) - attempt.startedAt
+        ) / unitSeconds;
+        const expected = expectedObservedElement(plan.elements, element, idx);
+        const expectedCenter = expected ? expected.start + expected.duration / 2 : centerUnits;
+        const deltaUnits = centerUnits - expectedCenter;
+        const clampedUnits = Math.min(Math.max(centerUnits, 0), plan.totalUnits);
+        const marker = document.createElement("span");
+        marker.className = `key-training-chart__observed key-training-chart__observed--${element.kind}`;
+        marker.style.setProperty("--observed-bottom", `${(clampedUnits / plan.totalUnits) * 100}%`);
+        marker.dataset.fit = Math.abs(deltaUnits) <= 0.35 ? "close" : "wide";
+        marker.title = observedMarkerTitle(element, deltaUnits, unitMs);
+        eventsEl.appendChild(marker);
+    });
+}
+
+function expectedObservedElement(elements, observed, observedIndex) {
+    const sameKind = elements.filter((element) => element.kind === observed.kind)[observedIndex];
+    if (sameKind) return sameKind;
+    return elements[observedIndex] || null;
+}
+
+function observedMarkerTitle(element, deltaUnits, unitMs) {
+    const deltaMs = Math.round(deltaUnits * unitMs);
+    const direction = deltaMs === 0
+        ? "on time"
+        : deltaMs > 0
+            ? `${deltaMs} ms late`
+            : `${Math.abs(deltaMs)} ms early`;
+    return `observed ${element.kind} ${direction} / ${Math.round(element.durationMs)} ms`;
+}
+
 function buildTrainingPlan(symbol, pattern, mode) {
     const elements = [];
     let cursor = 0;
     [...pattern].forEach((mark, idx) => {
         const kind = mark === "-" ? "dah" : "dit";
         const duration = kind === "dah" ? 3 : 1;
-        elements.push({ kind, start: cursor, end: cursor + duration, duration });
+        elements.push({ index: idx, kind, start: cursor, end: cursor + duration, duration });
         cursor += duration;
         if (idx < pattern.length - 1) cursor += 1;
     });
@@ -460,6 +577,118 @@ function saveStored(value) {
     }
 }
 
+function installPlaybackControls() {
+    if (!playSequenceEl) return;
+    playSequenceEl.addEventListener("click", () => {
+        if (playSequenceEl.dataset.playing === "true") {
+            stopSequencePlayback();
+        } else {
+            playTrainingSequence();
+        }
+    });
+}
+
+async function playTrainingSequence() {
+    stopSequencePlayback({ restore: false });
+    const runId = playbackRunId + 1;
+    playbackRunId = runId;
+    playbackRestoreIndex = activeIndex;
+    playSequenceEl.dataset.playing = "true";
+    playSequenceEl.textContent = "Stop";
+    await enableSidetone();
+
+    try {
+        let idx = firstSymbolIndex(symbolQueue);
+        while (idx !== -1 && runId === playbackRunId) {
+            const symbol = symbolQueue[idx];
+            const pattern = PATTERNS[symbol];
+            if (pattern) {
+                playbackIndex = idx;
+                renderTrainingFocus();
+                await playSymbolPattern(pattern, runId);
+            }
+            idx = nextSymbolIndex(symbolQueue, idx + 1);
+            if (idx !== -1 && runId === playbackRunId) {
+                await sleepUnits(hasWordSpaceBefore(idx) ? 7 : 3, runId);
+            }
+        }
+    } finally {
+        if (runId === playbackRunId) {
+            stopSequencePlayback();
+        }
+    }
+}
+
+async function playSymbolPattern(pattern, runId) {
+    const marks = [...pattern];
+    for (let idx = 0; idx < marks.length; idx += 1) {
+        if (runId !== playbackRunId) return;
+        const mark = marks[idx];
+        const durationUnits = mark === "-" ? 3 : 1;
+        setPlayingTrainingEvent(idx, true);
+        sidetone.keyDown(`training-playback-${runId}`);
+        await sleepUnits(durationUnits, runId);
+        sidetone.keyUp(`training-playback-${runId}`);
+        setPlayingTrainingEvent(idx, false);
+        if (idx < marks.length - 1) {
+            await sleepUnits(1, runId);
+        }
+    }
+}
+
+function hasWordSpaceBefore(index) {
+    for (let idx = index - 1; idx >= 0; idx -= 1) {
+        if (symbolQueue[idx] === " ") return true;
+        return false;
+    }
+    return false;
+}
+
+function setPlayingTrainingEvent(index, playing) {
+    if (!eventsEl) return;
+    eventsEl.querySelectorAll("[data-playing]").forEach((el) => {
+        delete el.dataset.playing;
+    });
+    if (!playing) return;
+    const el = eventsEl.querySelector(`[data-event-index="${index}"]`);
+    if (el) el.dataset.playing = "true";
+}
+
+function sleepUnits(units, runId) {
+    return new Promise((resolve) => {
+        playbackResolve = resolve;
+        playbackTimeout = window.setTimeout(() => {
+            if (runId === playbackRunId) playbackTimeout = null;
+            if (runId === playbackRunId) playbackResolve = null;
+            resolve();
+        }, Math.max(1, units * ditMs()));
+    });
+}
+
+function stopSequencePlayback(options = {}) {
+    const { restore = true } = options;
+    playbackRunId += 1;
+    if (playbackTimeout !== null) {
+        window.clearTimeout(playbackTimeout);
+        playbackTimeout = null;
+    }
+    if (playbackResolve) {
+        playbackResolve();
+        playbackResolve = null;
+    }
+    sidetone.keyUp(`training-playback-${playbackRunId - 1}`);
+    sidetone.mute();
+    setPlayingTrainingEvent(0, false);
+    if (restore && playbackRestoreIndex !== null) activeIndex = playbackRestoreIndex;
+    playbackRestoreIndex = null;
+    playbackIndex = null;
+    if (playSequenceEl) {
+        delete playSequenceEl.dataset.playing;
+        playSequenceEl.textContent = "Play sequence";
+    }
+    renderTrainingFocus();
+}
+
 function installKeyControls() {
     installMidiInputAccessors({ setStatus });
     installDiagnosticsAccessors({
@@ -482,6 +711,7 @@ function installKeyControls() {
             visibility: document.visibilityState,
         });
         if (document.visibilityState === "hidden") {
+            stopSequencePlayback();
             setMidiInputArmed(false, "page hidden");
         } else if (document.visibilityState === "visible" && !getMidiInputArmed()) {
             setMidiInputArmed(true, "page visible");
@@ -558,10 +788,12 @@ window.addEventListener("keyup", (event) => {
 
 window.addEventListener("blur", () => {
     leftAltDown = false;
+    stopSequencePlayback();
     hideSymbolPreview();
 });
 
 initialiseTrainingInput();
+installPlaybackControls();
 installKeyControls();
 installClaimHandlers(sequenceRow, () => socket);
 socket = connectKoch({
