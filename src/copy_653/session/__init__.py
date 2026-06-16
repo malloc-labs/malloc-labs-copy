@@ -3,6 +3,7 @@
 from copy_653.session.records import (
     CadenceSendRecord,
     CopyKeyRecord,
+    KeyTrainingRecord,
     KochExerciseRecord,
     RecognitionRecord,
     SCHEMA_VERSION,
@@ -14,6 +15,7 @@ from copy_653.session.records import (
 __all__ = [
     "CadenceSendRecord",
     "CopyKeyRecord",
+    "KeyTrainingRecord",
     "KochExerciseRecord",
     "RecognitionRecord",
     "SCHEMA_VERSION",

@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -44,6 +46,7 @@ from copy_653.sequence.recognition_analysis import (
 from copy_653.session import (
     CadenceSendRecord,
     CopyKeyRecord,
+    KeyTrainingRecord,
     KochExerciseRecord,
     RecognitionRecord,
     update_koch_answers,
@@ -247,6 +250,145 @@ def _finalize_copy_key_session(
         write_record(record, save_directory)
     except Exception:
         logger.exception("failed to write copy-key record")
+
+
+class _ActiveKeyTrainingSession:
+    """In-flight Key Training structured-mode recording state."""
+
+    __slots__ = (
+        "started_at",
+        "audio",
+        "claimed",
+        "seed",
+        "training_mode",
+        "session_status",
+        "generation",
+        "exercises",
+        "source_symbols",
+        "sent",
+        "attempts",
+        "key_events",
+        "record_path",
+    )
+
+    def __init__(
+        self,
+        *,
+        started_at: datetime,
+        audio: AudioParameters,
+        claimed: tuple[str, ...],
+        seed: int,
+        training_mode: str,
+        generation: dict[str, Any],
+        exercises: list[dict[str, Any]],
+        source_symbols: list[str],
+        session_status: str = "started",
+    ) -> None:
+        self.started_at = started_at
+        self.audio = audio
+        self.claimed = claimed
+        self.seed = seed
+        self.training_mode = training_mode
+        self.session_status = session_status
+        self.generation = generation
+        self.exercises = exercises
+        self.source_symbols = source_symbols
+        self.sent: list[dict[str, Any]] = []
+        self.attempts: list[dict[str, Any]] = []
+        self.key_events: list[dict[str, Any]] = []
+        self.record_path: Path | None = None
+
+    def record_event(self, payload: dict[str, Any]) -> None:
+        """Capture a relevant WS event payload into the session record."""
+        kind = payload.get("type")
+        if kind == "sent-symbol":
+            self.sent.append(
+                {
+                    "symbol": payload["symbol"],
+                    "pattern": payload["pattern"],
+                    "started_at": payload["started_at"],
+                    "ended_at": payload["ended_at"],
+                    "leading_gap": payload["leading_gap"],
+                }
+            )
+        elif kind == "key-event":
+            entry = {
+                "kind": payload["kind"],
+                "note": payload["note"],
+                "pressed": payload["pressed"],
+                "timestamp": payload["timestamp"],
+            }
+            if "duration_ms" in payload:
+                entry["duration_ms"] = payload["duration_ms"]
+            if "ratio_dits" in payload:
+                entry["ratio_dits"] = payload["ratio_dits"]
+            self.key_events.append(entry)
+
+    def record_attempt(self, payload: dict[str, Any]) -> None:
+        """Capture a browser-side Training attempt decision."""
+        self.attempts.append(dict(payload))
+
+
+def _finalize_key_training_session(
+    session: _ActiveKeyTrainingSession,
+    config_path: Path,
+    *,
+    session_status: str = "completed",
+) -> None:
+    """Persist a Key Training session record. Best-effort; failures are logged."""
+    try:
+        save_directory = load_save_directory(config_path)
+        record = _key_training_record(session, session_status=session_status)
+        if session.record_path is None:
+            session.record_path = write_record(record, save_directory)
+        else:
+            _replace_record(session.record_path, record)
+    except Exception:
+        logger.exception("failed to write key-training record")
+
+
+def _snapshot_key_training_session(
+    session: _ActiveKeyTrainingSession,
+    config_path: Path,
+    *,
+    session_status: str = "started",
+) -> None:
+    """Write or refresh the active Key Training record without closing it."""
+    _finalize_key_training_session(session, config_path, session_status=session_status)
+
+
+def _key_training_record(
+    session: _ActiveKeyTrainingSession,
+    *,
+    session_status: str,
+) -> KeyTrainingRecord:
+    return KeyTrainingRecord(
+        started_at=session.started_at,
+        ended_at=datetime.now(timezone.utc),
+        audio=session.audio,
+        claimed_set=session.claimed,
+        seed=session.seed,
+        training_mode=session.training_mode,
+        session_status=session_status,
+        generation=session.generation,
+        exercises=session.exercises,
+        source_symbols=session.source_symbols,
+        sent=session.sent,
+        attempts=session.attempts,
+        key_events=session.key_events,
+    )
+
+
+def _replace_record(path: Path, record: KeyTrainingRecord) -> None:
+    serialised = json.dumps(record.to_dict(), indent=2).encode("utf-8")
+    fd, tmp_path = tempfile.mkstemp(prefix=".record-", suffix=".json", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(serialised)
+        os.replace(tmp_path, path)
+    except Exception:
+        Path(tmp_path).unlink(missing_ok=True)
+        raise
 
 
 def _iter_copy_key_records(save_directory: Path) -> list[dict[str, Any]]:

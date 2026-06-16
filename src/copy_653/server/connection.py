@@ -56,6 +56,7 @@ from copy_653.server.recognition_controller import RecognitionController
 from copy_653.server.records import (
     _ActiveCadenceSession,
     _ActiveCopyKeySession,
+    _ActiveKeyTrainingSession,
     _koch_readiness_state,
     _next_send_symbol_readiness,
     _recognition_readiness_state,
@@ -90,6 +91,7 @@ class ConnectionState:
     browser: BrowserKeyInputState | None = None
     cadence: _ActiveCadenceSession | None = None
     copy_key: _ActiveCopyKeySession | None = None
+    key_training: _ActiveKeyTrainingSession | None = None
     copy_key_play_task: asyncio.Task[None] | None = None
     # Path to the koch-exercise record written at the last session-end,
     # awaiting a `save-koch-answers` rewrite. Cleared on a new `start`,
