@@ -18,6 +18,16 @@
 
         <copy-top-menu hide-clear></copy-top-menu>
 
+        <section class="key-training-mode" aria-label="Training mode">
+            <p class="sequence-label">Mode</p>
+            <div class="key-training-mode__tabs" id="training-mode-tabs" role="tablist" aria-label="Training mode">
+                <button type="button" class="key-training-mode__tab" id="training-mode-custom" data-training-mode="custom" role="tab" aria-selected="true">Custom</button>
+                <button type="button" class="key-training-mode__tab" id="training-mode-scales" data-training-mode="scales" role="tab" aria-selected="false">Scales</button>
+                <button type="button" class="key-training-mode__tab" id="training-mode-intervals" data-training-mode="intervals" role="tab" aria-selected="false">Intervals</button>
+                <button type="button" class="key-training-mode__tab" id="training-mode-etudes" data-training-mode="etudes" role="tab" aria-selected="false">Etudes</button>
+            </div>
+        </section>
+
         <copy-koch-sequence section-label="Koch symbol sequence"></copy-koch-sequence>
 
         <section class="key-custom-input training-custom-input" aria-label="Custom training sequence">
@@ -45,7 +55,28 @@
             </div>
         </section>
 
-        <section class="key-training-focus" aria-label="Paddle sequence visualizer">
+        <section class="key-training-exercises" id="training-exercises" aria-label="Training exercises" hidden>
+            <div class="key-training-exercises__header">
+                <div>
+                    <p class="sequence-label">Exercise set</p>
+                    <h2 class="key-training-exercises__title" id="training-exercise-title">Scales</h2>
+                </div>
+                <div class="key-training-exercises__actions">
+                    <p class="key-training-exercises__meta" id="training-exercise-meta">20 exercises</p>
+                    <button type="button" class="key-training-exercises__restart" id="training-exercise-restart">Restart</button>
+                </div>
+            </div>
+            <div class="key-training-exercises__target">
+                <div>
+                    <p class="sequence-label">Current target</p>
+                    <p class="key-training-exercises__position" id="training-exercise-position">Exercise 1/20</p>
+                </div>
+                <p class="key-training-exercises__sequence" id="training-exercise-sequence">—</p>
+            </div>
+            <ol class="key-training-exercises__list" id="training-exercise-list" aria-label="Generated training exercises"></ol>
+        </section>
+
+        <section class="key-training-focus" id="training-focus" aria-label="Paddle sequence visualizer">
             <div class="key-training-focus__header">
                 <div>
                     <p class="sequence-label">Paddle sequence</p>
