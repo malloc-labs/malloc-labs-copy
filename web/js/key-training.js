@@ -53,6 +53,12 @@ const APPLY_DEBOUNCE_MS = 150;
 const DEFAULT_QUEUE = ["K"];
 const STRUCTURED_EXERCISE_COUNT = 20;
 const TRAINING_MODES = new Set(["custom", "scales", "intervals", "etudes"]);
+const CHARACTER_GAP_EARLY_DITS = 1.0;
+const CHARACTER_GAP_PASS_MIN_DITS = 2.0;
+const CHARACTER_GAP_PASS_MAX_DITS = 5.0;
+const CHARACTER_GAP_FAIL_DITS = 6.0;
+const WORD_GAP_EARLY_DITS = 5.0;
+const WORD_GAP_PASS_DITS = 6.0;
 
 const sequenceRow = document.getElementById("sequence-row");
 const modeTabsEl = document.getElementById("training-mode-tabs");
@@ -64,6 +70,7 @@ const exerciseMetaEl = document.getElementById("training-exercise-meta");
 const exerciseRestartEl = document.getElementById("training-exercise-restart");
 const exercisePositionEl = document.getElementById("training-exercise-position");
 const exerciseSequenceEl = document.getElementById("training-exercise-sequence");
+const exerciseCompletedEl = document.getElementById("training-exercise-completed");
 const exerciseListEl = document.getElementById("training-exercise-list");
 const inputEl = document.getElementById("training-custom-input");
 const toggleEl = document.getElementById("training-custom-toggle");
@@ -86,10 +93,15 @@ let claimedSymbolSet = new Set();
 let leftAltDown = false;
 let keyerMode = "iambic_a";
 let characterWpm = 20;
+let expectedDitMs = 60;
+let expectedCharacterGapMs = 180;
+let expectedWordGapMs = 420;
 let trainingMode = "custom";
 let symbolQueue = [...DEFAULT_QUEUE];
 let structuredExercises = [];
 let structuredExerciseRanges = [];
+let structuredRunStarted = false;
+let keyTrainingRecordActive = false;
 let activeIndex = 0;
 let completedThroughIndex = -1;
 let applyTimer = null;
@@ -101,6 +113,8 @@ let playbackResolve = null;
 let playbackRestoreIndex = null;
 let pendingObservedElements = [];
 let observedAttemptsByIndex = new Map();
+let lastAcceptedSentEvent = null;
+let structuredAttemptIndices = new Map();
 let leftAltUsedWithPreview = false;
 
 const KEYER_MODE_DISPLAY = {
@@ -122,7 +136,31 @@ function modeDisplay(mode) {
 }
 
 function ditMs() {
-    return 1200 / Math.max(1, characterWpm);
+    return expectedDitMs;
+}
+
+function updateExpectedTiming(event) {
+    const nextWpm = Number(event.character_wpm ?? event.character_speed_wpm);
+    if (Number.isFinite(nextWpm) && nextWpm > 0) {
+        characterWpm = nextWpm;
+    }
+
+    const nextDitMs = Number(event.dit_ms_expected);
+    if (Number.isFinite(nextDitMs) && nextDitMs > 0) {
+        expectedDitMs = nextDitMs;
+    } else {
+        expectedDitMs = 1200 / Math.max(1, characterWpm);
+    }
+
+    const nextCharacterGapMs = Number(event.character_gap_ms);
+    expectedCharacterGapMs = Number.isFinite(nextCharacterGapMs) && nextCharacterGapMs > 0
+        ? nextCharacterGapMs
+        : 3 * expectedDitMs;
+
+    const nextWordGapMs = Number(event.word_gap_ms);
+    expectedWordGapMs = Number.isFinite(nextWordGapMs) && nextWordGapMs > 0
+        ? nextWordGapMs
+        : 7 * expectedDitMs;
 }
 
 function appendEvent(event) {
@@ -133,8 +171,7 @@ function appendEvent(event) {
     }
     if (event.type === "audio-settings") {
         keyerMode = event.keyer_mode || keyerMode;
-        const nextWpm = Number(event.character_speed_wpm);
-        if (Number.isFinite(nextWpm) && nextWpm > 0) characterWpm = nextWpm;
+        updateExpectedTiming(event);
         renderKeyerModeBadge(keyerMode);
         renderTrainingFocus();
         return;
@@ -149,7 +186,9 @@ function appendEvent(event) {
         return;
     }
     if (event.type === "key-input-start") {
+        updateExpectedTiming(event);
         renderKeyInputStart(event);
+        renderStructuredExercises();
         return;
     }
     if (event.type === "key-event") {
@@ -160,6 +199,7 @@ function appendEvent(event) {
     if (event.type === "key-input-reset") {
         pendingObservedElements = [];
         observedAttemptsByIndex = new Map();
+        lastAcceptedSentEvent = null;
         renderKeyInputReset(event);
         renderTrainingFocus();
         return;
@@ -167,7 +207,7 @@ function appendEvent(event) {
     if (event.type === "sent-symbol") {
         appendDiagnosticRow(event);
         captureObservedAttempt(event);
-        noteTrainingAttempt(event.symbol);
+        noteTrainingAttempt(event);
         return;
     }
     if (event.type === "error") {
@@ -234,6 +274,7 @@ function initialiseTrainingModes() {
 function setTrainingMode(mode) {
     if (!TRAINING_MODES.has(mode) || mode === trainingMode) return;
     stopSequencePlayback();
+    abortKeyTrainingRecord();
     trainingMode = mode;
     saveStoredMode(mode);
     renderTrainingMode();
@@ -268,9 +309,12 @@ function applyInputImmediate(raw) {
     symbolQueue = nextQueue.length ? nextQueue : [...DEFAULT_QUEUE];
     structuredExercises = [];
     structuredExerciseRanges = [];
+    structuredRunStarted = false;
     activeIndex = firstSymbolIndex(symbolQueue);
     completedThroughIndex = -1;
     lastKeyedSymbol = "";
+    lastAcceptedSentEvent = null;
+    structuredAttemptIndices = new Map();
     pendingObservedElements = [];
     observedAttemptsByIndex = new Map();
     renderTrainingFocus();
@@ -284,6 +328,7 @@ function regenerateStructuredExercises() {
 
 function applyStructuredExercises(exercises) {
     stopSequencePlayback();
+    abortKeyTrainingRecord();
     structuredExercises = exercises;
     const flattened = [];
     structuredExerciseRanges = [];
@@ -295,9 +340,13 @@ function applyStructuredExercises(exercises) {
         structuredExerciseRanges.push({ start, end });
     });
     symbolQueue = flattened.length ? flattened : [...DEFAULT_QUEUE];
+    structuredRunStarted = false;
+    keyTrainingRecordActive = false;
     activeIndex = firstSymbolIndex(symbolQueue);
     completedThroughIndex = -1;
     lastKeyedSymbol = "";
+    lastAcceptedSentEvent = null;
+    structuredAttemptIndices = new Map();
     pendingObservedElements = [];
     observedAttemptsByIndex = new Map();
     renderTrainingFocus();
@@ -386,7 +435,7 @@ function renderStructuredExercises() {
             const target = document.createElement("button");
             target.type = "button";
             target.className = "key-training-exercises__target-button";
-            target.textContent = exercise;
+            appendExerciseGlyphs(target, exercise, structuredExerciseRanges[idx]);
             target.addEventListener("click", () => {
                 const range = structuredExerciseRanges[idx];
                 if (!range) return;
@@ -405,8 +454,39 @@ function renderStructuredExercises() {
             : "No exercises";
     }
     if (exerciseSequenceEl) {
-        exerciseSequenceEl.textContent = structuredExercises[displayIdx] || "—";
+        exerciseSequenceEl.replaceChildren();
+        const exercise = structuredExercises[displayIdx];
+        const range = structuredExerciseRanges[displayIdx];
+        if (exercise && range) {
+            appendExerciseGlyphs(exerciseSequenceEl, exercise, range);
+        } else {
+            exerciseSequenceEl.textContent = "—";
+        }
     }
+    if (exerciseRestartEl) {
+        exerciseRestartEl.textContent = structuredRunStarted ? "Restart" : "Start";
+    }
+    if (exerciseCompletedEl) {
+        exerciseCompletedEl.hidden = !trainingSequenceCompleted();
+    }
+}
+
+function appendExerciseGlyphs(parent, exercise, range) {
+    if (!range) {
+        parent.textContent = exercise || "—";
+        return;
+    }
+    let tokenIndex = range.start;
+    normaliseSymbols(exercise).forEach((token) => {
+        const span = document.createElement("span");
+        span.className = token === " "
+            ? "key-training-exercises__glyph key-training-exercises__glyph--space"
+            : "key-training-exercises__glyph";
+        span.dataset.completed = String(tokenIndex <= completedThroughIndex);
+        span.textContent = token === " " ? " " : token;
+        parent.appendChild(span);
+        tokenIndex += 1;
+    });
 }
 
 function currentStructuredExerciseIndex() {
@@ -420,6 +500,13 @@ function currentStructuredExerciseIndex() {
     if (idx !== -1) return idx;
     if (trainingSequenceCompleted()) return Math.max(0, structuredExercises.length - 1);
     return 0;
+}
+
+function structuredExerciseIndexForToken(tokenIndex) {
+    const idx = structuredExerciseRanges.findIndex((range) => (
+        tokenIndex >= range.start && tokenIndex <= range.end
+    ));
+    return idx === -1 ? currentStructuredExerciseIndex() : idx;
 }
 
 function structuredExerciseCompleted(idx) {
@@ -519,9 +606,31 @@ function renderQueue() {
 
 function restartTrainingRun() {
     stopSequencePlayback();
+    structuredRunStarted = isStructuredMode() ? true : structuredRunStarted;
     activeIndex = firstSymbolIndex(symbolQueue);
     completedThroughIndex = -1;
     lastKeyedSymbol = "";
+    lastAcceptedSentEvent = null;
+    structuredAttemptIndices = new Map();
+    pendingObservedElements = [];
+    observedAttemptsByIndex = new Map();
+    renderTrainingFocus();
+    renderLastKeyed();
+}
+
+async function startOrRestartStructuredRun() {
+    if (!isStructuredMode()) {
+        restartTrainingRun();
+        return;
+    }
+    await enableSidetone();
+    startKeyTrainingRecord();
+    structuredRunStarted = true;
+    activeIndex = firstSymbolIndex(symbolQueue);
+    completedThroughIndex = -1;
+    lastKeyedSymbol = "";
+    lastAcceptedSentEvent = null;
+    structuredAttemptIndices = new Map();
     pendingObservedElements = [];
     observedAttemptsByIndex = new Map();
     renderTrainingFocus();
@@ -544,26 +653,228 @@ function currentReviewIndex() {
     return previousSymbolIndex(symbolQueue, activeIndex - 1);
 }
 
-function noteTrainingAttempt(symbol) {
+function noteTrainingAttempt(event) {
+    const symbol = event?.symbol;
     if (!symbol) return;
     lastKeyedSymbol = String(symbol).toUpperCase();
     renderLastKeyed();
 
+    if (isStructuredMode() && !structuredRunStarted) {
+        renderTrainingFocus();
+        return;
+    }
+
     const target = symbolQueue[activeIndex];
     if (target !== lastKeyedSymbol) {
+        if (isStructuredMode()) {
+            recordTrainingAttempt(event, {
+                expectedGap: expectedLeadingGap(activeIndex),
+                spacing: { result: "not-evaluated" },
+                result: "wrong-symbol",
+                action: "ignore",
+            });
+        }
         renderTrainingFocus();
+        return;
+    }
+
+    const spacing = isStructuredMode() ? targetSpacingResult(event) : { result: "pass" };
+    if (spacing.result === "fail") {
+        recordTrainingAttempt(event, {
+            expectedGap: spacing.expected,
+            spacing,
+            result: "timing-fail",
+            action: "restart-line",
+        });
+        incrementStructuredAttempt(currentStructuredExerciseIndex());
+        restartCurrentStructuredLine();
         return;
     }
 
     const nextIndex = nextSymbolIndex(symbolQueue, activeIndex + 1);
     if (nextIndex === -1) {
+        recordTrainingAttempt(event, {
+            expectedGap: spacing.expected || "any",
+            spacing,
+            result: "accepted",
+            action: "complete-session",
+        });
         completedThroughIndex = symbolQueue.length - 1;
         activeIndex = symbolQueue.length;
+        completeKeyTrainingRecord();
     } else {
+        const currentExerciseIdx = currentStructuredExerciseIndex();
+        const nextExerciseIdx = structuredExerciseIndexForToken(nextIndex);
+        recordTrainingAttempt(event, {
+            expectedGap: spacing.expected || "any",
+            spacing,
+            result: "accepted",
+            action: nextExerciseIdx !== currentExerciseIdx ? "complete-exercise" : "advance",
+        });
         completedThroughIndex = nextIndex - 1;
         activeIndex = nextIndex;
     }
+    lastAcceptedSentEvent = event;
     renderTrainingFocus();
+}
+
+function recordTrainingAttempt(event, { expectedGap, spacing, result, action }) {
+    if (!isStructuredMode() || !structuredRunStarted) return;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    const exerciseIndex = currentStructuredExerciseIndex();
+    const range = structuredExerciseRanges[exerciseIndex];
+    const targetSymbol = symbolQueue[activeIndex] || "";
+    const payload = {
+        exercise_index: exerciseIndex + 1,
+        target: structuredExercises[exerciseIndex] || "",
+        attempt_index: structuredAttemptIndex(exerciseIndex),
+        target_token_index: range ? symbolOrdinalInRange(activeIndex, range) : null,
+        target_symbol: targetSymbol,
+        sent_symbol: event?.symbol || null,
+        pattern: event?.pattern || "",
+        started_at: event?.started_at ?? null,
+        ended_at: event?.ended_at ?? null,
+        expected_gap: expectedGap || "any",
+        decoder_gap: event?.leading_gap || "none",
+        spacing_result: spacing?.result || "not-evaluated",
+        result,
+        action,
+    };
+    if (Number.isFinite(spacing?.gapMs)) {
+        payload.gap_ms = Math.round(spacing.gapMs * 1000) / 1000;
+    }
+    if (Number.isFinite(spacing?.gapDits)) {
+        payload.gap_dits = Math.round(spacing.gapDits * 1000) / 1000;
+    }
+    socket.send(JSON.stringify({
+        action: "record-key-training-attempt",
+        attempt: payload,
+    }));
+}
+
+function structuredAttemptIndex(exerciseIndex) {
+    const existing = structuredAttemptIndices.get(exerciseIndex);
+    if (Number.isInteger(existing) && existing > 0) return existing;
+    structuredAttemptIndices.set(exerciseIndex, 1);
+    return 1;
+}
+
+function incrementStructuredAttempt(exerciseIndex) {
+    structuredAttemptIndices.set(exerciseIndex, structuredAttemptIndex(exerciseIndex) + 1);
+}
+
+function symbolOrdinalInRange(index, range) {
+    if (!range || index < range.start || index > range.end) return null;
+    let ordinal = 0;
+    for (let idx = range.start; idx <= index; idx += 1) {
+        if (symbolQueue[idx] !== " ") ordinal += 1;
+    }
+    return ordinal;
+}
+
+function targetSpacingResult(event) {
+    const expected = expectedLeadingGap(activeIndex);
+    if (expected === "any") return { result: "pass", expected };
+    const gapMs = measuredLeadingGapMs(event);
+    if (!Number.isFinite(gapMs)) {
+        const actual = event?.leading_gap || "none";
+        return {
+            result: actual === expected ? "pass" : "fail",
+            expected,
+            actual,
+        };
+    }
+
+    const gapDits = gapMs / Math.max(1, expectedDitMs);
+    const actual = event?.leading_gap || "none";
+    const result = classifySpacingGap(expected, gapDits);
+    return {
+        result,
+        expected,
+        actual,
+        gapMs,
+        gapDits,
+    };
+}
+
+function measuredLeadingGapMs(event) {
+    const previousEnd = Number(lastAcceptedSentEvent?.ended_at);
+    const currentStart = Number(event?.started_at);
+    if (!Number.isFinite(previousEnd) || !Number.isFinite(currentStart)) return null;
+    return Math.max(0, (currentStart - previousEnd) * 1000);
+}
+
+function classifySpacingGap(expected, gapDits) {
+    if (!Number.isFinite(gapDits)) return "fail";
+    if (expected === "character") {
+        if (gapDits < CHARACTER_GAP_EARLY_DITS) return "fail";
+        if (gapDits < CHARACTER_GAP_PASS_MIN_DITS) return "early";
+        if (gapDits <= CHARACTER_GAP_PASS_MAX_DITS) return "pass";
+        if (gapDits < CHARACTER_GAP_FAIL_DITS) return "late";
+        return "fail";
+    }
+    if (expected === "word") {
+        if (gapDits < WORD_GAP_EARLY_DITS) return "fail";
+        if (gapDits < WORD_GAP_PASS_DITS) return "early";
+        return "pass";
+    }
+    return "pass";
+}
+
+function expectedLeadingGap(index) {
+    const range = currentStructuredRange();
+    if (!range || index <= range.start) return "any";
+    const previous = previousSymbolIndex(symbolQueue, index - 1);
+    if (previous < range.start) return "any";
+    for (let idx = previous + 1; idx < index; idx += 1) {
+        if (symbolQueue[idx] === " ") return "word";
+    }
+    return "character";
+}
+
+function restartCurrentStructuredLine() {
+    const range = currentStructuredRange();
+    if (!range) {
+        restartTrainingRun();
+        return;
+    }
+    activeIndex = firstSymbolIndexInRange(range);
+    completedThroughIndex = range.start - 1;
+    lastAcceptedSentEvent = null;
+    pendingObservedElements = [];
+    observedAttemptsByIndex = new Map();
+    renderTrainingFocus();
+}
+
+function currentStructuredRange() {
+    return structuredExerciseRanges[currentStructuredExerciseIndex()] || null;
+}
+
+function startKeyTrainingRecord() {
+    if (!isStructuredMode() || !socket || socket.readyState !== WebSocket.OPEN) return;
+    if (keyTrainingRecordActive) abortKeyTrainingRecord();
+    socket.send(JSON.stringify({
+        action: "start-key-training-session",
+        training_mode: trainingMode,
+        exercises: structuredExercises,
+        source_symbols: trainingSymbols(),
+    }));
+    keyTrainingRecordActive = true;
+}
+
+function completeKeyTrainingRecord() {
+    if (!keyTrainingRecordActive || !socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({ action: "complete-key-training-session" }));
+    keyTrainingRecordActive = false;
+}
+
+function abortKeyTrainingRecord() {
+    if (!keyTrainingRecordActive || !socket || socket.readyState !== WebSocket.OPEN) {
+        keyTrainingRecordActive = false;
+        return;
+    }
+    socket.send(JSON.stringify({ action: "abort-key-training-session" }));
+    keyTrainingRecordActive = false;
 }
 
 function renderLastKeyed() {
@@ -586,7 +897,7 @@ function installTrainingNavigationControls() {
         restartEl.addEventListener("click", restartTrainingRun);
     }
     if (exerciseRestartEl) {
-        exerciseRestartEl.addEventListener("click", restartTrainingRun);
+        exerciseRestartEl.addEventListener("click", startOrRestartStructuredRun);
     }
     window.addEventListener("keydown", (event) => {
         if (event.altKey || event.ctrlKey || event.metaKey) return;
@@ -598,7 +909,11 @@ function installTrainingNavigationControls() {
         const key = event.key.toLowerCase();
         if (key === "r") {
             event.preventDefault();
-            restartTrainingRun();
+            if (isStructuredMode()) {
+                startOrRestartStructuredRun();
+            } else {
+                restartTrainingRun();
+            }
         } else if (key === "h") {
             event.preventDefault();
             navigateTrainingReview(-1);

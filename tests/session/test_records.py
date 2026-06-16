@@ -13,6 +13,7 @@ from copy_653.audio.parameters import AudioParameters
 from copy_653.session.records import (
     SCHEMA_VERSION,
     CadenceSendRecord,
+    KeyTrainingRecord,
     KochExerciseRecord,
     RecognitionRecord,
     update_koch_answers,
@@ -137,6 +138,55 @@ def _recognition_record() -> RecognitionRecord:
     )
 
 
+def _key_training_record() -> KeyTrainingRecord:
+    started = datetime(2026, 5, 15, 19, 30, 45, 123_000, tzinfo=timezone.utc)
+    ended = datetime(2026, 5, 15, 19, 31, 15, 456_000, tzinfo=timezone.utc)
+    return KeyTrainingRecord(
+        started_at=started,
+        ended_at=ended,
+        audio=_audio(),
+        claimed_set=("K", "M", "U"),
+        seed=12345,
+        training_mode="scales",
+        generation={
+            "profile_version": "key-training-v1",
+            "set_id": "20260515T193045Z",
+            "set_session": 1,
+            "exercise_count": 1,
+        },
+        exercises=[{"index": 1, "target": "U U U U"}],
+        source_symbols=["K", "M", "U"],
+        sent=[
+            {
+                "symbol": "U",
+                "pattern": "..-",
+                "started_at": 1.024,
+                "ended_at": 1.640,
+                "leading_gap": "none",
+            }
+        ],
+        attempts=[
+            {
+                "exercise_index": 1,
+                "target": "U U U U",
+                "attempt_index": 1,
+                "target_token_index": 1,
+                "target_symbol": "U",
+                "sent_symbol": "U",
+                "expected_gap": "any",
+                "decoder_gap": "none",
+                "spacing_result": "pass",
+                "result": "accepted",
+                "action": "advance",
+            }
+        ],
+        key_events=[
+            {"kind": "dit", "note": 1, "pressed": True, "timestamp": 1.024},
+            {"kind": "dit", "note": 1, "pressed": False, "timestamp": 1.084, "duration_ms": 60.0},
+        ],
+    )
+
+
 def test_koch_record_shape_has_common_envelope(tmp_path: Path):
     path = write_record(_koch_record(), tmp_path)
     parsed = json.loads(path.read_text())
@@ -198,6 +248,24 @@ def test_cadence_record_carries_exercises_sent_and_key_events(tmp_path: Path):
         "pressed": True,
         "timestamp": 1.024,
     }
+
+
+def test_key_training_record_carries_targets_sent_and_key_events(tmp_path: Path):
+    path = write_record(_key_training_record(), tmp_path)
+    parsed = json.loads(path.read_text())
+
+    assert parsed["mode"] == "key-training"
+    assert parsed["training_mode"] == "scales"
+    assert parsed["session_status"] == "completed"
+    assert parsed["claimed_set"] == ["K", "M", "U"]
+    assert parsed["source_symbols"] == ["K", "M", "U"]
+    assert parsed["generation"]["profile_version"] == "key-training-v1"
+    assert parsed["generation"]["exercise_count"] == 1
+    assert parsed["exercises"] == [{"index": 1, "target": "U U U U"}]
+    assert parsed["sent"][0]["symbol"] == "U"
+    assert parsed["attempts"][0]["target_symbol"] == "U"
+    assert parsed["attempts"][0]["result"] == "accepted"
+    assert parsed["key_events"][0]["kind"] == "dit"
 
 
 def test_schema_version_is_two_one():
@@ -269,11 +337,16 @@ def test_koch_record_never_carries_selection(tmp_path: Path):
 def test_write_record_uses_per_mode_subdirectory(tmp_path: Path):
     koch_path = write_record(_koch_record(), tmp_path)
     cadence_path = write_record(_cadence_record(), tmp_path)
+    training_path = write_record(_key_training_record(), tmp_path)
 
     assert koch_path.parent == tmp_path / "koch-exercise" / "2026" / "05" / "set-20260515T193045Z"
     assert cadence_path.parent == tmp_path / "cadence-send" / "2026" / "05"
+    assert (
+        training_path.parent == tmp_path / "key-training" / "2026" / "05" / "set-20260515T193045Z"
+    )
     assert koch_path.name == "session-03.json"
     assert cadence_path.name == "cadence-send-20260515T193045Z.json"
+    assert training_path.name == "session-01.json"
 
 
 def test_write_recognition_record_uses_set_session_directory(tmp_path: Path):

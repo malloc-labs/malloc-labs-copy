@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
 from websockets.server import WebSocketServerProtocol
 
+from copy_653.config import load_audio_parameters, load_claimed_symbols
 from copy_653.server.send_actions import (
     _play_copy_key_exercise,
     _request_copy_exercises_action,
@@ -17,8 +19,11 @@ from copy_653.server.connection_context import supersede
 from copy_653.server.records import (
     _ActiveCadenceSession,
     _ActiveCopyKeySession,
+    _ActiveKeyTrainingSession,
     _finalize_cadence_session,
     _finalize_copy_key_session,
+    _finalize_key_training_session,
+    _snapshot_key_training_session,
 )
 from copy_653.server.wire_events import _send_event
 
@@ -28,6 +33,7 @@ class SendState(Protocol):
     config_path: Path
     cadence: _ActiveCadenceSession | None
     copy_key: _ActiveCopyKeySession | None
+    key_training: _ActiveKeyTrainingSession | None
     copy_key_play_task: asyncio.Task[None] | None
 
 
@@ -44,6 +50,13 @@ class SendController:
             state.copy_key.record_event(event)
         elif state.cadence is not None:
             state.cadence.record_event(event)
+        elif state.key_training is not None:
+            state.key_training.record_event(event)
+            _snapshot_key_training_session(
+                state.key_training,
+                state.config_path,
+                session_status=state.key_training.session_status,
+            )
 
     def close_active_cadence_session(self) -> None:
         """Persist and clear any in-flight Cadence session."""
@@ -59,9 +72,21 @@ class SendController:
             _finalize_copy_key_session(state.copy_key, state.config_path)
             state.copy_key = None
 
+    def close_active_key_training_session(self, session_status: str = "abandoned") -> None:
+        """Persist and clear any in-flight Key Training session."""
+        state = self._state
+        if state.key_training is not None:
+            _finalize_key_training_session(
+                state.key_training,
+                state.config_path,
+                session_status=session_status,
+            )
+            state.key_training = None
+
     def close_all(self) -> None:
         self.close_active_cadence_session()
         self.close_active_copy_key_session()
+        self.close_active_key_training_session()
 
     async def handle(self, action: str, message: dict[str, Any]) -> bool:
         if action == "request-copy-exercises":
@@ -76,6 +101,14 @@ class SendController:
             await self.complete_copy_key_session()
         elif action == "abort-copy-key-session":
             await self.abort_copy_key_session()
+        elif action == "start-key-training-session":
+            await self.start_key_training_session(message)
+        elif action == "record-key-training-attempt":
+            await self.record_key_training_attempt(message)
+        elif action == "complete-key-training-session":
+            self.close_active_key_training_session("completed")
+        elif action == "abort-key-training-session":
+            self.close_active_key_training_session("abandoned")
         else:
             return False
         return True
@@ -83,6 +116,7 @@ class SendController:
     async def request_copy_exercises(self, message: dict[str, Any]) -> None:
         state = self._state
         self.close_active_cadence_session()
+        self.close_active_key_training_session()
         new_session = await _request_copy_exercises_action(state.ws, message, state.config_path)
         if new_session is not None:
             state.cadence = new_session
@@ -90,10 +124,94 @@ class SendController:
     async def request_copy_key_exercises(self) -> None:
         state = self._state
         self.close_active_copy_key_session()
+        self.close_active_key_training_session()
         await supersede(state.copy_key_play_task)
         new_session = await _request_copy_key_exercises_action(state.ws, state.config_path)
         if new_session is not None:
             state.copy_key = new_session
+
+    async def start_key_training_session(self, message: dict[str, Any]) -> None:
+        state = self._state
+        self.close_active_key_training_session()
+        self.close_active_cadence_session()
+        self.close_active_copy_key_session()
+
+        training_mode = message.get("training_mode")
+        if training_mode not in {"scales", "intervals", "etudes"}:
+            await _send_event(state.ws, {"type": "error", "reason": "invalid-key-training-mode"})
+            return
+
+        raw_exercises = message.get("exercises")
+        if not isinstance(raw_exercises, list) or not raw_exercises:
+            await _send_event(
+                state.ws, {"type": "error", "reason": "invalid-key-training-exercises"}
+            )
+            return
+        exercises: list[dict[str, Any]] = []
+        for idx, target in enumerate(raw_exercises, start=1):
+            if not isinstance(target, str) or not target.strip():
+                await _send_event(
+                    state.ws,
+                    {"type": "error", "reason": "invalid-key-training-exercises"},
+                )
+                return
+            exercises.append({"index": idx, "target": target.strip().upper()})
+
+        raw_source_symbols = message.get("source_symbols")
+        source_symbols = []
+        if isinstance(raw_source_symbols, list):
+            source_symbols = [
+                str(symbol).upper() for symbol in raw_source_symbols if isinstance(symbol, str)
+            ]
+
+        started_at = datetime.now(timezone.utc)
+        set_id = started_at.strftime("%Y%m%dT%H%M%SZ")
+        generation = {
+            "profile_version": "key-training-v1",
+            "set_id": set_id,
+            "set_session": 1,
+            "exercise_count": len(exercises),
+            "source": "training-page",
+        }
+        state.key_training = _ActiveKeyTrainingSession(
+            started_at=started_at,
+            audio=load_audio_parameters(state.config_path),
+            claimed=load_claimed_symbols(state.config_path),
+            seed=int(started_at.timestamp() * 1000),
+            training_mode=training_mode,
+            generation=generation,
+            exercises=exercises,
+            source_symbols=source_symbols,
+        )
+        _snapshot_key_training_session(
+            state.key_training,
+            state.config_path,
+            session_status="started",
+        )
+        await _send_event(
+            state.ws,
+            {
+                "type": "key-training-session-start",
+                "training_mode": training_mode,
+                "exercise_count": len(exercises),
+                "set_id": set_id,
+            },
+        )
+
+    async def record_key_training_attempt(self, message: dict[str, Any]) -> None:
+        state = self._state
+        if state.key_training is None:
+            return
+        attempt = message.get("attempt")
+        if not isinstance(attempt, dict):
+            await _send_event(state.ws, {"type": "error", "reason": "invalid-key-training-attempt"})
+            return
+        state.key_training.record_attempt(attempt)
+        _snapshot_key_training_session(
+            state.key_training,
+            state.config_path,
+            session_status=state.key_training.session_status,
+        )
 
     async def play_copy_key_exercise(self, message: dict[str, Any]) -> None:
         state = self._state

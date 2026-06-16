@@ -15,6 +15,9 @@ The three record shapes today:
 - ``copy-key`` — Copy → Key session. The engine plays short exercises
   (single words, 1-3 symbols) and the learner head-copies then keys
   back. Carries both the played symbol timeline and the keying stream.
+- ``key-training`` — Key → Training structured modes. The browser owns
+  the generated training set; the engine records the target metadata
+  plus the decoded send stream and raw key events.
 
 All records share a common envelope (engine version, timestamps,
 audio parameter snapshot, claimed set) so analysis tools can treat
@@ -120,6 +123,22 @@ def _koch_filename_parts(record: KochExerciseRecord, stamp: str) -> tuple[str, s
         except (TypeError, ValueError):
             session_number = 0
     return f"set-{set_id}", f"session-{max(0, session_number):02d}"
+
+
+def _key_training_filename_parts(record: KeyTrainingRecord, stamp: str) -> tuple[str, str]:
+    generation = record.generation or {}
+    set_id = _safe_filename_component(generation.get("set_id"), stamp)
+    set_session = generation.get("set_session")
+    if isinstance(set_session, bool):
+        session_number = 0
+    elif isinstance(set_session, int):
+        session_number = set_session
+    else:
+        try:
+            session_number = int(str(set_session))
+        except (TypeError, ValueError):
+            session_number = 1
+    return f"set-{set_id}", f"session-{max(1, session_number):02d}"
 
 
 @dataclass(slots=True)
@@ -293,6 +312,52 @@ class CopyKeyRecord:
         }
 
 
+@dataclass(slots=True)
+class KeyTrainingRecord:
+    """A completed Key Training structured-mode session."""
+
+    started_at: datetime
+    ended_at: datetime
+    audio: AudioParameters
+    claimed_set: tuple[str, ...]
+    seed: int
+    training_mode: str
+    session_status: str = "completed"
+    generation: dict[str, Any] = field(default_factory=dict)
+    exercises: list[dict[str, Any]] = field(default_factory=list)
+    source_symbols: list[str] = field(default_factory=list)
+    # Decoded sent symbols. Each entry:
+    # {"symbol", "pattern", "started_at", "ended_at", "leading_gap"}.
+    sent: list[dict[str, Any]] = field(default_factory=list)
+    # Browser-side structured Training decisions. Each entry records the
+    # target position, attempt index, expected/measured spacing, and outcome.
+    attempts: list[dict[str, Any]] = field(default_factory=list)
+    # Raw key press/release events. Each entry:
+    # {"kind", "note", "pressed", "timestamp"}
+    key_events: list[dict[str, Any]] = field(default_factory=list)
+    mode: str = "key-training"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "engine_version": __version__,
+            "mode": self.mode,
+            "training_mode": self.training_mode,
+            "session_status": self.session_status,
+            "started_at": _format_iso8601_utc(self.started_at),
+            "ended_at": _format_iso8601_utc(self.ended_at),
+            "audio": _audio_snapshot(self.audio),
+            "claimed_set": list(self.claimed_set),
+            "source_symbols": list(self.source_symbols),
+            "seed": self.seed,
+            "generation": dict(self.generation),
+            "exercises": [dict(exercise) for exercise in self.exercises],
+            "sent": list(self.sent),
+            "attempts": list(self.attempts),
+            "key_events": list(self.key_events),
+        }
+
+
 def update_recognition_answers(
     path: Path,
     answers: list[str],
@@ -403,7 +468,13 @@ def update_koch_answers(path: Path, answers: list[str]) -> int:
 
 
 def write_record(
-    record: KochExerciseRecord | RecognitionRecord | CadenceSendRecord | CopyKeyRecord,
+    record: (
+        KochExerciseRecord
+        | RecognitionRecord
+        | CadenceSendRecord
+        | CopyKeyRecord
+        | KeyTrainingRecord
+    ),
     save_directory: Path,
 ) -> Path:
     """Write a session record under its mode-specific save path.
@@ -430,6 +501,9 @@ def write_record(
         target_dir = target_dir / set_dir
     elif isinstance(record, KochExerciseRecord):
         set_dir, base = _koch_filename_parts(record, stamp)
+        target_dir = target_dir / set_dir
+    elif isinstance(record, KeyTrainingRecord):
+        set_dir, base = _key_training_filename_parts(record, stamp)
         target_dir = target_dir / set_dir
     target_dir.mkdir(parents=True, exist_ok=True)
 
