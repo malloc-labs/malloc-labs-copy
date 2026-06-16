@@ -44,13 +44,27 @@ import {
 import { keyInputToggleEl, copyDiagnosticsEl } from "./key-timing/dom.js";
 import { initTrinkeySyncIndicator } from "./key-timing/trinkey-sync-indicator.js";
 import { PATTERNS, spokenMorsePattern } from "./morse-display.js";
+import { KOCH_ORDER } from "./partials/koch-sequence.js";
 import { hideSymbolPreview, showSymbolPreview, symbolForPreviewCode } from "./symbol-preview.js";
 
 const STORAGE_KEY = "copy-653.key-training-input";
+const MODE_STORAGE_KEY = "copy-653.key-training-mode";
 const APPLY_DEBOUNCE_MS = 150;
 const DEFAULT_QUEUE = ["K"];
+const STRUCTURED_EXERCISE_COUNT = 20;
+const TRAINING_MODES = new Set(["custom", "scales", "intervals", "etudes"]);
 
 const sequenceRow = document.getElementById("sequence-row");
+const modeTabsEl = document.getElementById("training-mode-tabs");
+const customSectionEl = document.querySelector(".training-custom-input");
+const focusSectionEl = document.getElementById("training-focus");
+const exercisesSectionEl = document.getElementById("training-exercises");
+const exerciseTitleEl = document.getElementById("training-exercise-title");
+const exerciseMetaEl = document.getElementById("training-exercise-meta");
+const exerciseRestartEl = document.getElementById("training-exercise-restart");
+const exercisePositionEl = document.getElementById("training-exercise-position");
+const exerciseSequenceEl = document.getElementById("training-exercise-sequence");
+const exerciseListEl = document.getElementById("training-exercise-list");
 const inputEl = document.getElementById("training-custom-input");
 const toggleEl = document.getElementById("training-custom-toggle");
 const arrowEl = document.getElementById("training-custom-arrow");
@@ -72,7 +86,10 @@ let claimedSymbolSet = new Set();
 let leftAltDown = false;
 let keyerMode = "iambic_a";
 let characterWpm = 20;
+let trainingMode = "custom";
 let symbolQueue = [...DEFAULT_QUEUE];
+let structuredExercises = [];
+let structuredExerciseRanges = [];
 let activeIndex = 0;
 let completedThroughIndex = -1;
 let applyTimer = null;
@@ -111,6 +128,7 @@ function ditMs() {
 function appendEvent(event) {
     if (event.type === "claimed-symbols") {
         claimedSymbolSet = renderSequence(sequenceRow, event);
+        if (isStructuredMode()) regenerateStructuredExercises();
         return;
     }
     if (event.type === "audio-settings") {
@@ -196,10 +214,60 @@ function initialiseTrainingInput() {
     });
 }
 
+function initialiseTrainingModes() {
+    const stored = loadStoredMode();
+    trainingMode = TRAINING_MODES.has(stored) ? stored : "custom";
+
+    if (modeTabsEl) {
+        modeTabsEl.querySelectorAll("[data-training-mode]").forEach((tab) => {
+            tab.addEventListener("click", () => {
+                const mode = tab.getAttribute("data-training-mode");
+                if (mode && TRAINING_MODES.has(mode)) setTrainingMode(mode);
+            });
+        });
+    }
+
+    renderTrainingMode();
+    if (isStructuredMode()) regenerateStructuredExercises();
+}
+
+function setTrainingMode(mode) {
+    if (!TRAINING_MODES.has(mode) || mode === trainingMode) return;
+    stopSequencePlayback();
+    trainingMode = mode;
+    saveStoredMode(mode);
+    renderTrainingMode();
+    if (isStructuredMode()) {
+        regenerateStructuredExercises();
+    } else {
+        applyInputImmediate(inputEl?.value || "");
+    }
+}
+
+function renderTrainingMode() {
+    if (modeTabsEl) {
+        modeTabsEl.querySelectorAll("[data-training-mode]").forEach((tab) => {
+            const selected = tab.getAttribute("data-training-mode") === trainingMode;
+            tab.setAttribute("aria-selected", String(selected));
+            tab.dataset.active = String(selected);
+        });
+    }
+    if (customSectionEl) customSectionEl.hidden = isStructuredMode();
+    if (focusSectionEl) focusSectionEl.hidden = isStructuredMode();
+    if (exercisesSectionEl) exercisesSectionEl.hidden = !isStructuredMode();
+}
+
+function isStructuredMode() {
+    return trainingMode !== "custom";
+}
+
 function applyInputImmediate(raw) {
+    if (isStructuredMode()) return;
     if (playSequenceEl?.dataset.playing === "true") stopSequencePlayback();
     const nextQueue = normaliseSymbols(raw);
     symbolQueue = nextQueue.length ? nextQueue : [...DEFAULT_QUEUE];
+    structuredExercises = [];
+    structuredExerciseRanges = [];
     activeIndex = firstSymbolIndex(symbolQueue);
     completedThroughIndex = -1;
     lastKeyedSymbol = "";
@@ -207,6 +275,169 @@ function applyInputImmediate(raw) {
     observedAttemptsByIndex = new Map();
     renderTrainingFocus();
     renderLastKeyed();
+}
+
+function regenerateStructuredExercises() {
+    const exercises = buildStructuredExercises(trainingMode, trainingSymbols());
+    applyStructuredExercises(exercises);
+}
+
+function applyStructuredExercises(exercises) {
+    stopSequencePlayback();
+    structuredExercises = exercises;
+    const flattened = [];
+    structuredExerciseRanges = [];
+    exercises.forEach((exercise) => {
+        if (flattened.length > 0) flattened.push(" ");
+        const start = flattened.length;
+        flattened.push(...normaliseSymbols(exercise));
+        const end = flattened.length - 1;
+        structuredExerciseRanges.push({ start, end });
+    });
+    symbolQueue = flattened.length ? flattened : [...DEFAULT_QUEUE];
+    activeIndex = firstSymbolIndex(symbolQueue);
+    completedThroughIndex = -1;
+    lastKeyedSymbol = "";
+    pendingObservedElements = [];
+    observedAttemptsByIndex = new Map();
+    renderTrainingFocus();
+    renderLastKeyed();
+    renderStructuredExercises();
+}
+
+function trainingSymbols() {
+    const symbols = KOCH_ORDER.filter((symbol) => claimedSymbolSet.has(symbol) && PATTERNS[symbol]);
+    return symbols.length ? symbols : [...DEFAULT_QUEUE];
+}
+
+function buildStructuredExercises(mode, symbols) {
+    if (mode === "intervals") return buildIntervalExercises(symbols);
+    if (mode === "etudes") return buildEtudeExercises(symbols);
+    return buildScaleExercises(symbols);
+}
+
+function buildScaleExercises(symbols) {
+    return Array.from({ length: STRUCTURED_EXERCISE_COUNT }, (_, idx) => {
+        const symbol = symbols[idx % symbols.length];
+        const form = idx % 3;
+        if (form === 1) return `${symbol}${symbol} ${symbol}${symbol}`;
+        if (form === 2) return `${symbol}${symbol}${symbol} ${symbol}${symbol}${symbol}`;
+        return `${symbol} ${symbol} ${symbol} ${symbol}`;
+    });
+}
+
+function buildIntervalExercises(symbols) {
+    const pairs = [];
+    if (symbols.length === 1) {
+        pairs.push([symbols[0], symbols[0]]);
+    } else {
+        symbols.forEach((symbol, idx) => {
+            const next = symbols[(idx + 1) % symbols.length];
+            pairs.push([symbol, next], [next, symbol]);
+        });
+    }
+    return Array.from({ length: STRUCTURED_EXERCISE_COUNT }, (_, idx) => {
+        const [a, b] = pairs[idx % pairs.length];
+        const form = idx % 3;
+        if (form === 1) return `${a}${b} ${a}${b}`;
+        if (form === 2) return `${a}${b}${a} ${a}${b}${a}`;
+        return `${a} ${b} ${a} ${b}`;
+    });
+}
+
+function buildEtudeExercises(symbols) {
+    const curated = [
+        "CQ CQ CQ",
+        "BK BK BK",
+        "DE DE",
+        "DE MM7KMU DE MM7KMU",
+    ].filter((exercise) => normaliseSymbols(exercise).every((symbol) => (
+        symbol === " " || symbols.includes(symbol)
+    )));
+    const generated = Array.from({ length: STRUCTURED_EXERCISE_COUNT }, (_, idx) => {
+        const width = Math.min(symbols.length, 2 + (idx % 4));
+        const start = idx % symbols.length;
+        const word = Array.from({ length: width }, (_unused, offset) => (
+            symbols[(start + offset) % symbols.length]
+        )).join("");
+        const repeat = idx % 3 === 0 ? 3 : 2;
+        return Array.from({ length: repeat }, () => word).join(" ");
+    });
+    return [...curated, ...generated].slice(0, STRUCTURED_EXERCISE_COUNT);
+}
+
+function renderStructuredExercises() {
+    if (!isStructuredMode()) return;
+    if (exerciseTitleEl) exerciseTitleEl.textContent = modeTitle(trainingMode);
+    if (exerciseMetaEl) {
+        exerciseMetaEl.textContent = `${structuredExercises.length} exercises · ${trainingSymbols().length} symbols`;
+    }
+    if (exerciseListEl) {
+        exerciseListEl.replaceChildren();
+        structuredExercises.forEach((exercise, idx) => {
+            const item = document.createElement("li");
+            item.className = "key-training-exercises__item";
+            item.dataset.exerciseIndex = String(idx);
+            item.dataset.active = String(idx === currentStructuredExerciseIndex());
+            item.dataset.completed = String(structuredExerciseCompleted(idx));
+            const number = document.createElement("span");
+            number.className = "key-training-exercises__number";
+            number.textContent = String(idx + 1).padStart(2, "0");
+            const target = document.createElement("button");
+            target.type = "button";
+            target.className = "key-training-exercises__target-button";
+            target.textContent = exercise;
+            target.addEventListener("click", () => {
+                const range = structuredExerciseRanges[idx];
+                if (!range) return;
+                activeIndex = firstSymbolIndexInRange(range);
+                renderTrainingFocus();
+            });
+            item.append(number, target);
+            exerciseListEl.appendChild(item);
+        });
+    }
+    const idx = currentStructuredExerciseIndex();
+    const displayIdx = Math.max(0, Math.min(idx, structuredExercises.length - 1));
+    if (exercisePositionEl) {
+        exercisePositionEl.textContent = structuredExercises.length
+            ? `Exercise ${displayIdx + 1}/${structuredExercises.length}`
+            : "No exercises";
+    }
+    if (exerciseSequenceEl) {
+        exerciseSequenceEl.textContent = structuredExercises[displayIdx] || "—";
+    }
+}
+
+function currentStructuredExerciseIndex() {
+    const focusIndex = Math.min(
+        playbackIndex ?? activeIndex,
+        Math.max(0, symbolQueue.length - 1),
+    );
+    const idx = structuredExerciseRanges.findIndex((range) => (
+        focusIndex >= range.start && focusIndex <= range.end
+    ));
+    if (idx !== -1) return idx;
+    if (trainingSequenceCompleted()) return Math.max(0, structuredExercises.length - 1);
+    return 0;
+}
+
+function structuredExerciseCompleted(idx) {
+    const range = structuredExerciseRanges[idx];
+    return range ? completedThroughIndex >= range.end : false;
+}
+
+function firstSymbolIndexInRange(range) {
+    for (let idx = range.start; idx <= range.end; idx += 1) {
+        if (symbolQueue[idx] !== " ") return idx;
+    }
+    return range.start;
+}
+
+function modeTitle(mode) {
+    if (mode === "intervals") return "Intervals";
+    if (mode === "etudes") return "Etudes";
+    return "Scales";
 }
 
 function normaliseSymbols(raw) {
@@ -252,6 +483,7 @@ function renderTrainingFocus() {
     }
     renderQueue();
     renderPaddleChart(symbol, pattern, resolvedIndex);
+    renderStructuredExercises();
     renderRestartState();
 }
 
@@ -352,6 +584,9 @@ function trainingSequenceCompleted() {
 function installTrainingNavigationControls() {
     if (restartEl) {
         restartEl.addEventListener("click", restartTrainingRun);
+    }
+    if (exerciseRestartEl) {
+        exerciseRestartEl.addEventListener("click", restartTrainingRun);
     }
     window.addEventListener("keydown", (event) => {
         if (event.altKey || event.ctrlKey || event.metaKey) return;
@@ -662,6 +897,22 @@ function saveStored(value) {
     }
 }
 
+function loadStoredMode() {
+    try {
+        return window.localStorage.getItem(MODE_STORAGE_KEY);
+    } catch (_err) {
+        return null;
+    }
+}
+
+function saveStoredMode(value) {
+    try {
+        window.localStorage.setItem(MODE_STORAGE_KEY, value || "custom");
+    } catch (_err) {
+        // Private browsing or quota failures should not break Training.
+    }
+}
+
 function installPlaybackControls() {
     if (!playSequenceEl) return;
     playSequenceEl.addEventListener("click", () => {
@@ -886,6 +1137,7 @@ window.addEventListener("blur", () => {
 });
 
 initialiseTrainingInput();
+initialiseTrainingModes();
 installPlaybackControls();
 installTrainingNavigationControls();
 installKeyControls();
