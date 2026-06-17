@@ -780,6 +780,11 @@ function noteTrainingAttempt(event) {
             completedThroughIndex = nextIndex - 1;
             activeIndex = nextIndex;
             lastAcceptedSentEvent = event;
+            // Reset decoder at exercise boundary so squeeze-tail artefacts
+            // from the completed exercise don't bleed into the next one.
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ action: "reset-key-input", reason: "exercise-boundary" }));
+            }
         }
     } else {
         recordTrainingAttempt(event, {
@@ -924,6 +929,12 @@ function restartCurrentStructuredLine() {
     lastAcceptedSentEvent = null;
     pendingObservedElements = [];
     observedAttemptsByIndex = new Map();
+    // Reset the server-side decoder so any iambic squeeze-tail artefact
+    // accumulated during the just-completed line is discarded before the
+    // first element of the repeated line arrives.
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ action: "reset-key-input", reason: "exercise-boundary" }));
+    }
     renderTrainingFocus();
 }
 
