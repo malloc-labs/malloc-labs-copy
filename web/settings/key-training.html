@@ -20,16 +20,16 @@
         <section class="settings-panel settings-review-panel"
                  id="settings-panel-key-training">
 
-            <!-- Mode breakdown summary panel -->
+            <!-- Training review summary panel -->
             <section class="settings-kt-summary" id="settings-kt-summary" hidden>
                 <h3 class="settings-kt-summary__heading">Training overview</h3>
                 <div class="settings-kt-summary__modes" id="settings-kt-summary-modes"></div>
             </section>
 
-            <!-- Symbol fault heatmap -->
+            <!-- Target fault heatmap -->
             <section class="settings-kt-heatmap" id="settings-kt-heatmap" hidden>
-                <h3 class="settings-kt-heatmap__heading">Symbol fault map
-                    <span class="settings-kt-heatmap__sub">across all sessions — darker = more faults</span>
+                <h3 class="settings-kt-heatmap__heading">Target fault map
+                    <span class="settings-kt-heatmap__sub">timing and wrong-symbol faults against the expected symbol</span>
                 </h3>
                 <div class="settings-kt-heatmap__grid" id="settings-kt-heatmap-grid"></div>
             </section>
@@ -55,9 +55,12 @@
                             <th scope="col">Date &amp; time</th>
                             <th scope="col">Mode</th>
                             <th scope="col">Status</th>
-                            <th scope="col">Symbols</th>
                             <th scope="col">Exercises</th>
-                            <th scope="col">Attempts</th>
+                            <th scope="col">Clean</th>
+                            <th scope="col">Repeats</th>
+                            <th scope="col">Faults</th>
+                            <th scope="col">Hardest</th>
+                            <th scope="col">Duration</th>
                             <th scope="col">Delete</th>
                         </tr>
                     </thead>
