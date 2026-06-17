@@ -242,6 +242,75 @@
     min-width: 0.8ch;
 }
 
+/* Legend row — sits below the exercise grid */
+.key-training-exercises__legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--mr-space-3) var(--mr-space-5);
+    margin: 0;
+    padding: var(--mr-space-3) var(--mr-space-2);
+    border-top: 1px solid var(--mr-border);
+    list-style: none;
+}
+
+.key-training-exercises__legend-item {
+    display: flex;
+    align-items: baseline;
+    gap: var(--mr-space-2);
+}
+
+.key-training-exercises__legend-item dt,
+.key-training-exercises__legend-item dd {
+    margin: 0;
+    padding: 0;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    line-height: 1;
+}
+
+.key-training-exercises__legend-swatch {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-mono);
+    text-transform: uppercase;
+    line-height: 1;
+}
+
+.key-training-exercises__legend-item dd {
+    color: var(--mr-muted);
+    font-size: var(--mr-size-small);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* Swatch states mirror the live glyph states exactly */
+.key-training-exercises__legend-swatch--active {
+    color: var(--mr-text);
+    opacity: 1;
+    text-decoration: underline;
+    text-decoration-color: var(--mr-anchor);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.3rem;
+}
+
+.key-training-exercises__legend-swatch--completed {
+    color: var(--mr-text);
+    opacity: 1;
+}
+
+.key-training-exercises__legend-swatch--timing {
+    color: var(--mr-warning);
+    opacity: 1;
+}
+
+.key-training-exercises__legend-swatch--wrong {
+    color: var(--mr-muted);
+    opacity: 0.85;
+    text-decoration: underline;
+    text-decoration-color: var(--mr-muted);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.3rem;
+}
+
 .key-custom-input {
     margin-top: var(--mr-space-5);
     border-top: var(--mr-border-rule);
