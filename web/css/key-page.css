@@ -168,6 +168,10 @@
     border-right: 1px solid var(--mr-border);
 }
 
+.key-training-exercises__item[data-future="true"] {
+    visibility: hidden;
+}
+
 .key-training-exercises__item[data-active="true"] {
     opacity: 1;
     background: color-mix(in srgb, var(--mr-anchor) 7%, transparent);
@@ -212,6 +216,26 @@
 .key-training-exercises__glyph[data-completed="true"] {
     color: var(--mr-text);
     opacity: 1;
+}
+
+.key-training-exercises__glyph[data-active="true"] {
+    color: var(--mr-text);
+    opacity: 1;
+    text-decoration: underline;
+    text-decoration-color: var(--mr-anchor);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.3rem;
+    text-decoration-style: solid;
+}
+
+.key-training-exercises__glyph[data-active="true"]::after {
+    content: "";
+    display: block;
+    height: 2px;
+    margin-top: -2px;
+    background: var(--mr-anchor);
+    border-radius: 1px;
+    animation: kt-waiting-pulse 1.2s ease-in-out infinite;
 }
 
 .key-training-exercises__glyph[data-fault="timing-fail"] {

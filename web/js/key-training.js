@@ -428,8 +428,11 @@ function renderStructuredExercises() {
             const item = document.createElement("li");
             item.className = "key-training-exercises__item";
             item.dataset.exerciseIndex = String(idx);
-            item.dataset.active = String(idx === currentStructuredExerciseIndex());
-            item.dataset.completed = String(structuredExerciseCompleted(idx));
+            const isActive = idx === currentStructuredExerciseIndex();
+            const isCompleted = structuredExerciseCompleted(idx);
+            item.dataset.active = String(isActive);
+            item.dataset.completed = String(isCompleted);
+            item.dataset.future = String(!isActive && !isCompleted);
             const number = document.createElement("span");
             number.className = "key-training-exercises__number";
             number.textContent = String(idx + 1).padStart(2, "0");
@@ -477,6 +480,7 @@ function appendExerciseGlyphs(parent, exercise, range) {
         parent.textContent = exercise || "—";
         return;
     }
+    const focusIndex = playbackIndex ?? activeIndex;
     let tokenIndex = range.start;
     normaliseSymbols(exercise).forEach((token) => {
         const span = document.createElement("span");
@@ -485,6 +489,7 @@ function appendExerciseGlyphs(parent, exercise, range) {
             : "key-training-exercises__glyph";
         span.dataset.completed = String(tokenIndex <= completedThroughIndex);
         span.dataset.fault = lineFaultIndices.get(tokenIndex) || "";
+        span.dataset.active = String(tokenIndex === focusIndex);
         span.textContent = token === " " ? " " : token;
         parent.appendChild(span);
         tokenIndex += 1;
