@@ -168,6 +168,10 @@
     border-right: 1px solid var(--mr-border);
 }
 
+.key-training-exercises__item[data-future="true"] {
+    visibility: hidden;
+}
+
 .key-training-exercises__item[data-active="true"] {
     opacity: 1;
     background: color-mix(in srgb, var(--mr-anchor) 7%, transparent);

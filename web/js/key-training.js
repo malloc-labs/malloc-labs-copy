@@ -428,8 +428,11 @@ function renderStructuredExercises() {
             const item = document.createElement("li");
             item.className = "key-training-exercises__item";
             item.dataset.exerciseIndex = String(idx);
-            item.dataset.active = String(idx === currentStructuredExerciseIndex());
-            item.dataset.completed = String(structuredExerciseCompleted(idx));
+            const isActive = idx === currentStructuredExerciseIndex();
+            const isCompleted = structuredExerciseCompleted(idx);
+            item.dataset.active = String(isActive);
+            item.dataset.completed = String(isCompleted);
+            item.dataset.future = String(!isActive && !isCompleted);
             const number = document.createElement("span");
             number.className = "key-training-exercises__number";
             number.textContent = String(idx + 1).padStart(2, "0");
