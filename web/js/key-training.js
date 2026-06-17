@@ -56,7 +56,7 @@ const TRAINING_MODES = new Set(["custom", "scales", "intervals", "etudes"]);
 const CHARACTER_GAP_EARLY_DITS = 1.0;
 const CHARACTER_GAP_PASS_MIN_DITS = 2.0;
 const CHARACTER_GAP_PASS_MAX_DITS = 5.0;
-const CHARACTER_GAP_FAIL_DITS = 6.0;
+const CHARACTER_GAP_FAIL_DITS = 8.0; // raised from 6.0 — 6 dits still scores 0.5 on the cadence readability curve and is well within separable fist range; 8 dits aligns the hard-restart gate with the cadence zero-score boundary (7 dits) plus one dit of live-feedback margin
 const WORD_GAP_EARLY_DITS = 5.0;
 const WORD_GAP_PASS_DITS = 6.0;
 
