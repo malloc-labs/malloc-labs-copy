@@ -219,7 +219,7 @@
 }
 
 .key-training-exercises__glyph[data-active="true"] {
-    color: var(--mr-text);
+    color: inherit;
     opacity: 1;
     text-decoration: underline;
     text-decoration-color: var(--mr-anchor);
@@ -235,6 +235,10 @@
 .key-training-exercises__glyph[data-fault="wrong-symbol"] {
     color: var(--mr-muted);
     opacity: 0.85;
+    text-decoration: underline;
+    text-decoration-color: var(--mr-muted);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.3rem;
 }
 
 .key-training-exercises__glyph--space {
@@ -284,7 +288,7 @@
 
 /* Swatch states mirror the live glyph states exactly */
 .key-training-exercises__legend-swatch--active {
-    color: var(--mr-text);
+    color: inherit;
     opacity: 1;
     text-decoration: underline;
     text-decoration-color: var(--mr-anchor);
@@ -485,7 +489,7 @@
 }
 
 .key-training-queue__item[data-active="true"] {
-    color: var(--mr-text);
+    color: inherit;
     opacity: 1;
     text-decoration: underline;
     text-decoration-color: var(--mr-anchor);
