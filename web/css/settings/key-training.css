@@ -1,0 +1,212 @@
+/* settings/key-training.css
+ * Styles for the Settings > Key Training page.
+ * Covers the mode summary cards, symbol fault heatmap, and exercise
+ * breakdown table in the session detail dialog.
+ */
+
+/* ─── Mode summary panel ─────────────────────────────────────────────────── */
+
+.settings-kt-summary {
+    margin-bottom: var(--mr-space-5);
+}
+
+.settings-kt-summary__heading {
+    margin: 0 0 var(--mr-space-3);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--mr-muted);
+}
+
+.settings-kt-summary__modes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--mr-space-3);
+}
+
+.settings-kt-mode-card {
+    flex: 1 1 180px;
+    border: var(--mr-border-rule);
+    padding: var(--mr-space-3);
+    background: transparent;
+}
+
+.settings-kt-mode-card__title {
+    margin: 0 0 var(--mr-space-2);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    font-weight: 500;
+    color: var(--mr-text);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.settings-kt-mode-card__stats {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0 var(--mr-space-3);
+    margin: 0;
+}
+
+.settings-kt-mode-card__stats dt {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    padding: 2px 0;
+}
+
+.settings-kt-mode-card__stats dd {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    color: var(--mr-text);
+    text-align: right;
+    padding: 2px 0;
+    margin: 0;
+}
+
+/* ─── Symbol fault heatmap ───────────────────────────────────────────────── */
+
+.settings-kt-heatmap {
+    margin-bottom: var(--mr-space-5);
+}
+
+.settings-kt-heatmap__heading {
+    margin: 0 0 var(--mr-space-3);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--mr-muted);
+}
+
+.settings-kt-heatmap__sub {
+    font-weight: 400;
+    font-size: var(--mr-size-small);
+    color: var(--mr-muted);
+    margin-left: var(--mr-space-2);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.settings-kt-heatmap__grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--mr-space-2);
+}
+
+.settings-kt-heatmap__cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: var(--mr-space-2) var(--mr-space-2);
+    min-width: 2.5rem;
+    border: var(--mr-border-rule);
+    /* Heat: interpolate from border colour (no faults) to warning (max faults) */
+    background-color: color-mix(
+        in srgb,
+        var(--mr-warning) calc(var(--kt-heat, 0) * 30%),
+        transparent
+    );
+    border-color: color-mix(
+        in srgb,
+        var(--mr-warning) calc(var(--kt-heat, 0) * 60%),
+        var(--mr-border)
+    );
+    transition: background-color 0.15s, border-color 0.15s;
+}
+
+.settings-kt-heatmap__sym {
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-body);
+    color: var(--mr-text);
+    line-height: 1;
+}
+
+.settings-kt-heatmap__count {
+    font-family: var(--mr-font-mono);
+    font-size: 0.75rem;
+    color: var(--mr-muted);
+    line-height: 1;
+}
+
+/* ─── Exercise breakdown table in detail dialog ──────────────────────────── */
+
+.settings-koch-detail__exercises {
+    margin-top: var(--mr-space-4);
+}
+
+.settings-koch-detail__heading {
+    margin: 0 0 var(--mr-space-2);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--mr-muted);
+}
+
+.settings-koch-detail__exercises-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+}
+
+.settings-koch-detail__exercises-table th,
+.settings-koch-detail__exercises-table td {
+    padding: var(--mr-space-1) var(--mr-space-2);
+    text-align: left;
+    border-bottom: var(--mr-border-rule);
+    color: var(--mr-text);
+}
+
+.settings-koch-detail__exercises-table th {
+    color: var(--mr-muted);
+    font-weight: 400;
+}
+
+.settings-koch-detail__exercises-table td:nth-child(3),
+.settings-koch-detail__exercises-table td:nth-child(4),
+.settings-koch-detail__exercises-table td:nth-child(5),
+.settings-koch-detail__exercises-table td:nth-child(6) {
+    text-align: right;
+}
+
+.settings-koch-detail__exercises-table th:nth-child(3),
+.settings-koch-detail__exercises-table th:nth-child(4),
+.settings-koch-detail__exercises-table th:nth-child(5),
+.settings-koch-detail__exercises-table th:nth-child(6) {
+    text-align: right;
+}
+
+/* Highlight rows with any faults */
+.settings-koch-detail__exercises-table tr:has(td:nth-child(4):not(:empty)) {
+    /* timing faults present — subtle amber tint */
+    background-color: color-mix(in srgb, var(--mr-warning) 6%, transparent);
+}
+
+/* ─── Meta grid in detail dialog ─────────────────────────────────────────── */
+
+.settings-koch-detail__meta {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0 var(--mr-space-3);
+    margin: 0 0 var(--mr-space-4);
+    font-family: var(--mr-font-mono);
+    font-size: var(--mr-size-small);
+}
+
+.settings-koch-detail__meta dt {
+    color: var(--mr-muted);
+    padding: 2px 0;
+}
+
+.settings-koch-detail__meta dd {
+    color: var(--mr-text);
+    padding: 2px 0;
+    margin: 0;
+}
