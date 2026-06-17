@@ -169,24 +169,29 @@
     font-weight: 400;
 }
 
-.settings-koch-detail__exercises-table td:nth-child(3),
 .settings-koch-detail__exercises-table td:nth-child(4),
 .settings-koch-detail__exercises-table td:nth-child(5),
-.settings-koch-detail__exercises-table td:nth-child(6) {
+.settings-koch-detail__exercises-table td:nth-child(6),
+.settings-koch-detail__exercises-table td:nth-child(7),
+.settings-koch-detail__exercises-table td:nth-child(8) {
     text-align: right;
 }
 
-.settings-koch-detail__exercises-table th:nth-child(3),
 .settings-koch-detail__exercises-table th:nth-child(4),
 .settings-koch-detail__exercises-table th:nth-child(5),
-.settings-koch-detail__exercises-table th:nth-child(6) {
+.settings-koch-detail__exercises-table th:nth-child(6),
+.settings-koch-detail__exercises-table th:nth-child(7),
+.settings-koch-detail__exercises-table th:nth-child(8) {
     text-align: right;
 }
 
-/* Highlight rows with any faults */
-.settings-koch-detail__exercises-table tr:has(td:nth-child(4):not(:empty)) {
-    /* timing faults present — subtle amber tint */
+.settings-koch-detail__exercises-table tr[data-status="repeated"],
+.settings-koch-detail__exercises-table tr[data-status="needs repeat"] {
     background-color: color-mix(in srgb, var(--mr-warning) 6%, transparent);
+}
+
+.settings-koch-detail__exercises-table tr[data-status="clean"] td:nth-child(3) {
+    color: var(--mr-info);
 }
 
 /* ─── Meta grid in detail dialog ─────────────────────────────────────────── */

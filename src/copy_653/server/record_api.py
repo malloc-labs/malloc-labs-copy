@@ -146,18 +146,90 @@ def _enrich_key_training_record(data: dict[str, Any], entry: dict[str, Any]) -> 
     entry["training_mode"] = data.get("training_mode") or "unknown"
     entry["session_status"] = data.get("session_status") or "unknown"
     attempts = data.get("attempts")
+    sent = data.get("sent")
+    key_events = data.get("key_events")
+    entry["decoded_send_count"] = len(sent) if isinstance(sent, list) else 0
+    entry["key_event_count"] = len(key_events) if isinstance(key_events, list) else 0
     if isinstance(attempts, list):
+        entry["scored_event_count"] = len(attempts)
         entry["attempt_count"] = len(attempts)
         fault_counts: dict[str, int] = {}
+        timing_fault_count = 0
+        wrong_symbol_count = 0
+        restart_count = 0
+        completed_exercise_indexes: set[int] = set()
+        exercise_summaries: dict[int, dict[str, int | bool]] = {}
+
         for a in attempts:
+            exercise_index = a.get("exercise_index")
+            if isinstance(exercise_index, int) and not isinstance(exercise_index, bool):
+                summary = exercise_summaries.setdefault(
+                    exercise_index,
+                    {"faults": 0, "restarts": 0, "completed": False},
+                )
+            else:
+                summary = None
+
             sym = a.get("target_symbol")
             result = a.get("result")
             if sym and result in ("timing-fail", "wrong-symbol"):
                 fault_counts[sym] = fault_counts.get(sym, 0) + 1
+                if summary is not None:
+                    summary["faults"] = int(summary["faults"]) + 1
+            if result == "timing-fail":
+                timing_fault_count += 1
+            elif result == "wrong-symbol":
+                wrong_symbol_count += 1
+
+            action = a.get("action")
+            if action == "restart-line":
+                restart_count += 1
+                if summary is not None:
+                    summary["restarts"] = int(summary["restarts"]) + 1
+            elif action in {"complete-exercise", "complete-session"}:
+                if isinstance(exercise_index, int) and not isinstance(exercise_index, bool):
+                    completed_exercise_indexes.add(exercise_index)
+                if summary is not None:
+                    summary["completed"] = True
+
         entry["fault_counts"] = fault_counts
+        entry["fault_count"] = timing_fault_count + wrong_symbol_count
+        entry["timing_fault_count"] = timing_fault_count
+        entry["wrong_symbol_count"] = wrong_symbol_count
+        entry["restart_count"] = restart_count
+        entry["completed_exercise_count"] = len(completed_exercise_indexes)
+        entry["clean_exercise_count"] = sum(
+            1
+            for summary in exercise_summaries.values()
+            if summary["completed"] and summary["faults"] == 0 and summary["restarts"] == 0
+        )
+        entry["repeated_exercise_count"] = sum(
+            1 for summary in exercise_summaries.values() if int(summary["restarts"]) > 0
+        )
+        entry["exercise_attempt_count"] = sum(
+            1 + int(summary["restarts"]) for summary in exercise_summaries.values()
+        )
+        if fault_counts:
+            symbol, count = max(fault_counts.items(), key=lambda item: item[1])
+            entry["hardest_symbol"] = symbol
+            entry["hardest_symbol_faults"] = count
+        else:
+            entry["hardest_symbol"] = ""
+            entry["hardest_symbol_faults"] = 0
     else:
+        entry["scored_event_count"] = 0
         entry["attempt_count"] = 0
         entry["fault_counts"] = {}
+        entry["fault_count"] = 0
+        entry["timing_fault_count"] = 0
+        entry["wrong_symbol_count"] = 0
+        entry["restart_count"] = 0
+        entry["completed_exercise_count"] = 0
+        entry["clean_exercise_count"] = 0
+        entry["repeated_exercise_count"] = 0
+        entry["exercise_attempt_count"] = 0
+        entry["hardest_symbol"] = ""
+        entry["hardest_symbol_faults"] = 0
 
 
 def _list_key_training_sessions(config_path: Path | None) -> dict[str, Any]:
