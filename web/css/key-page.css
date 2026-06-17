@@ -219,8 +219,19 @@
 }
 
 .key-training-exercises__glyph[data-active="true"] {
-    color: inherit;
-    opacity: 1;
+    color: var(--mr-muted);
+    opacity: 0.65;
+    text-decoration: underline;
+    text-decoration-color: var(--mr-anchor);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.3rem;
+}
+
+/* Active always wins: if a glyph is both active and faulted, show only the
+ * active underline so two underlines never appear simultaneously. */
+.key-training-exercises__glyph[data-active="true"][data-fault] {
+    color: var(--mr-muted);
+    opacity: 0.65;
     text-decoration: underline;
     text-decoration-color: var(--mr-anchor);
     text-decoration-thickness: 2px;
@@ -288,8 +299,8 @@
 
 /* Swatch states mirror the live glyph states exactly */
 .key-training-exercises__legend-swatch--active {
-    color: inherit;
-    opacity: 1;
+    color: var(--mr-muted);
+    opacity: 0.65;
     text-decoration: underline;
     text-decoration-color: var(--mr-anchor);
     text-decoration-thickness: 2px;
@@ -489,8 +500,18 @@
 }
 
 .key-training-queue__item[data-active="true"] {
-    color: inherit;
-    opacity: 1;
+    color: var(--mr-muted);
+    opacity: 0.65;
+    text-decoration: underline;
+    text-decoration-color: var(--mr-anchor);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.4rem;
+}
+
+/* Active always wins over fault state in the queue strip too */
+.key-training-queue__item[data-active="true"][data-fault] {
+    color: var(--mr-muted);
+    opacity: 0.65;
     text-decoration: underline;
     text-decoration-color: var(--mr-anchor);
     text-decoration-thickness: 2px;
