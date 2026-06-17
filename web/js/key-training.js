@@ -477,6 +477,7 @@ function appendExerciseGlyphs(parent, exercise, range) {
         parent.textContent = exercise || "—";
         return;
     }
+    const focusIndex = playbackIndex ?? activeIndex;
     let tokenIndex = range.start;
     normaliseSymbols(exercise).forEach((token) => {
         const span = document.createElement("span");
@@ -485,6 +486,7 @@ function appendExerciseGlyphs(parent, exercise, range) {
             : "key-training-exercises__glyph";
         span.dataset.completed = String(tokenIndex <= completedThroughIndex);
         span.dataset.fault = lineFaultIndices.get(tokenIndex) || "";
+        span.dataset.active = String(tokenIndex === focusIndex);
         span.textContent = token === " " ? " " : token;
         parent.appendChild(span);
         tokenIndex += 1;
