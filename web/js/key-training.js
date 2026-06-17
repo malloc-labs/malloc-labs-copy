@@ -701,21 +701,34 @@ function noteTrainingAttempt(event) {
             result: "timing-fail",
             action: "taint-line",
         });
-        // Still advance past this symbol so the operator can complete the line.
+        // Advance past this symbol so the operator can complete the line.
         const nextIndexAfterFail = nextSymbolIndex(symbolQueue, activeIndex + 1);
         const currentExerciseIdxAfterFail = currentStructuredExerciseIndex();
         const nextExerciseIdxAfterFail = nextIndexAfterFail !== -1
             ? structuredExerciseIndexForToken(nextIndexAfterFail)
             : currentExerciseIdxAfterFail;
-        if (nextIndexAfterFail === -1 || nextExerciseIdxAfterFail !== currentExerciseIdxAfterFail) {
-            // This was the last symbol in the exercise — restart immediately.
+        const isLastSymbolInExercise = nextIndexAfterFail === -1 || nextExerciseIdxAfterFail !== currentExerciseIdxAfterFail;
+        if (isLastSymbolInExercise) {
+            // This was the last symbol in the exercise and it had a timing fault.
+            // Use the same deferred-restart path as a clean line-end with a fault:
+            // record the attempt then restart so the operator always finishes the
+            // line before the reset fires.
+            recordTrainingAttempt(event, {
+                expectedGap: spacing.expected || "any",
+                spacing,
+                result: "timing-fail",
+                action: "restart-line",
+            });
+            completedThroughIndex = nextIndexAfterFail === -1 ? symbolQueue.length - 1 : nextIndexAfterFail - 1;
+            activeIndex = nextIndexAfterFail === -1 ? symbolQueue.length : nextIndexAfterFail;
+            lastAcceptedSentEvent = event;
             incrementStructuredAttempt(currentExerciseIdxAfterFail);
             restartCurrentStructuredLine();
         } else {
             completedThroughIndex = nextIndexAfterFail - 1;
             activeIndex = nextIndexAfterFail;
+            lastAcceptedSentEvent = event;
         }
-        lastAcceptedSentEvent = event;
         renderTrainingFocus();
         return;
     }
