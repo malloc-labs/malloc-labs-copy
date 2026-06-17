@@ -402,13 +402,31 @@
     color: var(--mr-text);
 }
 
+@keyframes kt-waiting-pulse {
+    0%,  100% { opacity: 1; }
+    50%        { opacity: 0.45; }
+}
+
 .key-training-queue__item[data-active="true"] {
     color: var(--mr-text);
     opacity: 1;
     text-decoration: underline;
     text-decoration-color: var(--mr-anchor);
-    text-decoration-thickness: 1px;
-    text-underline-offset: 0.35rem;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.4rem;
+    text-decoration-style: solid;
+}
+
+/* Animate only the underline, not the character itself, using a pseudo-element
+ * so the letter stays fully legible while the indicator pulses. */
+.key-training-queue__item[data-active="true"]::after {
+    content: "";
+    display: block;
+    height: 2px;
+    margin-top: -2px;          /* sits on top of the text-decoration line */
+    background: var(--mr-anchor);
+    border-radius: 1px;
+    animation: kt-waiting-pulse 1.2s ease-in-out infinite;
 }
 
 /* Deferred-fault markers: timing-fail = amber underline, wrong-symbol = muted underline.
