@@ -278,17 +278,13 @@ def _api_key_training_sessions(
 def _api_key_training_session(
     params: dict[str, list[str]], config_path: Path | None
 ) -> HttpResponse:
-    return _read_key_training_session(
-        config_path, _first_query_value(params, "file", "filename")
-    )
+    return _read_key_training_session(config_path, _first_query_value(params, "file", "filename"))
 
 
 def _api_delete_key_training_session(
     params: dict[str, list[str]], config_path: Path | None
 ) -> HttpResponse:
-    return _delete_key_training_session(
-        config_path, _first_query_value(params, "file", "filename")
-    )
+    return _delete_key_training_session(config_path, _first_query_value(params, "file", "filename"))
 
 
 def _api_backup(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
