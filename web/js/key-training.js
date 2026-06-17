@@ -115,6 +115,7 @@ let pendingObservedElements = [];
 let observedAttemptsByIndex = new Map();
 let lastAcceptedSentEvent = null;
 let structuredAttemptIndices = new Map();
+let lineFaultIndices = new Map(); // symbolQueue index → "timing-fail" | "wrong-symbol"
 let leftAltUsedWithPreview = false;
 
 const KEYER_MODE_DISPLAY = {
@@ -483,6 +484,7 @@ function appendExerciseGlyphs(parent, exercise, range) {
             ? "key-training-exercises__glyph key-training-exercises__glyph--space"
             : "key-training-exercises__glyph";
         span.dataset.completed = String(tokenIndex <= completedThroughIndex);
+        span.dataset.fault = lineFaultIndices.get(tokenIndex) || "";
         span.textContent = token === " " ? " " : token;
         parent.appendChild(span);
         tokenIndex += 1;
@@ -593,6 +595,7 @@ function renderQueue() {
         btn.textContent = symbol;
         btn.dataset.active = idx === focusIndex ? "true" : "false";
         btn.dataset.completed = idx <= completedThroughIndex ? "true" : "false";
+        btn.dataset.fault = lineFaultIndices.get(idx) || "";
         btn.setAttribute("aria-pressed", String(idx === focusIndex));
         btn.title = idx === focusIndex ? `Current target: ${symbol}` : `Train ${symbol}`;
         btn.addEventListener("click", () => {
@@ -612,6 +615,7 @@ function restartTrainingRun() {
     lastKeyedSymbol = "";
     lastAcceptedSentEvent = null;
     structuredAttemptIndices = new Map();
+    lineFaultIndices = new Map();
     pendingObservedElements = [];
     observedAttemptsByIndex = new Map();
     renderTrainingFocus();
@@ -631,6 +635,7 @@ async function startOrRestartStructuredRun() {
     lastKeyedSymbol = "";
     lastAcceptedSentEvent = null;
     structuredAttemptIndices = new Map();
+    lineFaultIndices = new Map();
     pendingObservedElements = [];
     observedAttemptsByIndex = new Map();
     renderTrainingFocus();
@@ -667,11 +672,14 @@ function noteTrainingAttempt(event) {
     const target = symbolQueue[activeIndex];
     if (target !== lastKeyedSymbol) {
         if (isStructuredMode()) {
+            // Wrong symbol: taint the line so it will restart at completion,
+            // but do not interrupt the operator mid-send.
+            lineFaultIndices.set(activeIndex, "wrong-symbol");
             recordTrainingAttempt(event, {
                 expectedGap: expectedLeadingGap(activeIndex),
                 spacing: { result: "not-evaluated" },
                 result: "wrong-symbol",
-                action: "ignore",
+                action: "taint-line",
             });
         }
         renderTrainingFocus();
@@ -680,41 +688,92 @@ function noteTrainingAttempt(event) {
 
     const spacing = isStructuredMode() ? targetSpacingResult(event) : { result: "pass" };
     if (spacing.result === "fail") {
+        // Timing fail: taint the line and continue — restart deferred to line end.
+        lineFaultIndices.set(activeIndex, "timing-fail");
         recordTrainingAttempt(event, {
             expectedGap: spacing.expected,
             spacing,
             result: "timing-fail",
-            action: "restart-line",
+            action: "taint-line",
         });
-        incrementStructuredAttempt(currentStructuredExerciseIndex());
-        restartCurrentStructuredLine();
+        // Still advance past this symbol so the operator can complete the line.
+        const nextIndexAfterFail = nextSymbolIndex(symbolQueue, activeIndex + 1);
+        const currentExerciseIdxAfterFail = currentStructuredExerciseIndex();
+        const nextExerciseIdxAfterFail = nextIndexAfterFail !== -1
+            ? structuredExerciseIndexForToken(nextIndexAfterFail)
+            : currentExerciseIdxAfterFail;
+        if (nextIndexAfterFail === -1 || nextExerciseIdxAfterFail !== currentExerciseIdxAfterFail) {
+            // This was the last symbol in the exercise — restart immediately.
+            incrementStructuredAttempt(currentExerciseIdxAfterFail);
+            restartCurrentStructuredLine();
+        } else {
+            completedThroughIndex = nextIndexAfterFail - 1;
+            activeIndex = nextIndexAfterFail;
+        }
+        lastAcceptedSentEvent = event;
+        renderTrainingFocus();
         return;
     }
 
     const nextIndex = nextSymbolIndex(symbolQueue, activeIndex + 1);
-    if (nextIndex === -1) {
-        recordTrainingAttempt(event, {
-            expectedGap: spacing.expected || "any",
-            spacing,
-            result: "accepted",
-            action: "complete-session",
+    const currentExerciseIdx = currentStructuredExerciseIndex();
+    const nextExerciseIdx = nextIndex !== -1
+        ? structuredExerciseIndexForToken(nextIndex)
+        : currentExerciseIdx;
+    const isLineEnd = nextIndex === -1 || nextExerciseIdx !== currentExerciseIdx;
+
+    if (isLineEnd) {
+        // Reached the natural end of this exercise line.
+        const lineHasFault = [...lineFaultIndices.keys()].some((idx) => {
+            const range = currentStructuredRange();
+            return range && idx >= range.start && idx <= range.end;
         });
-        completedThroughIndex = symbolQueue.length - 1;
-        activeIndex = symbolQueue.length;
-        completeKeyTrainingRecord();
+        if (lineHasFault) {
+            // Record this final accepted symbol, then restart the line.
+            recordTrainingAttempt(event, {
+                expectedGap: spacing.expected || "any",
+                spacing,
+                result: "accepted",
+                action: "restart-line",
+            });
+            completedThroughIndex = nextIndex === -1 ? symbolQueue.length - 1 : nextIndex - 1;
+            activeIndex = nextIndex === -1 ? symbolQueue.length : nextIndex;
+            lastAcceptedSentEvent = event;
+            incrementStructuredAttempt(currentExerciseIdx);
+            restartCurrentStructuredLine();
+        } else if (nextIndex === -1) {
+            recordTrainingAttempt(event, {
+                expectedGap: spacing.expected || "any",
+                spacing,
+                result: "accepted",
+                action: "complete-session",
+            });
+            completedThroughIndex = symbolQueue.length - 1;
+            activeIndex = symbolQueue.length;
+            lastAcceptedSentEvent = event;
+            completeKeyTrainingRecord();
+        } else {
+            recordTrainingAttempt(event, {
+                expectedGap: spacing.expected || "any",
+                spacing,
+                result: "accepted",
+                action: "complete-exercise",
+            });
+            completedThroughIndex = nextIndex - 1;
+            activeIndex = nextIndex;
+            lastAcceptedSentEvent = event;
+        }
     } else {
-        const currentExerciseIdx = currentStructuredExerciseIndex();
-        const nextExerciseIdx = structuredExerciseIndexForToken(nextIndex);
         recordTrainingAttempt(event, {
             expectedGap: spacing.expected || "any",
             spacing,
             result: "accepted",
-            action: nextExerciseIdx !== currentExerciseIdx ? "complete-exercise" : "advance",
+            action: "advance",
         });
         completedThroughIndex = nextIndex - 1;
         activeIndex = nextIndex;
+        lastAcceptedSentEvent = event;
     }
-    lastAcceptedSentEvent = event;
     renderTrainingFocus();
 }
 
@@ -837,6 +896,10 @@ function restartCurrentStructuredLine() {
     if (!range) {
         restartTrainingRun();
         return;
+    }
+    // Clear only the fault markers that belong to this exercise range.
+    for (const idx of lineFaultIndices.keys()) {
+        if (idx >= range.start && idx <= range.end) lineFaultIndices.delete(idx);
     }
     activeIndex = firstSymbolIndexInRange(range);
     completedThroughIndex = range.start - 1;

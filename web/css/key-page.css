@@ -214,6 +214,16 @@
     opacity: 1;
 }
 
+.key-training-exercises__glyph[data-fault="timing-fail"] {
+    color: var(--mr-warning);
+    opacity: 1;
+}
+
+.key-training-exercises__glyph[data-fault="wrong-symbol"] {
+    color: var(--mr-muted);
+    opacity: 0.85;
+}
+
 .key-training-exercises__glyph--space {
     display: inline-block;
     min-width: 0.8ch;
@@ -399,6 +409,26 @@
     text-decoration-color: var(--mr-anchor);
     text-decoration-thickness: 1px;
     text-underline-offset: 0.35rem;
+}
+
+/* Deferred-fault markers: timing-fail = amber underline, wrong-symbol = muted underline.
+ * Both are visible at full opacity so the operator can see what to work on
+ * when the line restarts. Cleared automatically when the line restarts. */
+.key-training-queue__item[data-fault="timing-fail"] {
+    text-decoration: underline;
+    text-decoration-color: var(--mr-warning);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.35rem;
+    opacity: 1;
+    color: var(--mr-warning);
+}
+
+.key-training-queue__item[data-fault="wrong-symbol"] {
+    text-decoration: underline;
+    text-decoration-color: var(--mr-muted);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.35rem;
+    opacity: 1;
 }
 
 .key-training-queue__space {
