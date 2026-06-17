@@ -22,6 +22,7 @@ _CADENCE_FILENAME_RE = re.compile(r"^cadence-send-[0-9A-Za-z-]+\.json$")
 _COPY_KEY_FILENAME_RE = re.compile(r"^copy-key-[0-9A-Za-z-]+\.json$")
 _RECOGNITION_FILENAME_RE = re.compile(r"^[0-9A-Za-z._/-]+\.json$")
 _RECORD_PATH_PART_RE = re.compile(r"^[0-9A-Za-z._-]+$")
+_KEY_TRAINING_FILENAME_RE = re.compile(r"^[0-9A-Za-z._/-]+\.json$")
 
 
 def _list_koch_exercises(config_path: Path | None) -> dict[str, Any]:
@@ -137,6 +138,58 @@ def _delete_copy_key_session(config_path: Path | None, filename: str) -> HttpRes
         filename_re=_COPY_KEY_FILENAME_RE,
         subdirectory="copy-key",
         mode="copy-key",
+    )
+
+
+def _enrich_key_training_record(data: dict[str, Any], entry: dict[str, Any]) -> None:
+    """Add key-training-specific summary fields for the settings list."""
+    entry["training_mode"] = data.get("training_mode") or "unknown"
+    entry["session_status"] = data.get("session_status") or "unknown"
+    attempts = data.get("attempts")
+    if isinstance(attempts, list):
+        entry["attempt_count"] = len(attempts)
+        fault_counts: dict[str, int] = {}
+        for a in attempts:
+            sym = a.get("target_symbol")
+            result = a.get("result")
+            if sym and result in ("timing-fail", "wrong-symbol"):
+                fault_counts[sym] = fault_counts.get(sym, 0) + 1
+        entry["fault_counts"] = fault_counts
+    else:
+        entry["attempt_count"] = 0
+        entry["fault_counts"] = {}
+
+
+def _list_key_training_sessions(config_path: Path | None) -> dict[str, Any]:
+    return _list_records(
+        config_path,
+        subdirectory="key-training",
+        mode="key-training",
+        enrich=_enrich_key_training_record,
+        glob_pattern="*.json",
+        relative_filenames=True,
+    )
+
+
+def _read_key_training_session(config_path: Path | None, filename: str) -> HttpResponse:
+    return _read_record_file(
+        config_path=config_path,
+        filename=filename,
+        filename_re=_KEY_TRAINING_FILENAME_RE,
+        subdirectory="key-training",
+        mode="key-training",
+        allow_relative_filename=True,
+    )
+
+
+def _delete_key_training_session(config_path: Path | None, filename: str) -> HttpResponse:
+    return _delete_record_file(
+        config_path=config_path,
+        filename=filename,
+        filename_re=_KEY_TRAINING_FILENAME_RE,
+        subdirectory="key-training",
+        mode="key-training",
+        allow_relative_filename=True,
     )
 
 
