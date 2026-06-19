@@ -15,6 +15,9 @@ const nextButton = document.getElementById("settings-kt-dialog-next");
 const countEl = document.getElementById("settings-kt-dialog-count");
 const summarySection = document.getElementById("settings-kt-summary");
 const summaryModesEl = document.getElementById("settings-kt-summary-modes");
+const focusSection = document.getElementById("settings-kt-focus");
+const focusSymbolsEl = document.getElementById("settings-kt-focus-symbols");
+const focusConfusionsEl = document.getElementById("settings-kt-focus-confusions");
 const heatmapSection = document.getElementById("settings-kt-heatmap");
 const heatmapGridEl = document.getElementById("settings-kt-heatmap-grid");
 
@@ -140,6 +143,41 @@ function buildFaultHeatmap(records) {
     }
 
     heatmapSection.hidden = false;
+}
+
+function buildFocusPanel(recommendations) {
+    if (!recommendations?.has_evidence || !focusSection || !focusSymbolsEl || !focusConfusionsEl) {
+        return;
+    }
+    const symbols = Array.isArray(recommendations.focus_symbols)
+        ? recommendations.focus_symbols.slice(0, 6)
+        : [];
+    const confusions = Array.isArray(recommendations.confusions)
+        ? recommendations.confusions.slice(0, 6)
+        : [];
+    if (symbols.length === 0 && confusions.length === 0) return;
+
+    focusSymbolsEl.replaceChildren();
+    focusConfusionsEl.replaceChildren();
+    symbols.forEach((entry) => {
+        const chip = document.createElement("span");
+        chip.className = "settings-kt-focus__chip";
+        const symbol = entry.symbol || "?";
+        const faultRate = Number.isFinite(entry.fault_rate)
+            ? `${Math.round(entry.fault_rate * 100)}%`
+            : "focus";
+        chip.textContent = `${symbol} · ${faultRate}`;
+        chip.title = `${symbol}: ${entry.faults || 0} weighted faults, ${entry.restarts || 0} weighted repeats`;
+        focusSymbolsEl.appendChild(chip);
+    });
+    confusions.forEach((entry) => {
+        const chip = document.createElement("span");
+        chip.className = "settings-kt-focus__chip";
+        chip.textContent = `${entry.target || "?"}→${entry.sent || "?"}`;
+        chip.title = `${entry.count || 0} weighted wrong-symbol events`;
+        focusConfusionsEl.appendChild(chip);
+    });
+    focusSection.hidden = false;
 }
 
 // ─── Session detail dialog ────────────────────────────────────────────────────
@@ -369,13 +407,19 @@ const { loadSessions } = createRecordTableController({
 // for the first render cycle.
 (async () => {
     try {
-        const res = await fetch("/api/key-training-sessions", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = await res.json();
+        const [sessionsRes, recommendationsRes] = await Promise.all([
+            fetch("/api/key-training-sessions", { cache: "no-store" }),
+            fetch("/api/key-training-recommendations", { cache: "no-store" }),
+        ]);
+        if (!sessionsRes.ok) return;
+        const data = await sessionsRes.json();
         const records = Array.isArray(data.records) ? data.records : [];
         if (records.length > 0) {
             buildModeSummary(records);
             buildFaultHeatmap(records);
+        }
+        if (recommendationsRes.ok) {
+            buildFocusPanel(await recommendationsRes.json());
         }
     } catch {
         // silently ignore — summary panels are optional enhancements

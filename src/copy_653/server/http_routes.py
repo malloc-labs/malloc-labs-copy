@@ -25,6 +25,7 @@ from copy_653.server.analytics_api import (
     _read_recognition_timing,
 )
 from copy_653.server.backup_api import build_records_backup
+from copy_653.server.key_training_recommendations import key_training_recommendations_response
 from copy_653.server.record_api import (
     _delete_cadence_send,
     _delete_copy_key_session,
@@ -287,6 +288,12 @@ def _api_delete_key_training_session(
     return _delete_key_training_session(config_path, _first_query_value(params, "file", "filename"))
 
 
+def _api_key_training_recommendations(
+    params: dict[str, list[str]], config_path: Path | None
+) -> HttpResponse:
+    return _json_response(key_training_recommendations_response(config_path))
+
+
 def _api_backup(params: dict[str, list[str]], config_path: Path | None) -> HttpResponse:
     return build_records_backup(config_path, kind=_first_query_value(params, "kind"))
 
@@ -330,6 +337,7 @@ _API_ROUTES: dict[str, ApiHandler] = {
     "/api/key-training-sessions": _api_key_training_sessions,
     "/api/key-training-session": _api_key_training_session,
     "/api/delete-key-training-session": _api_delete_key_training_session,
+    "/api/key-training-recommendations": _api_key_training_recommendations,
     "/api/backup": _api_backup,
     "/api/voice/lexicon": _api_voice_lexicon,
     "/api/voice/status": _api_voice_status,
