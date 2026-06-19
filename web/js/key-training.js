@@ -719,11 +719,9 @@ function noteTrainingAttempt(event) {
                 result: "timing-fail",
                 action: "restart-line",
             });
-            completedThroughIndex = nextIndexAfterFail === -1 ? symbolQueue.length - 1 : nextIndexAfterFail - 1;
-            activeIndex = nextIndexAfterFail === -1 ? symbolQueue.length : nextIndexAfterFail;
             lastAcceptedSentEvent = event;
             incrementStructuredAttempt(currentExerciseIdxAfterFail);
-            restartCurrentStructuredLine();
+            restartStructuredLine(currentExerciseIdxAfterFail);
         } else {
             completedThroughIndex = nextIndexAfterFail - 1;
             activeIndex = nextIndexAfterFail;
@@ -754,11 +752,9 @@ function noteTrainingAttempt(event) {
                 result: "accepted",
                 action: "restart-line",
             });
-            completedThroughIndex = nextIndex === -1 ? symbolQueue.length - 1 : nextIndex - 1;
-            activeIndex = nextIndex === -1 ? symbolQueue.length : nextIndex;
             lastAcceptedSentEvent = event;
             incrementStructuredAttempt(currentExerciseIdx);
-            restartCurrentStructuredLine();
+            restartStructuredLine(currentExerciseIdx);
         } else if (nextIndex === -1) {
             recordTrainingAttempt(event, {
                 expectedGap: spacing.expected || "any",
@@ -914,8 +910,8 @@ function expectedLeadingGap(index) {
     return "character";
 }
 
-function restartCurrentStructuredLine() {
-    const range = currentStructuredRange();
+function restartStructuredLine(exerciseIndex = currentStructuredExerciseIndex()) {
+    const range = structuredExerciseRanges[exerciseIndex];
     if (!range) {
         restartTrainingRun();
         return;
