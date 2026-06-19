@@ -53,6 +53,7 @@ const APPLY_DEBOUNCE_MS = 150;
 const DEFAULT_QUEUE = ["K"];
 const STRUCTURED_EXERCISE_COUNT = 20;
 const TRAINING_MODES = new Set(["custom", "scales", "intervals", "etudes"]);
+const RECOMMENDATION_ENDPOINT = "/api/key-training-recommendations";
 const CHARACTER_GAP_EARLY_DITS = 1.0;
 const CHARACTER_GAP_PASS_MIN_DITS = 2.0;
 const CHARACTER_GAP_PASS_MAX_DITS = 5.0;
@@ -97,6 +98,7 @@ let expectedDitMs = 60;
 let expectedCharacterGapMs = 180;
 let expectedWordGapMs = 420;
 let trainingMode = "custom";
+let trainingRecommendations = null;
 let symbolQueue = [...DEFAULT_QUEUE];
 let structuredExercises = [];
 let structuredExerciseRanges = [];
@@ -167,6 +169,7 @@ function updateExpectedTiming(event) {
 function appendEvent(event) {
     if (event.type === "claimed-symbols") {
         claimedSymbolSet = renderSequence(sequenceRow, event);
+        loadKeyTrainingRecommendations();
         if (isStructuredMode()) regenerateStructuredExercises();
         return;
     }
@@ -272,6 +275,18 @@ function initialiseTrainingModes() {
     if (isStructuredMode()) regenerateStructuredExercises();
 }
 
+async function loadKeyTrainingRecommendations() {
+    try {
+        const response = await fetch(RECOMMENDATION_ENDPOINT, { cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json();
+        trainingRecommendations = data && typeof data === "object" ? data : null;
+        if (isStructuredMode() && !structuredRunStarted) regenerateStructuredExercises();
+    } catch {
+        trainingRecommendations = null;
+    }
+}
+
 function setTrainingMode(mode) {
     if (!TRAINING_MODES.has(mode) || mode === trainingMode) return;
     stopSequencePlayback();
@@ -367,8 +382,9 @@ function buildStructuredExercises(mode, symbols) {
 }
 
 function buildScaleExercises(symbols) {
+    const plan = buildSymbolExercisePlan(symbols);
     return Array.from({ length: STRUCTURED_EXERCISE_COUNT }, (_, idx) => {
-        const symbol = symbols[idx % symbols.length];
+        const symbol = plan[idx % plan.length];
         const form = idx % 3;
         if (form === 1) return `${symbol}${symbol} ${symbol}${symbol}`;
         if (form === 2) return `${symbol}${symbol}${symbol} ${symbol}${symbol}${symbol}`;
@@ -377,15 +393,7 @@ function buildScaleExercises(symbols) {
 }
 
 function buildIntervalExercises(symbols) {
-    const pairs = [];
-    if (symbols.length === 1) {
-        pairs.push([symbols[0], symbols[0]]);
-    } else {
-        symbols.forEach((symbol, idx) => {
-            const next = symbols[(idx + 1) % symbols.length];
-            pairs.push([symbol, next], [next, symbol]);
-        });
-    }
+    const pairs = buildPairExercisePlan(symbols);
     return Array.from({ length: STRUCTURED_EXERCISE_COUNT }, (_, idx) => {
         const [a, b] = pairs[idx % pairs.length];
         const form = idx % 3;
@@ -396,6 +404,7 @@ function buildIntervalExercises(symbols) {
 }
 
 function buildEtudeExercises(symbols) {
+    const plan = buildSymbolExercisePlan(symbols);
     const curated = [
         "CQ CQ CQ",
         "BK BK BK",
@@ -405,15 +414,112 @@ function buildEtudeExercises(symbols) {
         symbol === " " || symbols.includes(symbol)
     )));
     const generated = Array.from({ length: STRUCTURED_EXERCISE_COUNT }, (_, idx) => {
-        const width = Math.min(symbols.length, 2 + (idx % 4));
-        const start = idx % symbols.length;
+        const width = Math.min(plan.length, 2 + (idx % 4));
+        const start = idx % plan.length;
         const word = Array.from({ length: width }, (_unused, offset) => (
-            symbols[(start + offset) % symbols.length]
+            plan[(start + offset) % plan.length]
         )).join("");
         const repeat = idx % 3 === 0 ? 3 : 2;
         return Array.from({ length: repeat }, () => word).join(" ");
     });
     return [...curated, ...generated].slice(0, STRUCTURED_EXERCISE_COUNT);
+}
+
+function buildSymbolExercisePlan(symbols) {
+    const focus = recommendedSymbols(symbols);
+    if (focus.length === 0) return [...symbols];
+    const focusSet = new Set(focus);
+    const maintenance = symbols.filter((symbol) => !focusSet.has(symbol));
+    if (maintenance.length === 0) return [...focus];
+
+    const plan = [];
+    for (let idx = 0; idx < STRUCTURED_EXERCISE_COUNT; idx += 1) {
+        const slot = idx % 10;
+        if (slot < 6) {
+            plan.push(focus[Math.floor(idx / 2) % focus.length]);
+        } else if (slot < 9) {
+            plan.push(maintenance[Math.floor(idx / 2) % maintenance.length]);
+        } else {
+            plan.push(symbols[idx % symbols.length]);
+        }
+    }
+    return plan;
+}
+
+function buildPairExercisePlan(symbols) {
+    const defaultPairs = defaultIntervalPairs(symbols);
+    const focusPairs = recommendedPairs(symbols);
+    if (focusPairs.length === 0) return defaultPairs;
+    const pairKey = ([a, b]) => `${a}\u0000${b}`;
+    const seen = new Set(focusPairs.map(pairKey));
+    const maintenancePairs = defaultPairs.filter((pair) => !seen.has(pairKey(pair)));
+    if (maintenancePairs.length === 0) return focusPairs;
+
+    const plan = [];
+    for (let idx = 0; idx < STRUCTURED_EXERCISE_COUNT; idx += 1) {
+        const slot = idx % 10;
+        plan.push(slot < 6
+            ? focusPairs[idx % focusPairs.length]
+            : maintenancePairs[idx % maintenancePairs.length]);
+    }
+    return plan;
+}
+
+function defaultIntervalPairs(symbols) {
+    const pairs = [];
+    if (symbols.length === 1) {
+        pairs.push([symbols[0], symbols[0]]);
+    } else {
+        symbols.forEach((symbol, idx) => {
+            const next = symbols[(idx + 1) % symbols.length];
+            pairs.push([symbol, next], [next, symbol]);
+        });
+    }
+    return pairs;
+}
+
+function recommendedSymbols(symbols) {
+    if (!trainingRecommendations?.has_evidence) return [];
+    const allowed = new Set(symbols);
+    const focus = Array.isArray(trainingRecommendations.focus_symbols)
+        ? trainingRecommendations.focus_symbols
+        : [];
+    return focus
+        .map((entry) => String(entry.symbol || ""))
+        .filter((symbol) => allowed.has(symbol));
+}
+
+function recommendedPairs(symbols) {
+    if (!trainingRecommendations?.has_evidence) return [];
+    const allowed = new Set(symbols);
+    const pairs = [];
+    const seen = new Set();
+    const addPair = (a, b) => {
+        if (!allowed.has(a) || !allowed.has(b)) return;
+        const key = `${a}\u0000${b}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        pairs.push([a, b]);
+    };
+    const confusions = Array.isArray(trainingRecommendations.confusions)
+        ? trainingRecommendations.confusions
+        : [];
+    confusions.forEach((entry) => {
+        const target = String(entry.target || "");
+        const sent = String(entry.sent || "");
+        addPair(target, sent);
+        addPair(sent, target);
+    });
+    const focus = recommendedSymbols(symbols);
+    const focusSet = new Set(focus);
+    const maintenance = symbols.filter((symbol) => !focusSet.has(symbol));
+    focus.forEach((symbol, idx) => {
+        if (maintenance.length === 0) return;
+        const mate = maintenance[idx % maintenance.length];
+        addPair(symbol, mate);
+        addPair(mate, symbol);
+    });
+    return pairs;
 }
 
 function renderStructuredExercises() {
@@ -995,6 +1101,7 @@ function completeKeyTrainingRecord() {
     if (!keyTrainingRecordActive || !socket || socket.readyState !== WebSocket.OPEN) return;
     socket.send(JSON.stringify({ action: "complete-key-training-session" }));
     keyTrainingRecordActive = false;
+    window.setTimeout(loadKeyTrainingRecommendations, 500);
 }
 
 function abortKeyTrainingRecord() {
@@ -1595,6 +1702,7 @@ window.addEventListener("blur", () => {
 
 initialiseTrainingInput();
 initialiseTrainingModes();
+loadKeyTrainingRecommendations();
 installPlaybackControls();
 installTrainingNavigationControls();
 installKeyControls();
