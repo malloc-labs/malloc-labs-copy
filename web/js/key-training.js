@@ -467,9 +467,7 @@ function renderStructuredExercises() {
             exerciseSequenceEl.textContent = "—";
         }
     }
-    if (exerciseRestartEl) {
-        exerciseRestartEl.textContent = structuredRunStarted ? "Restart" : "Start";
-    }
+    renderExerciseRestartButton();
     if (exerciseCompletedEl) {
         exerciseCompletedEl.hidden = !trainingSequenceCompleted();
     }
@@ -1019,6 +1017,16 @@ function renderRestartState() {
     restartEl.dataset.completed = trainingSequenceCompleted() ? "true" : "false";
 }
 
+function renderExerciseRestartButton() {
+    if (!exerciseRestartEl) return;
+    const shortcut = structuredRunStarted ? "R" : "S";
+    const suffix = structuredRunStarted ? "estart" : "tart";
+    const keyEl = document.createElement("u");
+    keyEl.textContent = shortcut;
+    exerciseRestartEl.replaceChildren(keyEl, suffix);
+    exerciseRestartEl.setAttribute("aria-keyshortcuts", shortcut);
+}
+
 function trainingSequenceCompleted() {
     return completedThroughIndex >= symbolQueue.length - 1;
 }
@@ -1038,7 +1046,10 @@ function installTrainingNavigationControls() {
             if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) return;
         }
         const key = event.key.toLowerCase();
-        if (key === "r") {
+        if (isStructuredMode() && !structuredRunStarted && key === "s") {
+            event.preventDefault();
+            startOrRestartStructuredRun();
+        } else if (key === "r") {
             event.preventDefault();
             if (isStructuredMode()) {
                 startOrRestartStructuredRun();
