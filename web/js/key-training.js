@@ -665,7 +665,50 @@ function currentReviewIndex() {
 
 function noteTrainingAttempt(event) {
     const symbol = event?.symbol;
-    if (!symbol) return;
+    const pattern = typeof event?.pattern === "string" ? event.pattern : "";
+    if (!symbol) {
+        if (!pattern) return;
+        lastKeyedSymbol = `Unreadable (${pattern})`;
+        renderLastKeyed();
+
+        if (isStructuredMode() && structuredRunStarted) {
+            // Unreadable pattern: the decoder saw keying, but it did not map
+            // to a symbol. Mark the current target, let the operator finish
+            // the line, then restart the exercise at line end.
+            lineFaultIndices.set(activeIndex, "invalid-pattern");
+            recordTrainingAttempt(event, {
+                expectedGap: expectedLeadingGap(activeIndex),
+                spacing: { result: "not-evaluated" },
+                result: "invalid-pattern",
+                action: "taint-line",
+            });
+
+            const nextIndexAfterInvalid = nextSymbolIndex(symbolQueue, activeIndex + 1);
+            const currentExerciseIdxAfterInvalid = currentStructuredExerciseIndex();
+            const nextExerciseIdxAfterInvalid = nextIndexAfterInvalid !== -1
+                ? structuredExerciseIndexForToken(nextIndexAfterInvalid)
+                : currentExerciseIdxAfterInvalid;
+            const isLastSymbolInExercise = nextIndexAfterInvalid === -1
+                || nextExerciseIdxAfterInvalid !== currentExerciseIdxAfterInvalid;
+            if (isLastSymbolInExercise) {
+                recordTrainingAttempt(event, {
+                    expectedGap: expectedLeadingGap(activeIndex),
+                    spacing: { result: "not-evaluated" },
+                    result: "invalid-pattern",
+                    action: "restart-line",
+                });
+                lastAcceptedSentEvent = event;
+                incrementStructuredAttempt(currentExerciseIdxAfterInvalid);
+                restartStructuredLine(currentExerciseIdxAfterInvalid);
+            } else {
+                completedThroughIndex = nextIndexAfterInvalid - 1;
+                activeIndex = nextIndexAfterInvalid;
+                lastAcceptedSentEvent = event;
+            }
+        }
+        renderTrainingFocus();
+        return;
+    }
     lastKeyedSymbol = String(symbol).toUpperCase();
     renderLastKeyed();
 
