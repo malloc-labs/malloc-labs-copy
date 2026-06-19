@@ -252,6 +252,16 @@
     text-underline-offset: 0.3rem;
 }
 
+.key-training-exercises__glyph[data-fault="invalid-pattern"] {
+    color: var(--mr-warning);
+    opacity: 1;
+    text-decoration: underline;
+    text-decoration-color: var(--mr-warning);
+    text-decoration-style: wavy;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.3rem;
+}
+
 .key-training-exercises__glyph--space {
     display: inline-block;
     min-width: 0.8ch;
@@ -322,6 +332,16 @@
     opacity: 0.85;
     text-decoration: underline;
     text-decoration-color: var(--mr-muted);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.3rem;
+}
+
+.key-training-exercises__legend-swatch--invalid {
+    color: var(--mr-warning);
+    opacity: 1;
+    text-decoration: underline;
+    text-decoration-color: var(--mr-warning);
+    text-decoration-style: wavy;
     text-decoration-thickness: 2px;
     text-underline-offset: 0.3rem;
 }
@@ -518,9 +538,8 @@
     text-underline-offset: 0.4rem;
 }
 
-/* Deferred-fault markers: timing-fail = amber underline, wrong-symbol = muted underline.
- * Both are visible at full opacity so the operator can see what to work on
- * when the line restarts. Cleared automatically when the line restarts. */
+/* Deferred-fault markers stay visible at full opacity so the operator can
+ * see what to work on when the line restarts. Cleared automatically on restart. */
 .key-training-queue__item[data-fault="timing-fail"] {
     text-decoration: underline;
     text-decoration-color: var(--mr-warning);
@@ -536,6 +555,16 @@
     text-decoration-thickness: 2px;
     text-underline-offset: 0.35rem;
     opacity: 1;
+}
+
+.key-training-queue__item[data-fault="invalid-pattern"] {
+    text-decoration: underline;
+    text-decoration-color: var(--mr-warning);
+    text-decoration-style: wavy;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.35rem;
+    opacity: 1;
+    color: var(--mr-warning);
 }
 
 .key-training-queue__space {
