@@ -1,14 +1,13 @@
 // Copy — Key Training page entry.
 //
 // Training is intentionally user-directed: the Sequence row manages
-// claimed symbols, while the custom input selects the symbol queue used
-// by the paddle choreography visualizer. Live attempt capture and
-// Settings records will layer on this target model later.
+// Key-only training extras on top of the Koch progression set, while the
+// custom input selects the symbol queue used by the paddle choreography
+// visualizer. Live attempt capture and Settings records layer on this
+// target model.
 
 import {
     connectKoch,
-    installClaimHandlers,
-    renderSequence,
     setStatus,
     setSequenceTokenPlaying,
 } from "./koch-core.js";
@@ -49,6 +48,7 @@ import { hideSymbolPreview, showSymbolPreview, symbolForPreviewCode } from "./sy
 
 const STORAGE_KEY = "copy-653.key-training-input";
 const MODE_STORAGE_KEY = "copy-653.key-training-mode";
+const EXTRA_SYMBOLS_STORAGE_KEY = "copy-653.key-training-extra-symbols";
 const APPLY_DEBOUNCE_MS = 150;
 const DEFAULT_QUEUE = ["K"];
 const STRUCTURED_EXERCISE_COUNT = 20;
@@ -90,7 +90,10 @@ const axisEl = document.getElementById("training-chart-axis");
 const noteEl = document.getElementById("training-focus-note");
 
 let socket = null;
+let kochClaimedSymbolSet = new Set();
+let keyExtraSymbolSet = loadStoredKeyExtraSymbols();
 let claimedSymbolSet = new Set();
+let latestKochSequenceState = { symbols: [] };
 let leftAltDown = false;
 let keyerMode = "iambic_a";
 let characterWpm = 20;
@@ -168,7 +171,7 @@ function updateExpectedTiming(event) {
 
 function appendEvent(event) {
     if (event.type === "claimed-symbols") {
-        claimedSymbolSet = renderSequence(sequenceRow, event);
+        renderKeyTrainingSequence(event);
         loadKeyTrainingRecommendations();
         if (isStructuredMode()) regenerateStructuredExercises();
         return;
@@ -373,6 +376,74 @@ function applyStructuredExercises(exercises) {
 function trainingSymbols() {
     const symbols = KOCH_ORDER.filter((symbol) => claimedSymbolSet.has(symbol) && PATTERNS[symbol]);
     return symbols.length ? symbols : [...DEFAULT_QUEUE];
+}
+
+function renderKeyTrainingSequence(state) {
+    const sequenceState = state && typeof state === "object" ? state : { symbols: [] };
+    latestKochSequenceState = sequenceState;
+    kochClaimedSymbolSet = new Set(
+        Array.isArray(sequenceState.symbols) ? sequenceState.symbols : [],
+    );
+    pruneKeyExtrasClaimedByKoch();
+    claimedSymbolSet = keyTrainingSymbolSet();
+
+    sequenceRow.dataset.recentReady = sequenceState.recent_ready_for_next ? "true" : "false";
+    sequenceRow.dataset.evidence = sequenceState.evidence_ready_for_next ? "true" : "false";
+    sequenceRow.dataset.ready = (
+        sequenceState.ready_for_next || sequenceState.settled_ready_for_next
+    )
+        ? "true"
+        : "false";
+
+    KOCH_ORDER.forEach((symbol) => {
+        const token = sequenceRow.querySelector(`[data-symbol="${CSS.escape(symbol)}"]`);
+        if (!token) return;
+        token.disabled = false;
+        if (claimedSymbolSet.has(symbol)) {
+            token.dataset.state = "claimed";
+            token.title = kochClaimedSymbolSet.has(symbol)
+                ? `${symbol} — selected from Koch progression`
+                : `${symbol} — selected for Key Training (click to remove)`;
+        } else {
+            token.dataset.state = "available";
+            token.title = `${symbol} — click to add to Key Training`;
+        }
+    });
+}
+
+function keyTrainingSymbolSet() {
+    return new Set([...kochClaimedSymbolSet, ...keyExtraSymbolSet]);
+}
+
+function pruneKeyExtrasClaimedByKoch() {
+    let changed = false;
+    keyExtraSymbolSet.forEach((symbol) => {
+        if (kochClaimedSymbolSet.has(symbol)) {
+            keyExtraSymbolSet.delete(symbol);
+            changed = true;
+        }
+    });
+    if (changed) saveStoredKeyExtraSymbols();
+}
+
+function installKeySequenceHandlers() {
+    KOCH_ORDER.forEach((symbol) => {
+        const token = sequenceRow.querySelector(`[data-symbol="${CSS.escape(symbol)}"]`);
+        if (!token) return;
+        token.addEventListener("click", () => {
+            if (kochClaimedSymbolSet.has(symbol)) return;
+            stopSequencePlayback();
+            if (keyExtraSymbolSet.has(symbol)) {
+                keyExtraSymbolSet.delete(symbol);
+            } else if (PATTERNS[symbol]) {
+                keyExtraSymbolSet.add(symbol);
+            }
+            saveStoredKeyExtraSymbols();
+            claimedSymbolSet = keyTrainingSymbolSet();
+            renderKeyTrainingSequence(latestKochSequenceState);
+            if (isStructuredMode()) regenerateStructuredExercises();
+        });
+    });
 }
 
 function buildStructuredExercises(mode, symbols) {
@@ -1477,6 +1548,28 @@ function saveStoredMode(value) {
     }
 }
 
+function loadStoredKeyExtraSymbols() {
+    try {
+        const raw = window.localStorage.getItem(EXTRA_SYMBOLS_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(parsed)) return new Set();
+        return new Set(parsed
+            .map((symbol) => String(symbol).toUpperCase())
+            .filter((symbol) => PATTERNS[symbol]));
+    } catch (_err) {
+        return new Set();
+    }
+}
+
+function saveStoredKeyExtraSymbols() {
+    try {
+        const symbols = KOCH_ORDER.filter((symbol) => keyExtraSymbolSet.has(symbol));
+        window.localStorage.setItem(EXTRA_SYMBOLS_STORAGE_KEY, JSON.stringify(symbols));
+    } catch (_err) {
+        // Private browsing or quota failures should not break Training.
+    }
+}
+
 function installPlaybackControls() {
     if (!playSequenceEl) return;
     playSequenceEl.addEventListener("click", () => {
@@ -1706,7 +1799,7 @@ loadKeyTrainingRecommendations();
 installPlaybackControls();
 installTrainingNavigationControls();
 installKeyControls();
-installClaimHandlers(sequenceRow, () => socket);
+installKeySequenceHandlers();
 socket = connectKoch({
     onOpen() {
         recordDiagnostic("websocket", { state: "open", url: socket?.url || "" });
