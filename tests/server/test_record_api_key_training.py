@@ -48,6 +48,7 @@ def test_enrich_key_training_record_derives_review_metrics():
 
     assert entry["training_mode"] == "intervals"
     assert entry["session_status"] == "completed"
+    assert entry["source_symbols"] == []
     assert entry["decoded_send_count"] == 2
     assert entry["key_event_count"] == 1
     assert entry["scored_event_count"] == 5
@@ -63,6 +64,21 @@ def test_enrich_key_training_record_derives_review_metrics():
     assert entry["fault_counts"] == {"R": 2}
     assert entry["hardest_symbol"] == "R"
     assert entry["hardest_symbol_faults"] == 2
+
+
+def test_enrich_key_training_record_exposes_source_symbols_for_calendar():
+    entry = {}
+    _enrich_key_training_record(
+        {
+            "training_mode": "scales",
+            "session_status": "completed",
+            "source_symbols": ["K", "M", "U", "R", "E"],
+            "attempts": [],
+        },
+        entry,
+    )
+
+    assert entry["source_symbols"] == ["K", "M", "U", "R", "E"]
 
 
 def test_key_training_recommendations_prioritise_recent_faults_and_confusions():

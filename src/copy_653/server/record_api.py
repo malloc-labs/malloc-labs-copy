@@ -145,6 +145,10 @@ def _enrich_key_training_record(data: dict[str, Any], entry: dict[str, Any]) -> 
     """Add key-training-specific summary fields for the settings list."""
     entry["training_mode"] = data.get("training_mode") or "unknown"
     entry["session_status"] = data.get("session_status") or "unknown"
+    source_symbols = data.get("source_symbols")
+    entry["source_symbols"] = (
+        [str(symbol) for symbol in source_symbols] if isinstance(source_symbols, list) else []
+    )
     attempts = data.get("attempts")
     sent = data.get("sent")
     key_events = data.get("key_events")

@@ -1,10 +1,10 @@
 // Settings page — practice calendars.
 //
-// Renders one calendar widget per saved-sessions tab (Koch and Key/Send)
-// as a per-day at-a-glance of practice activity. Same component, two
-// instances: each is parameterised by the DOM root and the listing
-// endpoint. Day cells show the claimed-set in effect at the end of that
-// day plus the total exercises taken across all sessions on that day —
+// Renders one calendar widget per saved-sessions tab as a per-day
+// at-a-glance of practice activity. Same component, multiple instances:
+// each is parameterised by the DOM root and the listing endpoint. Day
+// cells show the claimed-set in effect at the end of that day plus the
+// total exercises taken across all sessions on that day —
 // useful for judging whether the next-symbol nudge is firing at
 // sensible moments.
 //
@@ -25,7 +25,8 @@
 //     this exact set so far?"
 //
 // Data sources: /api/koch-exercises and /api/cadence-sends. Both return
-// the same shape (started_at, ended_at, claimed_set, exercise_count).
+// the same shape (started_at, ended_at, claimed_set, exercise_count), as
+// do the copy-key, recognition, and key-training listing endpoints.
 // The earliest navigable month is 2026-01.
 
 const MIN_YEAR = 2026;
@@ -60,7 +61,13 @@ function formatPracticeMinutes(seconds) {
     return `${minutes}m`;
 }
 
-function mountCalendar({ root, endpoint, emptyLabel }) {
+function mountCalendar({
+    root,
+    endpoint,
+    emptyLabel,
+    symbolField = "claimed_set",
+    symbolLabel = "claimed",
+}) {
     if (!root) return;
     const titleEl = root.querySelector("[data-calendar-title]");
     const metaEl = root.querySelector("[data-calendar-meta]");
@@ -73,7 +80,7 @@ function mountCalendar({ root, endpoint, emptyLabel }) {
     let viewYear = Math.max(today.getFullYear(), MIN_YEAR);
     let viewMonth = viewYear === today.getFullYear() ? today.getMonth() : MIN_MONTH;
 
-    // Map<YYYY-MM-DD, {claimed_set, exercise_count, duration_seconds}>
+    // Map<YYYY-MM-DD, {symbols, exercise_count, duration_seconds}>
     // in local time so calendar squares match the wall clock the
     // learner saw when they were practising.
     const practiceDays = new Map();
@@ -121,16 +128,16 @@ function mountCalendar({ root, endpoint, emptyLabel }) {
             const entry = practiceDays.get(key);
             if (entry) {
                 cell.dataset.practice = "true";
-                const claimed = entry.claimed_set.join(" ");
+                const symbols = entry.symbols.join(" ");
                 const minutesLabel = formatPracticeMinutes(entry.duration_seconds);
                 const durationLabel = minutesLabel ? `, ${minutesLabel} of practice` : "";
                 const cumulativeLabel = formatPracticeMinutes(entry.cumulative_seconds);
                 const cumulativeAria = cumulativeLabel
-                    ? `, ${cumulativeLabel} cumulative on ${claimed || "this set"}`
+                    ? `, ${cumulativeLabel} cumulative on ${symbols || "this set"}`
                     : "";
                 cell.setAttribute(
                     "aria-label",
-                    `${d} ${MONTH_NAMES[viewMonth]} — claimed ${claimed || "none"}, ${entry.exercise_count} exercise${entry.exercise_count === 1 ? "" : "s"}${durationLabel}${cumulativeAria}`,
+                    `${d} ${MONTH_NAMES[viewMonth]} — ${symbolLabel} ${symbols || "none"}, ${entry.exercise_count} exercise${entry.exercise_count === 1 ? "" : "s"}${durationLabel}${cumulativeAria}`,
                 );
             } else {
                 cell.setAttribute("aria-label", `${d} ${MONTH_NAMES[viewMonth]}`);
@@ -145,7 +152,7 @@ function mountCalendar({ root, endpoint, emptyLabel }) {
             if (entry) {
                 const claimed = document.createElement("span");
                 claimed.className = "settings-calendar__day-claimed";
-                claimed.textContent = entry.claimed_set.join(" ");
+                claimed.textContent = entry.symbols.join(" ");
                 cell.appendChild(claimed);
 
                 const count = document.createElement("span");
@@ -189,9 +196,9 @@ function mountCalendar({ root, endpoint, emptyLabel }) {
             const records = Array.isArray(data.records) ? data.records : [];
             practiceDays.clear();
             // Both listing endpoints return newest-first. Walk oldest
-            // first so the final claimed_set kept per day is the
-            // latest session's, and per-set running totals accumulate
-            // in chronological order.
+            // first so the final symbol set kept per day is the latest
+            // session's, and per-set running totals accumulate in
+            // chronological order.
             const oldestFirst = [...records].reverse();
             // setKey ("K M U" sorted) -> total seconds across all
             // sessions on that exact set, walked forward in time.
@@ -202,13 +209,16 @@ function mountCalendar({ root, endpoint, emptyLabel }) {
                 const key = localDateKey(d);
                 const prev = practiceDays.get(key);
                 const count = Number.isFinite(rec.exercise_count) ? rec.exercise_count : 0;
-                const claimed = Array.isArray(rec.claimed_set) ? rec.claimed_set : [];
+                const configuredSymbols = Array.isArray(rec[symbolField]) ? rec[symbolField] : [];
+                const symbols = configuredSymbols.length > 0
+                    ? configuredSymbols
+                    : (Array.isArray(rec.claimed_set) ? rec.claimed_set : []);
                 const duration = sessionDurationSeconds(rec.started_at, rec.ended_at);
-                const setKey = [...claimed].sort().join(" ");
+                const setKey = [...symbols].sort().join(" ");
                 const setTotal = (setRunningTotal.get(setKey) || 0) + duration;
                 setRunningTotal.set(setKey, setTotal);
                 practiceDays.set(key, {
-                    claimed_set: claimed,
+                    symbols,
                     exercise_count: (prev?.exercise_count || 0) + count,
                     duration_seconds: (prev?.duration_seconds || 0) + duration,
                     cumulative_seconds: setTotal,
@@ -269,6 +279,14 @@ mountCalendar({
     root: document.getElementById("settings-recognition-calendar"),
     endpoint: "/api/recognitions",
     emptyLabel: "saved recognition sessions",
+});
+
+mountCalendar({
+    root: document.getElementById("settings-kt-calendar"),
+    endpoint: "/api/key-training-sessions",
+    emptyLabel: "saved key training sessions",
+    symbolField: "source_symbols",
+    symbolLabel: "symbols",
 });
 
 // Wire each [data-calendar-open="<dialog-id>"] trigger to showModal()

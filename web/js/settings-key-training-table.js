@@ -390,13 +390,10 @@ const { loadSessions } = createRecordTableController({
         appendCell(row, idx + 1);
         appendCell(row, formatStartedAt(rec.started_at));
         appendCell(row, MODE_LABELS[rec.training_mode] || rec.training_mode || "—");
-        appendCell(row, rec.session_status || "—");
-        appendCell(row, rec.exercise_count ?? "—");
         appendCell(row, rec.clean_exercise_count ?? "—");
         appendCell(row, rec.restart_count ?? "—");
         appendCell(row, countFaults(rec));
         appendCell(row, hardestSymbolLabel(rec));
-        appendCell(row, formatDuration(rec.started_at, rec.ended_at));
     },
 });
 
