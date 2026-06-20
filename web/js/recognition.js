@@ -983,6 +983,8 @@ let leftAltDown = false;
 window.addEventListener("keydown", (event) => {
     if (event.code === "AltLeft") {
         leftAltDown = true;
+        if (event.repeat) return;
+        playSoftNudgePreview(event);
         return;
     }
     if (!leftAltDown || !event.altKey) return;
@@ -1005,6 +1007,26 @@ window.addEventListener("keydown", (event) => {
     showSymbolPreview(symbol);
     socket.send(JSON.stringify({ action: "play-morse-repeat", symbol }));
 });
+
+function playSoftNudgePreview(event) {
+    if (!softNudgeActive()) return;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    if (sessionActive) return;
+    const target = event.target;
+    if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) return;
+    }
+    const symbol = claimedState.suggested_next;
+    if (!symbol) return;
+    event.preventDefault();
+    showSymbolPreview(symbol);
+    socket.send(JSON.stringify({ action: "play-morse-repeat", symbol }));
+}
+
+function softNudgeActive() {
+    return Boolean(claimedState.recent_ready_for_next && claimedState.suggested_next);
+}
 
 window.addEventListener("keyup", (event) => {
     if (event.code === "AltLeft") {
