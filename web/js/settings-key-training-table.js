@@ -14,12 +14,36 @@ const prevButton = document.getElementById("settings-kt-dialog-prev");
 const nextButton = document.getElementById("settings-kt-dialog-next");
 const countEl = document.getElementById("settings-kt-dialog-count");
 const summarySection = document.getElementById("settings-kt-summary");
+const summaryToggle = document.getElementById("settings-kt-summary-toggle");
 const summaryModesEl = document.getElementById("settings-kt-summary-modes");
 const focusSection = document.getElementById("settings-kt-focus");
+const focusToggle = document.getElementById("settings-kt-focus-toggle");
+const focusBody = document.getElementById("settings-kt-focus-body");
 const focusSymbolsEl = document.getElementById("settings-kt-focus-symbols");
 const focusConfusionsEl = document.getElementById("settings-kt-focus-confusions");
 const heatmapSection = document.getElementById("settings-kt-heatmap");
+const heatmapToggle = document.getElementById("settings-kt-heatmap-toggle");
 const heatmapGridEl = document.getElementById("settings-kt-heatmap-grid");
+
+// ─── Collapsible summary panels ─────────────────────────────────────────────
+
+function wireDisclosure(toggle, body, expandedByDefault = false) {
+    if (!toggle || !body) return;
+
+    const setExpanded = (expanded) => {
+        toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+        body.hidden = !expanded;
+    };
+
+    setExpanded(expandedByDefault);
+    toggle.addEventListener("click", () => {
+        setExpanded(toggle.getAttribute("aria-expanded") !== "true");
+    });
+}
+
+wireDisclosure(summaryToggle, summaryModesEl, false);
+wireDisclosure(focusToggle, focusBody, false);
+wireDisclosure(heatmapToggle, heatmapGridEl, true);
 
 // ─── Mode summary panel ───────────────────────────────────────────────────────
 

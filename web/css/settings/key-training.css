@@ -10,20 +10,64 @@
     margin-bottom: var(--mr-space-5);
 }
 
-.settings-kt-summary__heading {
+.settings-kt-summary__heading,
+.settings-kt-focus__heading,
+.settings-kt-heatmap__heading {
     margin: 0 0 var(--mr-space-3);
+}
+
+.settings-kt-disclosure {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--mr-space-2);
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
     font-family: var(--mr-font-mono);
     font-size: var(--mr-size-small);
     font-weight: 400;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--mr-muted);
+    text-align: left;
+    cursor: pointer;
+}
+
+.settings-kt-disclosure:hover,
+.settings-kt-disclosure:focus-visible {
+    color: var(--mr-text);
+}
+
+.settings-kt-disclosure:focus-visible {
+    outline: 1px solid var(--mr-text);
+    outline-offset: 3px;
+}
+
+.settings-kt-disclosure__indicator {
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
+.settings-kt-disclosure__indicator::before {
+    content: "+";
+}
+
+.settings-kt-disclosure[aria-expanded="true"] .settings-kt-disclosure__indicator::before {
+    content: "-";
 }
 
 .settings-kt-summary__modes {
     display: flex;
     flex-wrap: wrap;
     gap: var(--mr-space-3);
+}
+
+.settings-kt-summary__modes[hidden],
+.settings-kt-focus__body[hidden],
+.settings-kt-heatmap__grid[hidden] {
+    display: none;
 }
 
 .settings-kt-mode-card {
@@ -72,16 +116,6 @@
     margin-bottom: var(--mr-space-5);
 }
 
-.settings-kt-focus__heading {
-    margin: 0 0 var(--mr-space-3);
-    font-family: var(--mr-font-mono);
-    font-size: var(--mr-size-small);
-    font-weight: 400;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--mr-muted);
-}
-
 .settings-kt-focus__sub {
     font-weight: 400;
     font-size: var(--mr-size-small);
@@ -127,16 +161,6 @@
 
 .settings-kt-heatmap {
     margin-bottom: var(--mr-space-5);
-}
-
-.settings-kt-heatmap__heading {
-    margin: 0 0 var(--mr-space-3);
-    font-family: var(--mr-font-mono);
-    font-size: var(--mr-size-small);
-    font-weight: 400;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--mr-muted);
 }
 
 .settings-kt-heatmap__sub {
