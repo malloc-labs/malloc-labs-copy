@@ -47,6 +47,17 @@ function recordTime(record) {
     return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
+function formatInvestedTime(seconds) {
+    if (!Number.isFinite(seconds) || seconds <= 0) return "—";
+    const totalSeconds = Math.round(seconds);
+    const hours = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    if (hours > 0) return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+    if (mins > 0) return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+    return `${secs}s`;
+}
+
 function formatPercent(value) {
     return Number.isFinite(value) ? `${Math.round(value * 100)}%` : "—";
 }
@@ -70,7 +81,7 @@ function formatLowerIsBetterTrend(recentValue, priorValue, noun) {
 function summariseWindow(records) {
     const stats = {
         sessions: records.length,
-        completed: 0,
+        investedSeconds: 0,
         exercises: 0,
         clean: 0,
         repeats: 0,
@@ -81,7 +92,7 @@ function summariseWindow(records) {
         healthScore: 0,
     };
     for (const rec of records) {
-        if (rec.session_status === "completed") stats.completed += 1;
+        stats.investedSeconds += numberValue(rec.active_training_seconds);
         stats.exercises += numberValue(rec.exercise_count);
         stats.clean += numberValue(rec.clean_exercise_count);
         stats.repeats += numberValue(rec.restart_count);
@@ -128,7 +139,7 @@ function describeModeTrend(records) {
             prior ? prior.faultRate : Number.NaN,
             "faults",
         ),
-        practice: `${lifetime.completed} of ${lifetime.sessions} completed`,
+        invested: formatInvestedTime(lifetime.investedSeconds),
     };
 }
 
@@ -162,7 +173,7 @@ function buildModeSummary(records) {
             ["Clean rate", stats.clean],
             ["Repeats", stats.repeats],
             ["Faults", stats.faults],
-            ["Practice", stats.practice],
+            ["Time Invested", stats.invested],
         ].forEach(([label, value]) => {
             const dt = document.createElement("dt");
             dt.textContent = label;
