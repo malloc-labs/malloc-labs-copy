@@ -62,12 +62,18 @@ function formatPercent(value) {
     return Number.isFinite(value) ? `${Math.round(value * 100)}%` : "—";
 }
 
-function formatCleanTrend(recent, prior) {
-    if (!prior || prior.exercises === 0) return `${formatPercent(recent.cleanRate)} baseline`;
+function cleanTrendDirection(recent, prior) {
+    if (!prior || prior.exercises === 0) return "baseline";
     const delta = recent.cleanRate - prior.cleanRate;
-    if (delta >= 0.06) return `${formatPercent(recent.cleanRate)}, improving`;
-    if (delta <= -0.06) return `${formatPercent(recent.cleanRate)}, dropping`;
-    return `${formatPercent(recent.cleanRate)}, stable`;
+    if (delta >= 0.06) return "improving";
+    if (delta <= -0.06) return "worsening";
+    return "stable";
+}
+
+function formatCleanTrend(recent, prior) {
+    const direction = cleanTrendDirection(recent, prior);
+    if (direction === "baseline") return `${formatPercent(recent.cleanRate)} baseline`;
+    return `${formatPercent(recent.cleanRate)}, ${direction}`;
 }
 
 function formatLowerIsBetterTrend(recentValue, priorValue, noun) {
@@ -143,6 +149,61 @@ function describeModeTrend(records) {
     };
 }
 
+function cleanRateForRecord(record) {
+    const exercises = numberValue(record.exercise_count);
+    if (exercises <= 0) return Number.NaN;
+    return numberValue(record.clean_exercise_count) / exercises;
+}
+
+function buildModeCleanTrends(records) {
+    const byMode = {};
+    for (const rec of records) {
+        const mode = rec.training_mode || "unknown";
+        if (!byMode[mode]) byMode[mode] = [];
+        byMode[mode].push(rec);
+    }
+
+    const trends = {};
+    for (const [mode, modeRecords] of Object.entries(byMode)) {
+        const ordered = modeRecords.slice().sort((a, b) => recordTime(b) - recordTime(a));
+        const recent = summariseWindow(ordered.slice(0, TREND_WINDOW_SIZE));
+        const priorRecords = ordered.slice(TREND_WINDOW_SIZE, TREND_WINDOW_SIZE * 2);
+        const prior = priorRecords.length > 0 ? summariseWindow(priorRecords) : null;
+        const direction = cleanTrendDirection(recent, prior);
+        trends[mode] = {
+            direction,
+            arrow: trendArrow(direction),
+            label: direction === "baseline" ? "baseline" : direction,
+        };
+    }
+    return trends;
+}
+
+function appendCleanRateTrendCell(row, record, modeTrends) {
+    const mode = record.training_mode || "unknown";
+    const trend = modeTrends[mode] || { arrow: "→", label: "baseline" };
+    const cleanRate = formatPercent(cleanRateForRecord(record));
+    const cell = document.createElement("td");
+    cell.textContent = `${cleanRate} ${trend.arrow}`;
+    cell.title = `${MODE_LABELS[mode] || mode}: ${trend.label} clean-rate trend`;
+    cell.setAttribute("aria-label", `${cleanRate}, ${trend.label} clean-rate trend`);
+    row.appendChild(cell);
+}
+
+function faultTrendDirection(recentRate, priorRate) {
+    if (!Number.isFinite(priorRate)) return "baseline";
+    const delta = recentRate - priorRate;
+    if (delta <= -0.05) return "improving";
+    if (delta >= 0.05) return "worsening";
+    return "stable";
+}
+
+function trendArrow(direction) {
+    if (direction === "improving") return "↑";
+    if (direction === "worsening") return "↓";
+    return "→";
+}
+
 function buildModeSummary(records) {
     const byMode = {};
     for (const rec of records) {
@@ -190,45 +251,83 @@ function buildModeSummary(records) {
 
 // ─── Symbol fault heatmap ─────────────────────────────────────────────────────
 
-function buildFaultHeatmap(records) {
-    // Aggregate fault_counts across all records
-    const totals = {};
+function symbolFaultStats(records) {
+    const stats = { exercises: 0, faults: {} };
     for (const rec of records) {
+        stats.exercises += numberValue(rec.exercise_count);
         const fc = rec.fault_counts || {};
         for (const [sym, count] of Object.entries(fc)) {
-            totals[sym] = (totals[sym] || 0) + count;
+            stats.faults[sym] = (stats.faults[sym] || 0) + count;
         }
     }
+    return stats;
+}
 
-    const entries = Object.entries(totals).sort((a, b) => b[1] - a[1]);
+function buildSymbolFaultTrends(records) {
+    const ordered = records.slice().sort((a, b) => recordTime(b) - recordTime(a));
+    const recent = symbolFaultStats(ordered.slice(0, TREND_WINDOW_SIZE));
+    const priorRecords = ordered.slice(TREND_WINDOW_SIZE, TREND_WINDOW_SIZE * 2);
+    const prior = priorRecords.length > 0 ? symbolFaultStats(priorRecords) : null;
+    const lifetime = symbolFaultStats(ordered);
+
+    const entries = Object.entries(lifetime.faults).sort((a, b) => b[1] - a[1]);
+    const maxRate = Math.max(
+        ...entries.map(([sym]) => {
+            const recentFaults = recent.faults[sym] || 0;
+            return recent.exercises > 0 ? recentFaults / recent.exercises : 0;
+        }),
+        0,
+    );
+
+    const trends = {};
+    for (const [sym, count] of entries) {
+        const recentFaults = recent.faults[sym] || 0;
+        const priorFaults = prior ? prior.faults[sym] || 0 : 0;
+        const recentRate = recent.exercises > 0 ? recentFaults / recent.exercises : 0;
+        const priorRate = prior && prior.exercises > 0 ? priorFaults / prior.exercises : Number.NaN;
+        const trend = faultTrendDirection(recentRate, priorRate);
+        trends[sym] = {
+            count,
+            trend,
+            arrow: trendArrow(trend),
+            intensity: maxRate > 0 ? recentRate / maxRate : 0,
+        };
+    }
+    return trends;
+}
+
+function buildFaultHeatmap(records) {
+    const trends = buildSymbolFaultTrends(records);
+    const entries = Object.entries(trends).sort((a, b) => b[1].count - a[1].count);
     if (entries.length === 0) return;
 
-    const maxCount = entries[0][1];
     heatmapGridEl.replaceChildren();
 
-    for (const [sym, count] of entries) {
-        const intensity = maxCount > 0 ? count / maxCount : 0;
+    for (const [sym, stats] of entries) {
+        const trend = stats.trend;
         const cell = document.createElement("div");
         cell.className = "settings-kt-heatmap__cell";
-        cell.style.setProperty("--kt-heat", intensity.toFixed(3));
-        cell.title = `${sym}: ${count} fault${count === 1 ? "" : "s"}`;
+        cell.style.setProperty("--kt-heat", stats.intensity.toFixed(3));
+        cell.dataset.trend = trend;
+        cell.title = `${sym}: ${trend} fault trend`;
 
         const symEl = document.createElement("span");
         symEl.className = "settings-kt-heatmap__sym";
         symEl.textContent = sym;
 
-        const countEl = document.createElement("span");
-        countEl.className = "settings-kt-heatmap__count";
-        countEl.textContent = count;
+        const trendEl = document.createElement("span");
+        trendEl.className = "settings-kt-heatmap__count";
+        trendEl.textContent = stats.arrow;
+        trendEl.setAttribute("aria-label", trend);
 
-        cell.append(symEl, countEl);
+        cell.append(symEl, trendEl);
         heatmapGridEl.appendChild(cell);
     }
 
     heatmapSection.hidden = false;
 }
 
-function buildFocusPanel(recommendations) {
+function buildFocusPanel(recommendations, records = []) {
     if (!recommendations?.has_evidence || !focusSection || !focusSymbolsEl || !focusConfusionsEl) {
         return;
     }
@@ -240,23 +339,23 @@ function buildFocusPanel(recommendations) {
         : [];
     if (symbols.length === 0 && confusions.length === 0) return;
 
+    const symbolTrends = buildSymbolFaultTrends(records);
     focusSymbolsEl.replaceChildren();
     focusConfusionsEl.replaceChildren();
     symbols.forEach((entry) => {
         const chip = document.createElement("span");
         chip.className = "settings-kt-focus__chip";
         const symbol = entry.symbol || "?";
-        const faultRate = Number.isFinite(entry.fault_rate)
-            ? `${Math.round(entry.fault_rate * 100)}%`
-            : "focus";
-        chip.textContent = `${symbol} · ${faultRate}`;
+        const trend = symbolTrends[symbol] || { arrow: "→", trend: "baseline" };
+        chip.textContent = `${symbol} · ${trend.arrow}`;
+        chip.setAttribute("aria-label", `${symbol}, ${trend.trend} fault trend`);
         chip.title = `${symbol}: ${entry.faults || 0} weighted faults, ${entry.restarts || 0} weighted repeats`;
         focusSymbolsEl.appendChild(chip);
     });
     confusions.forEach((entry) => {
         const chip = document.createElement("span");
         chip.className = "settings-kt-focus__chip";
-        chip.textContent = `${entry.target || "?"}→${entry.sent || "?"}`;
+        chip.textContent = `${entry.target || "?"}: ${entry.sent || "?"}`;
         chip.title = `${entry.count || 0} weighted wrong-symbol events`;
         focusConfusionsEl.appendChild(chip);
     });
@@ -459,8 +558,8 @@ const { loadSessions } = createRecordTableController({
     loadingText: "Loading key training session…",
     emptyText: (data) =>
         `No saved key training sessions in ${data.save_directory || "save directory"}.`,
-    countText: (records, data) =>
-        `${records.length} saved key training session${records.length === 1 ? "" : "s"} in ${data.save_directory}`,
+    countText: (records) =>
+        `${records.length} saved key training session${records.length === 1 ? "" : "s"}`,
     listErrorText: (err) => `Could not load key training sessions: ${err.message}`,
     loadErrorText: (err) => `Could not load key training session: ${err.message}`,
     deleteConfirmText: "Delete this key training session record?",
@@ -469,14 +568,20 @@ const { loadSessions } = createRecordTableController({
     detailTitle: (record) =>
         `${MODE_LABELS[record.training_mode] || record.training_mode || "Key training"} — ${formatStartedAt(record.started_at)}`,
     renderDetail,
-    renderRowCells: (row, rec, idx) => {
-        appendCell(row, idx + 1);
-        appendCell(row, formatStartedAt(rec.started_at));
-        appendCell(row, MODE_LABELS[rec.training_mode] || rec.training_mode || "—");
-        appendCell(row, rec.clean_exercise_count ?? "—");
-        appendCell(row, rec.restart_count ?? "—");
-        appendCell(row, countFaults(rec));
-        appendCell(row, hardestSymbolLabel(rec));
+    renderRows: (records, { appendDeleteCell, attachRowHandler }) => {
+        const modeTrends = buildModeCleanTrends(records);
+        records.forEach((rec, idx) => {
+            const row = document.createElement("tr");
+            appendCell(row, idx + 1);
+            appendCell(row, formatStartedAt(rec.started_at));
+            appendCell(row, MODE_LABELS[rec.training_mode] || rec.training_mode || "—");
+            appendCleanRateTrendCell(row, rec, modeTrends);
+            appendCell(row, hardestSymbolLabel(rec));
+            appendDeleteCell(row, rec.filename);
+            attachRowHandler(row, rec.filename);
+            tbody.appendChild(row);
+        });
+        return records;
     },
 });
 
@@ -499,7 +604,7 @@ const { loadSessions } = createRecordTableController({
             buildFaultHeatmap(records);
         }
         if (recommendationsRes.ok) {
-            buildFocusPanel(await recommendationsRes.json());
+            buildFocusPanel(await recommendationsRes.json(), records);
         }
     } catch {
         // silently ignore — summary panels are optional enhancements

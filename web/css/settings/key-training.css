@@ -117,11 +117,10 @@
     min-height: 2rem;
     padding: var(--mr-space-1) var(--mr-space-2);
     border: var(--mr-border-rule);
-    border-color: color-mix(in srgb, var(--mr-warning) 45%, var(--mr-border));
     font-family: var(--mr-font-mono);
     font-size: var(--mr-size-small);
     color: var(--mr-text);
-    background: color-mix(in srgb, var(--mr-warning) 8%, transparent);
+    background: transparent;
 }
 
 /* ─── Symbol fault heatmap ───────────────────────────────────────────────── */
