@@ -23,6 +23,68 @@ _COPY_KEY_FILENAME_RE = re.compile(r"^copy-key-[0-9A-Za-z-]+\.json$")
 _RECOGNITION_FILENAME_RE = re.compile(r"^[0-9A-Za-z._/-]+\.json$")
 _RECORD_PATH_PART_RE = re.compile(r"^[0-9A-Za-z._-]+$")
 _KEY_TRAINING_FILENAME_RE = re.compile(r"^[0-9A-Za-z._/-]+\.json$")
+_KEY_TRAINING_IDLE_GAP_CAP_SECONDS = 10.0
+
+
+def _finite_number(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value)
+
+
+def _key_training_active_seconds(data: dict[str, Any]) -> float:
+    """Estimate active training time from recorded event timestamps.
+
+    Key Training snapshots partial runs continuously, so a record's wall-clock
+    duration may include long idle gaps from leaving the page open. This keeps
+    the active symbol/attempt spans and short recovery pauses, while capping
+    longer gaps between observed training events.
+    """
+    timestamps: list[float] = []
+    attempts = data.get("attempts")
+    if isinstance(attempts, list):
+        for attempt in attempts:
+            if not isinstance(attempt, dict):
+                continue
+            started_at = _finite_number(attempt.get("started_at"))
+            ended_at = _finite_number(attempt.get("ended_at"))
+            if started_at is not None:
+                timestamps.append(started_at)
+            if ended_at is not None:
+                timestamps.append(ended_at)
+
+    sent = data.get("sent")
+    if isinstance(sent, list):
+        for event in sent:
+            if not isinstance(event, dict):
+                continue
+            started_at = _finite_number(event.get("started_at"))
+            ended_at = _finite_number(event.get("ended_at"))
+            if started_at is not None:
+                timestamps.append(started_at)
+            if ended_at is not None:
+                timestamps.append(ended_at)
+
+    key_events = data.get("key_events")
+    if isinstance(key_events, list):
+        for event in key_events:
+            if not isinstance(event, dict):
+                continue
+            timestamp = _finite_number(event.get("timestamp"))
+            if timestamp is not None:
+                timestamps.append(timestamp)
+
+    timestamps.sort()
+    if len(timestamps) < 2:
+        return 0.0
+
+    total = 0.0
+    previous = timestamps[0]
+    for timestamp in timestamps[1:]:
+        if timestamp >= previous:
+            total += min(timestamp - previous, _KEY_TRAINING_IDLE_GAP_CAP_SECONDS)
+            previous = timestamp
+    return round(total, 3)
 
 
 def _list_koch_exercises(config_path: Path | None) -> dict[str, Any]:
@@ -149,6 +211,7 @@ def _enrich_key_training_record(data: dict[str, Any], entry: dict[str, Any]) -> 
     entry["source_symbols"] = (
         [str(symbol) for symbol in source_symbols] if isinstance(source_symbols, list) else []
     )
+    entry["active_training_seconds"] = _key_training_active_seconds(data)
     attempts = data.get("attempts")
     sent = data.get("sent")
     key_events = data.get("key_events")

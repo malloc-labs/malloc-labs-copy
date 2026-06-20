@@ -81,6 +81,26 @@ def test_enrich_key_training_record_exposes_source_symbols_for_calendar():
     assert entry["source_symbols"] == ["K", "M", "U", "R", "E"]
 
 
+def test_enrich_key_training_record_reports_active_training_seconds():
+    entry = {}
+    _enrich_key_training_record(
+        {
+            "training_mode": "scales",
+            "session_status": "abandoned",
+            "attempts": [
+                {"started_at": 100.0, "ended_at": 101.0},
+                # A normal recovery gap counts.
+                {"started_at": 106.0, "ended_at": 107.0},
+                # A long idle gap is capped at 10 seconds.
+                {"started_at": 167.0, "ended_at": 168.5},
+            ],
+        },
+        entry,
+    )
+
+    assert entry["active_training_seconds"] == 18.5
+
+
 def test_key_training_recommendations_prioritise_recent_faults_and_confusions():
     result = build_key_training_recommendations(
         [
