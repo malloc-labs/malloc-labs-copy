@@ -25,6 +25,7 @@ const heatmapGridEl = document.getElementById("settings-kt-heatmap-grid");
 
 const MODE_LABELS = { scales: "Scales", intervals: "Intervals", etudes: "Etudes" };
 const MODE_ORDER = ["scales", "intervals", "etudes"];
+const TREND_WINDOW_SIZE = 5;
 
 function numberValue(value) {
     return Number.isFinite(value) ? value : 0;
@@ -41,26 +42,102 @@ function hardestSymbolLabel(record) {
     return symbol ? `${symbol} (${count})` : "—";
 }
 
+function recordTime(record) {
+    const timestamp = Date.parse(record.started_at || "");
+    return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function formatPercent(value) {
+    return Number.isFinite(value) ? `${Math.round(value * 100)}%` : "—";
+}
+
+function formatCleanTrend(recent, prior) {
+    if (!prior || prior.exercises === 0) return `${formatPercent(recent.cleanRate)} baseline`;
+    const delta = recent.cleanRate - prior.cleanRate;
+    if (delta >= 0.06) return `${formatPercent(recent.cleanRate)}, improving`;
+    if (delta <= -0.06) return `${formatPercent(recent.cleanRate)}, dropping`;
+    return `${formatPercent(recent.cleanRate)}, stable`;
+}
+
+function formatLowerIsBetterTrend(recentValue, priorValue, noun) {
+    if (!Number.isFinite(priorValue)) return "Baseline";
+    const delta = recentValue - priorValue;
+    if (delta <= -0.1) return "Easing";
+    if (delta >= 0.1) return `More ${noun}`;
+    return "Stable";
+}
+
+function summariseWindow(records) {
+    const stats = {
+        sessions: records.length,
+        completed: 0,
+        exercises: 0,
+        clean: 0,
+        repeats: 0,
+        faults: 0,
+        cleanRate: 0,
+        repeatRate: 0,
+        faultRate: 0,
+        healthScore: 0,
+    };
+    for (const rec of records) {
+        if (rec.session_status === "completed") stats.completed += 1;
+        stats.exercises += numberValue(rec.exercise_count);
+        stats.clean += numberValue(rec.clean_exercise_count);
+        stats.repeats += numberValue(rec.restart_count);
+        stats.faults += countFaults(rec);
+    }
+    if (stats.exercises > 0) {
+        stats.cleanRate = stats.clean / stats.exercises;
+        stats.repeatRate = stats.repeats / stats.exercises;
+        stats.faultRate = stats.faults / stats.exercises;
+    }
+
+    const friction = Math.min(3, stats.repeatRate + stats.faultRate) / 3;
+    stats.healthScore = stats.cleanRate - (friction * 0.5);
+    return stats;
+}
+
+function describeModeTrend(records) {
+    const ordered = records.slice().sort((a, b) => recordTime(b) - recordTime(a));
+    const recent = summariseWindow(ordered.slice(0, TREND_WINDOW_SIZE));
+    const priorRecords = ordered.slice(TREND_WINDOW_SIZE, TREND_WINDOW_SIZE * 2);
+    const prior = priorRecords.length > 0 ? summariseWindow(priorRecords) : null;
+    const lifetime = summariseWindow(ordered);
+
+    let status = "Needs data";
+    if (recent.sessions > 0 && !prior) {
+        status = "Baseline";
+    } else if (prior) {
+        const delta = recent.healthScore - prior.healthScore;
+        if (delta >= 0.08) status = "Improving";
+        else if (delta <= -0.08) status = "Worsening";
+        else status = "Stable";
+    }
+
+    return {
+        status,
+        clean: formatCleanTrend(recent, prior),
+        repeats: formatLowerIsBetterTrend(
+            recent.repeatRate,
+            prior ? prior.repeatRate : Number.NaN,
+            "repeats",
+        ),
+        faults: formatLowerIsBetterTrend(
+            recent.faultRate,
+            prior ? prior.faultRate : Number.NaN,
+            "faults",
+        ),
+        practice: `${lifetime.completed} of ${lifetime.sessions} completed`,
+    };
+}
+
 function buildModeSummary(records) {
     const byMode = {};
     for (const rec of records) {
         const m = rec.training_mode || "unknown";
-        if (!byMode[m]) {
-            byMode[m] = {
-                sessions: 0,
-                completed: 0,
-                exercises: 0,
-                clean: 0,
-                repeats: 0,
-                faults: 0,
-            };
-        }
-        byMode[m].sessions += 1;
-        if (rec.session_status === "completed") byMode[m].completed += 1;
-        byMode[m].exercises += numberValue(rec.exercise_count);
-        byMode[m].clean += numberValue(rec.clean_exercise_count);
-        byMode[m].repeats += numberValue(rec.restart_count);
-        byMode[m].faults += countFaults(rec);
+        if (!byMode[m]) byMode[m] = [];
+        byMode[m].push(rec);
     }
 
     summaryModesEl.replaceChildren();
@@ -68,10 +145,7 @@ function buildModeSummary(records) {
     if (modes.length === 0) return;
 
     for (const mode of modes) {
-        const stats = byMode[mode];
-        const cleanRate = stats.exercises > 0
-            ? `${Math.round((stats.clean / stats.exercises) * 100)}%`
-            : "—";
+        const stats = describeModeTrend(byMode[mode]);
 
         const card = document.createElement("div");
         card.className = "settings-kt-mode-card";
@@ -84,13 +158,11 @@ function buildModeSummary(records) {
         const dl = document.createElement("dl");
         dl.className = "settings-kt-mode-card__stats";
         [
-            ["Sessions", stats.sessions],
-            ["Completed", stats.completed],
-            ["Exercises", stats.exercises],
-            ["Clean", stats.clean],
-            ["Clean rate", cleanRate],
+            ["Status", stats.status],
+            ["Clean rate", stats.clean],
             ["Repeats", stats.repeats],
             ["Faults", stats.faults],
+            ["Practice", stats.practice],
         ].forEach(([label, value]) => {
             const dt = document.createElement("dt");
             dt.textContent = label;
