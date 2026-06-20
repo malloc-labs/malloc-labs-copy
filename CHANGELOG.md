@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.15.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.14.0...v0.15.0) (2026-06-20)
+
+
+### Features
+
+* **key:** add training controls ([4422134](https://github.com/malloc-labs/malloc-labs-copy/commit/4422134cd260c6b8940a273a15242c71a1342e26))
+* **key:** add training page shell ([a5b7bf9](https://github.com/malloc-labs/malloc-labs-copy/commit/a5b7bf9529162dfbd97b399d11ae9866286b52c5))
+* **key:** add training playback feedback ([cefe0be](https://github.com/malloc-labs/malloc-labs-copy/commit/cefe0be04e651653f16fd0263232749b899a40d7))
+* **key:** add training progress strip ([d9b287a](https://github.com/malloc-labs/malloc-labs-copy/commit/d9b287a7169e1895a93032af6b438f31116649cb))
+* **key:** refine training choreography navigation ([cedda47](https://github.com/malloc-labs/malloc-labs-copy/commit/cedda47bd9037a6033204d5d6a80b354bbf06f08))
+* **web:** adapt key training exercises to history ([#278](https://github.com/malloc-labs/malloc-labs-copy/issues/278)) ([c4b0fda](https://github.com/malloc-labs/malloc-labs-copy/commit/c4b0fdab25583e886ac45fc8d13c80e776eca872))
+* **web:** collapse key training panels ([#285](https://github.com/malloc-labs/malloc-labs-copy/issues/285)) ([de9c124](https://github.com/malloc-labs/malloc-labs-copy/commit/de9c12471cb3269da053350a8abcceebc9450d64))
+* **web:** simplify key training trend UI ([#284](https://github.com/malloc-labs/malloc-labs-copy/issues/284)) ([3a32482](https://github.com/malloc-labs/malloc-labs-copy/commit/3a324822e11eae45c158b2fd3c3081c9f82a7d9e))
+* **web:** summarize key training trends ([#282](https://github.com/malloc-labs/malloc-labs-copy/issues/282)) ([70a0038](https://github.com/malloc-labs/malloc-labs-copy/commit/70a0038b972d8c8c843bfbbf176a3e033a997ce5))
+
+
+### Bug Fixes
+
+* **web:** estimate key training active time ([#283](https://github.com/malloc-labs/malloc-labs-copy/issues/283)) ([71ea18c](https://github.com/malloc-labs/malloc-labs-copy/commit/71ea18c311ee053a150cea73227711a7a76f49cf))
+* **web:** keep key training symbols separate ([#279](https://github.com/malloc-labs/malloc-labs-copy/issues/279)) ([5c4d459](https://github.com/malloc-labs/malloc-labs-copy/commit/5c4d4597bc2e29b0509e0a3d55b9bdbc6d980ca7))
+* **web:** keybind training start restart controls ([#277](https://github.com/malloc-labs/malloc-labs-copy/issues/277)) ([511b932](https://github.com/malloc-labs/malloc-labs-copy/commit/511b9324117b10ec168958ec8319b57e9735668b))
+* **web:** preview recognition soft nudge ([#280](https://github.com/malloc-labs/malloc-labs-copy/issues/280)) ([03769f2](https://github.com/malloc-labs/malloc-labs-copy/commit/03769f20192e0f91e589f46ee65a4c220ff2ec11))
+* **web:** refine key training records view ([#281](https://github.com/malloc-labs/malloc-labs-copy/issues/281)) ([5ffbbe7](https://github.com/malloc-labs/malloc-labs-copy/commit/5ffbbe77c7f8bea72c475db0fcb648b6f9d52487))
+* **web:** restart failed key training exercise in place ([#275](https://github.com/malloc-labs/malloc-labs-copy/issues/275)) ([243d3ba](https://github.com/malloc-labs/malloc-labs-copy/commit/243d3ba9c0f52c101cfc393e6e93f38dbae8a43f))
+* **web:** show unreadable key training patterns ([#276](https://github.com/malloc-labs/malloc-labs-copy/issues/276)) ([118fe0a](https://github.com/malloc-labs/malloc-labs-copy/commit/118fe0a95c8877a3b7a25a9bb500db606e40904d))
+
 ## [0.14.0](https://github.com/malloc-labs/malloc-labs-copy/compare/v0.13.0...v0.14.0) (2026-06-13)
 
 
